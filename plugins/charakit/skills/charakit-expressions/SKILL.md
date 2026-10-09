@@ -38,11 +38,15 @@ Garment recoloring uses the separate [CharaKit Outfits Skill](../charakit-outfit
 
 Save each generated image as a candidate before checking it. Saving or displaying an image does not imply art approval.
 
+Read and apply the shared [quality review and delivery policy](../../references/quality-review.md) for every generation/revision. New projects enable internal review by default; before generating into a legacy project, run `enable-quality`. Inspect actual comparisons, record four evidence-backed rubric scores with `quality`, then use `deliver` before showing a candidate as a deliverable. Serious defects, uncertainty and technical failures other than temporarily excluded canvas mismatch block delivery independently of the total. This is assistant visual judgment with deterministic record validation, not an automatic objective identity metric. User acceptance stays separate.
+
+Include the active `domain_review` checklist: `expression` checks emotion, facial design, nonface protection and rendering; an explicit open/closed candidate uses `mouth_state` and also checks the specified mouth state. Preserve established emotion for mouth-only edits; for combined requests inspect the requested emotion and state together. Record actual source-specific evidence for each item. Any failed/uncertain domain item blocks delivery regardless of global scores. Explain the failed module/component and visible deviation in the user's language, rather than reporting only a number.
+
 - Use the user's destination, or `art-output/<character-key>/` in the workspace. Never put user artwork in the plugin installation directory.
 - Preserve the original file and all candidate versions. The helper does not repaint, remove backgrounds, change alpha, or resize candidate images.
-- Check decoding, PNG format, exact source canvas dimensions, and background requirements. Mark size mismatches as failures; do not hide them with stretching, tight crops, or automatic centering.
+- Check decoding, PNG format, actual canvas dimensions, and background requirements. Record size mismatches accurately but temporarily exclude them from rubric scoring and preview-delivery rejection; formal acceptance/export retain their size gate. Do not hide mismatches with stretching, tight crops, or automatic centering.
 - Inspect both full images and enlarged **whole-face** comparisons. Check facial detail, style, design, and harmony at normal game display size; see [quality-checklist.md](references/quality-checklist.md).
-- Explain checks and visible problems in the user's language. Scripts verify file requirements, not artistic fidelity. Do not invent identity scores, face scores, or model identifiers.
+- Explain checks and visible problems in the user's language. Scripts verify file requirements and recorded rubric gates, not artistic fidelity. Use only inspected, attributed rubric scores; do not invent objective identity metrics or model identifiers.
 - Explicit satisfaction or version selection is sufficient art feedback; do not request the same approval again. Unreviewed candidates remain `unreviewed`.
 - The helper only sets `accepted` after technical checks pass. If a user likes a technically failed candidate, save their positive feedback separately and explain the remaining technical issue; do not erase their feedback or mark the technical check as passed. Such candidates remain available for inspection but cannot enter a formal export.
 
@@ -59,6 +63,8 @@ python <skill>/scripts/studio.py add --project <output-dir> --expression angry -
 python <skill>/scripts/studio.py add --project <output-dir> --expression happy --mouth-state closed --image <generated-closed.png> --prompt-file <closed-prompt.txt>
 python <skill>/scripts/studio.py add --project <output-dir> --expression happy --mouth-state open --image <generated-open.png> --prompt-file <open-prompt.txt>
 python <skill>/scripts/studio.py preview --project <output-dir> --output <preview.png> --face-box <left> <top> <right> <bottom> --labels-file <labels.json>
+python <skill>/scripts/studio.py quality --project <output-dir> --asset angry_v001 --assessment-file <assessment.json> --comparison <output-dir/preview/light.png> --comparison <output-dir/preview/dark.png>
+python <skill>/scripts/studio.py deliver --project <output-dir> --asset angry_v001
 python <skill>/scripts/studio.py review --project <output-dir> --asset angry_v001 --status accepted --note <user-feedback>
 python <skill>/scripts/studio.py select --project <output-dir> --asset angry_v001
 python <skill>/scripts/studio.py export --project <output-dir>
@@ -75,6 +81,6 @@ python <skill>/scripts/studio.py export --project <output-dir>
 
 ## Revisions and delivery
 
-Revise only the requested image; preserve other expressions and history. Produce one new candidate for an explicit revision request, then show its result and any remaining issue. Do not retry indefinitely or silently regenerate images the user likes.
+Revise only the requested image; preserve other expressions and history. Produce one new candidate for an explicit revision request and review it afresh; show it as a deliverable only after the internal gate passes. Report blocked results in text, unless the user requested inspection of failed/experimental images. No additional generations without an explicit revision or attempt budget; do not retry indefinitely or silently regenerate images the user likes.
 
-Show actual images and file links. Export selected PNGs or ZIPs as requested. Explain dimensions, technical status, and unresolved art issues in the user's language. A request to try one expression does not require generating the whole standard set.
+Show passed actual images and file links returned by `deliver`; mark any explicitly requested failed-output comparisons as inspection evidence. Export selected PNGs or ZIPs as requested after the existing user/technical and new quality gates pass. Explain dimensions, technical status, and unresolved art issues in the user's language. A request to try one expression does not require generating the whole standard set.

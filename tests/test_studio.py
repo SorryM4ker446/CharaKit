@@ -34,6 +34,10 @@ class WorkflowTests(unittest.TestCase):
         fixture(self.source)
         self.root = self.folder / "character output"
         studio.init_project(self.root, self.source, "test_character")
+        # Preserve this suite's historical workflow/compatibility coverage using legacy metadata.
+        state = studio.read_state(self.root)
+        state.pop("quality_policy")
+        studio.write_state(self.root, state)
 
     def candidate(self, expression="angry", size=(64, 96), transparent=True, mouth_state="default"):
         path = self.folder / "candidate-\u00e9.png"

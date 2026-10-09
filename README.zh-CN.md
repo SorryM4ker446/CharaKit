@@ -6,7 +6,13 @@
 
 两个模块各有独立 Skill，共用本地 Python 文件助手。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与局部对比预览，以及导出选定资源。
 
-开发版本：**0.1.10**。
+开发版本：**0.1.13**。
+
+新审核必须填写当前模块／状态的专项检查，不能只给整图总分：表情、明确嘴部状态、服饰改色分别检查；衣物再按实际部件的材质、结构与交界细化。任一项失败或无法确认，即使总分 100 也阻止交付。需使用 0.1.13 或更高助手；旧审核只读兼容，不补写虚构专项结论。
+
+分辨率暂时不参与视觉评分和预览交付拦截。真实尺寸不匹配仍记录，交付时作为提示返回；其他质量、保真与技术门槛继续执行。正式接受与 ZIP 导出仍要求源画布尺寸。此例外需使用 0.1.12 或更新助手。
+
+后续开发与交付遵循统一的[内部质量审核基准](plugins/charakit/references/quality-review.md)。新候选依据实际对照记录四项评分；总分至少 85/100、每项至少 4/5、无严重缺陷或不确定问题，并通过技术与适用保真门槛，才进入交付。评分来自模型查看图像后的判断，不是客观自动相似度模型；内部通过仍不代替用户认可。旧记录保留，旧项目继续生成前启用新策略。使用 0.1.11 或更高版本助手才能执行新门槛。
 
 所有已实现模块遵循共同的[编辑边界规则](plugins/charakit/references/edit-boundaries.md)：明确目标、允许变化的属性、目标内部不变量，以及边界和其余区域的保护要求。未请求的部件与属性默认受保护。提示词和检查由请求、部件领域及实际原图推导，历史测试角色不成为通用模板。Outfits 提供[服饰专项规则](plugins/charakit/skills/charakit-outfits/references/garment-domains.md)；Expressions 分别限定表情动作和嘴部状态，不因此扩大其他部件的编辑范围。
 
@@ -152,11 +158,14 @@ python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --proj
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression happy --mouth-state closed --image happy-closed.png
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression happy --mouth-state open --image happy-open.png
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-v001.png --face-box 100 100 200 200 --background light
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-dark-v001.png --face-box 100 100 200 200 --background dark
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py quality --project art-output/my-character --asset angry_v001 --assessment-file assessment.json --comparison art-output/my-character/preview/comparison-v001.png --comparison art-output/my-character/preview/comparison-dark-v001.png
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py deliver --project art-output/my-character --asset angry_v001
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py review --project art-output/my-character --asset angry_v001 --status accepted --note "用户选中了此版本。"
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py export --project art-output/my-character
 ```
 
-`add` 检查失败时会返回退出码 2 和结构化报告，同时保留候选图片。技术检查通过不代表美术已获认可；正式导出需要技术合格和用户认可同时满足。
+`add` 检查失败时会返回退出码 2 和结构化报告，同时保留候选图片。按[质量评分结构](plugins/charakit/references/quality-review.md)根据实际查看的对照填写 `assessment.json`，不使用默认满分模板。技术检查通过不代表美术已获认可；正式导出需要技术、适用内部质量／保真门槛和用户认可同时满足。
 
 如果用户认可某张图的效果，但它未通过技术检查，应单独保留用户反馈。技术检查通过前，助手不会将该候选的状态设为 `accepted`。
 
@@ -184,9 +193,11 @@ plugins/charakit/
     references/garment-domains.md    部件、材质与界面专项规则
     scripts/studio.py               服饰文件助手入口
   references/edit-boundaries.md     跨模块共用的编辑范围规则
+  references/quality-review.md      后续开发基准与内部交付评分
 tests/test_studio.py                 使用合成图片的工作流测试
 tests/test_outfits.py                改色与打包工作流测试
 tests/test_outfit_fidelity.py        原图局部参考与人工保真检查测试
+tests/test_quality.py                内部审核、交付与旧项目兼容门槛测试
 tools/build_plugin.py               插件 ZIP 构建脚本
 ```
 
@@ -195,7 +206,7 @@ tools/build_plugin.py               插件 ZIP 构建脚本
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.10.zip
+python tools/build_plugin.py --output dist/charakit-0.1.13.zip
 ```
 
 测试使用合成图片，不需要第三方角色美术。CI 在 Linux 和 Windows 上运行。构建脚本不会覆盖已存在的 ZIP。

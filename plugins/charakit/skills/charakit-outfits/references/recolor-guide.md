@@ -45,4 +45,6 @@ For a requested revision, return to the immutable source and refine only the amb
 
 ## Scope of future work
 
+Apply the shared [quality-first rubric and delivery gate](../../../references/quality-review.md) after the comparisons and independent fidelity observations. Record assistant judgments with concrete evidence using `quality`; only `deliver`-passed candidates become user-facing deliverables. Serious protection defects and technical failures remain vetoes, regardless of the weighted score. Explicitly requested failed/experimental comparisons are inspection evidence. Future garment-edit modes must define their allowed changes and integrate the same gate before becoming available.
+
 Accessory additions/removals, clothing on/off states, changing patterns or cut, full outfit replacement, and automated outfit/expression combination management remain planned. A user-requested new design needs the corresponding future workflow; do not quietly describe it as a simple recolor. Images from accepted recolor options are not automatically promoted to expression-project sources.

@@ -28,10 +28,13 @@ Compare enlarged corresponding face regions in the original and candidate:
 
 ## Status and user feedback
 
+Use `domain_review.kind = expression` for default-state expression candidates and `mouth_state` for explicit open/closed candidates. Check all required items from the shared rubric before summarizing the global score. A failed eye/design check, incorrect mouth state or uncertain nonface protection blocks delivery independently; requested expression movements are evaluated within their permissions. Explain the specific failed item and evidence, not only “score too low”.
+
 - `technical_status = passed | failed` is determined by the helper.
 - `art_review_status = unreviewed | accepted | rejected` records actual user feedback.
+- Apply the shared [internal quality rubric](../../../references/quality-review.md) after viewing the comparisons. `quality` records attributed observations; `deliver` requires a passed internal review and current technical validity before user-facing delivery. Quality passage does not invent user acceptance. Failed or uncertain results remain inspection candidates.
 - Explicit selection or satisfaction counts as art feedback; do not ask for duplicate confirmation.
-- `review --status accepted` requires technical validity. If the user likes a technically failed image, preserve that feedback in a separate review note while retaining the failure. Formal export remains blocked.
+- `review --status accepted` requires technical validity and applicable internal quality gates. If the user likes a blocked image, preserve that feedback separately while retaining the failure. Formal export remains blocked.
 - Record a specific art defect only when the user identifies it or it is visible in the current candidate. A checklist item is not evidence of a defect.
 - Keep observations and feedback tied to the actual candidate/version. A defect or approval in an earlier experiment does not establish either for a later image.
 
@@ -49,6 +52,7 @@ Optional label keys:
 | `mouth_closed`, `mouth_open` | Explicit mouth-state titles, displayed with expression and version |
 | `unreviewed`, `accepted`, `rejected` | Visible art-review status |
 | `technical_passed`, `technical_failed` | Visible technical status |
+| `quality_pending`, `quality_passed`, `quality_failed`, `quality_uncertain`, `quality_stale` | Internal quality status; evidence scores are separate from user feedback |
 | Error code, such as `CANVAS_MISMATCH` | Short translated problem description |
 
 Partial overrides are supported; omitted labels use their English defaults. Keys and internal records are never translated. Keep values short enough for the preview card. Detailed explanations belong in chat. Font glyph coverage depends on the local environment.

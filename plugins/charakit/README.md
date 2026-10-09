@@ -1,6 +1,12 @@
 # CharaKit
 
-Version **0.1.10**. A modular Codex plugin for visual novel character artwork.
+Version **0.1.13**. A modular Codex plugin for visual novel character artwork.
+
+New `quality` reviews require the active module/state's domain checklist: expression, explicit mouth state or garment recolor. Garments specialize by actual component, material and interfaces. Failed/uncertain items veto delivery regardless of the global score; use helper 0.1.13 or later. Older reviews remain readable without fabricated domain findings.
+
+Resolution is temporarily outside visual scoring and preview-delivery rejection. `deliver` returns actual dimensions and canvas-mismatch warnings; decoding, PNG, transparency, fingerprints and quality/fidelity gates remain. Formal acceptance/selection/ZIP export retain exact-canvas checks. Use helper 0.1.12 or later for this exception.
+
+Follow the shared [quality-first baseline and review policy](references/quality-review.md). `quality` records assistant visual observations with source/candidate/prompt/comparison bindings; `deliver` returns only internally passed, technically valid candidates, retaining independent Outfits fidelity gates. Passage requires 85/100, a 4/5 floor per dimension and no critical defects or uncertainty. It does not accept/select assets or prove objective fidelity. New projects default on; `enable-quality` backs up a legacy project and gates future candidates without rewriting historical claims. Use helper 0.1.11 or later; older helpers cannot enforce these additive review fields.
 
 Artwork quality takes priority over prompt length. Domain-specific prompts inherit actual source attributes, preserve facial and non-target detail, and state the visible movements/effects required for the requested edit. Do not replace uncertain iris/skin colors with guessed labels; prompt correctness and output fidelity are checked separately.
 
@@ -106,7 +112,7 @@ The entrypoints are `skills/charakit-expressions/scripts/studio.py` and `skills/
 python skills/charakit-expressions/scripts/studio.py --help
 ```
 
-Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`; Expressions also provides `presets`, and Outfits provides `prepare` and `fidelity`. The CLI rejects a project belonging to the other module before writing. Existing Expressions projects retain schema 1.0/1.1 and their original paths.
+Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`, `enable-quality`, `quality`, `deliver`; Expressions also provides `presets`, and Outfits provides `prepare` and `fidelity`. The CLI rejects a project belonging to the other module before writing. Existing Expressions projects retain schema 1.0/1.1 and their original paths.
 
 - Source snapshots, versioned candidates, preview images, and exports are not overwritten.
 - `presets` lists supported expressions and mouth states, English names, and starting directions without a project. Codex translates the human-readable descriptions into the user's language.
@@ -116,7 +122,7 @@ Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `p
 - `preview --face-box LEFT TOP RIGHT BOTTOM` uses source-canvas coordinates for whole-face inspection. `--background` accepts `checker`, `light`, or `dark`.
 - `preview --labels-file labels.json` supports user-language labels; see the Skill's quality checklist.
 - `preview --expression happy` includes all happy candidates and states; `--mouth-state open` optionally narrows it. Use repeated `--asset` arguments for a specific two-candidate comparison.
-- `review --status accepted` requires explicit user feedback and passing technical checks. Positive feedback on a failed candidate can be saved separately.
+- `review --status accepted` requires explicit user feedback, passing technical checks and applicable internal quality/fidelity gates. Positive feedback on a blocked candidate can be saved separately.
 - `export` revalidates the selected, accepted versions and packages their unchanged PNG bytes with a manifest. Explicit states export separately, for example `happy_mouth_open.png` and `happy_mouth_closed.png`; duplicates within one expression/state are blocked.
 - Work sequentially within a character directory; simultaneous writers are unsupported.
 

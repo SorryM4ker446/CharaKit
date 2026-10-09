@@ -27,6 +27,8 @@ Treat a garment spanning multiple domains as one garment, not several unrelated 
 
 ## Use in the workflow
 
+Apply the shared [domain-review gate](../../../references/quality-review.md) after inspecting the result. Record `garment_recolor` with the actual garment and relevant domain(s) in `component`. Fill `target_color`, `garment_invariants` and `interfaces` using the selected row's surfaces, material/structure and contact exclusions; separately check `face_expression`, `non_target_protection` and `rendering`. A failed/uncertain item blocks delivery independently of the global score. Avoid copying observations across rows or requiring a feature absent from the source.
+
 Populate `prepare` with the actual garment, requested color, included/excluded surfaces, and protected remainder. Build the submitted prompt from those decisions using the shared template; no domain assigns a default color. Save the detailed checklist in the brief, and inspect target material/structure plus the relevant interfaces in enlarged previews. Compare protected components selected from the actual source, not a checklist tied to any prior test image.
 
 If no row fits, apply the shared surface/property/invariant/interface rules to an existing garment and record the concrete scope. Do not force a category, invent a new CLI ID scheme, or broaden into replacement/accessory editing.

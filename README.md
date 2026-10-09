@@ -6,7 +6,13 @@
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.10**.
+Development version: **0.1.13**.
+
+New internal reviews require the checklist for the active module/state, not just a global score: expression, explicit mouth state, or garment recolor. Garment checks specialize by the source's actual component and material/interfaces. Any failed/uncertain item vetoes delivery even at 100/100. Use helper 0.1.13 or later; historical reviews remain readable without invented domain findings.
+
+Resolution is temporarily excluded from visual scoring and preview-delivery rejection. Actual canvas mismatch remains recorded and is returned as a delivery warning; other quality/fidelity/technical gates remain. Formal acceptance and ZIP export still require the source canvas. Use helper 0.1.12 or later for this exception.
+
+Quality-first development and delivery follow the shared [internal review policy](plugins/charakit/references/quality-review.md). New candidates are reviewed against four evidence-backed dimensions; delivery requires at least 85/100, every dimension at least 4/5, no critical defects or uncertainty, and current technical/fidelity passage. These are assistant visual judgments, not an objective automated similarity model. Internal passage remains separate from user acceptance. Legacy files are preserved; enable the policy before new work in old projects. Use helper 0.1.11 or later to enforce these gates.
 
 All available modules use shared [editing boundaries](plugins/charakit/references/edit-boundaries.md): identify the target, allowed property, target invariants, and protected interfaces/remainder. Unrequested components and properties stay protected. Prompts and inspections derive from the request, domain, and actual source; a past test character does not define the template. Outfits provides [garment-specific rules](plugins/charakit/skills/charakit-outfits/references/garment-domains.md); Expressions specializes allowed facial movement and mouth state without authorizing other edits.
 
@@ -141,11 +147,14 @@ python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --proj
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression happy --mouth-state closed --image happy-closed.png
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression happy --mouth-state open --image happy-open.png
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-v001.png --face-box 100 100 200 200 --background light
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-dark-v001.png --face-box 100 100 200 200 --background dark
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py quality --project art-output/my-character --asset angry_v001 --assessment-file assessment.json --comparison art-output/my-character/preview/comparison-v001.png --comparison art-output/my-character/preview/comparison-dark-v001.png
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py deliver --project art-output/my-character --asset angry_v001
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py review --project art-output/my-character --asset angry_v001 --status accepted --note "User selected this version."
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py export --project art-output/my-character
 ```
 
-A failing `add` returns exit code 2 with a structured report and retains the candidate. A technical pass does not imply art approval. Formal export requires both technical validity and actual user acceptance.
+A failing `add` returns exit code 2 with a structured report and retains the candidate. Prepare `assessment.json` from actual inspected findings using the [quality rubric](plugins/charakit/references/quality-review.md); it is not a default passing template. A technical pass does not imply art approval. Formal export requires technical validity, applicable quality/fidelity gates and actual user acceptance.
 
 If a user likes an image that fails technical checks, preserve their feedback separately. The helper does not set the `accepted` status until those checks pass.
 
@@ -173,9 +182,11 @@ plugins/charakit/
     references/garment-domains.md    Component, material, and interface rules
     scripts/studio.py               Outfit helper entrypoint
   references/edit-boundaries.md     Shared editing scope across modules
+  references/quality-review.md      Development baseline and internal delivery rubric
 tests/test_studio.py                 Synthetic-fixture workflow tests
 tests/test_outfits.py                Recolor and packaging workflow tests
 tests/test_outfit_fidelity.py        Source-reference and manual-fidelity workflow tests
+tests/test_quality.py                Internal review, delivery and compatibility gates
 tools/build_plugin.py               Plugin ZIP builder
 ```
 
@@ -184,7 +195,7 @@ tools/build_plugin.py               Plugin ZIP builder
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.10.zip
+python tools/build_plugin.py --output dist/charakit-0.1.13.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.

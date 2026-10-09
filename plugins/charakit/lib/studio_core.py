@@ -40,6 +40,14 @@ MOUTH_STATES = tuple(MOUTH_PRESETS)
 MODES = ("transparent_sprite", "preserve_background")
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PIXELS = 40_000_000
+QUALITY_WEIGHTS = {"target": 30, "identity": 25, "protection": 30, "rendering": 15}
+QUALITY_INSPECTIONS = ("full_image", "target_detail", "protected_details", "normal_display", "background_edges")
+QUALITY_VERSION = "1.0"
+DOMAIN_CHECKS = {
+    "expression": ("emotion", "face_design", "nonface_protection", "rendering"),
+    "mouth_state": ("emotion", "mouth_state", "face_design", "nonface_protection", "rendering"),
+    "garment_recolor": ("target_color", "garment_invariants", "interfaces", "face_expression", "non_target_protection", "rendering"),
+}
 
 
 class StudioError(Exception):
@@ -142,6 +150,12 @@ def read_state(root: Path) -> dict:
         require(bool(re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", state["character_key"])))
         require(state["background_mode"] in MODES)
         require(isinstance(state["assets"], list) and isinstance(state["selected"], dict))
+        if "quality_policy" in state:
+            policy = state["quality_policy"]
+            require(isinstance(policy, dict) and policy["version"] == QUALITY_VERSION)
+            require(isinstance(policy["legacy_asset_ids"], list))
+            require(all(isinstance(item, str) for item in policy["legacy_asset_ids"]))
+            require(len(set(policy["legacy_asset_ids"])) == len(policy["legacy_asset_ids"]))
         for dimension in ("width", "height"):
             require(type(state["canvas"][dimension]) is int and state["canvas"][dimension] > 0)
         ids = set()
@@ -177,7 +191,20 @@ def read_state(root: Path) -> dict:
             require(asset["art_review_status"] in ("unreviewed", "accepted", "rejected"))
             require(bool(re.fullmatch(r"[0-9a-f]{64}", asset["sha256"])))
             contained(root, asset["path"])
+            if "quality_required" in asset:
+                require(asset["quality_required"] == QUALITY_VERSION)
+            if "quality_review" in asset:
+                try:
+                    validate_quality_record(state, asset, asset["quality_review"])
+                    for item in asset["quality_review"]["comparisons"]:
+                        contained(root, item["path"])
+                except StudioError as exc:
+                    raise ValueError("Invalid quality review.") from exc
             ids.add(asset["id"])
+        if "quality_policy" in state:
+            require(set(state["quality_policy"]["legacy_asset_ids"]).issubset(ids))
+            require(all(a.get("quality_required") == QUALITY_VERSION for a in state["assets"]
+                        if a["id"] not in state["quality_policy"]["legacy_asset_ids"]))
         by_id = {asset["id"]: asset for asset in state["assets"]}
         for slot, asset_id in state["selected"].items():
             require(isinstance(asset_id, str) and asset_id in by_id)
@@ -334,6 +361,197 @@ def record_fidelity(root: Path, asset_id: str, target_check: str, protection_che
             "technical_passed": report["passed"], "selected": state["selected"]}
 
 
+def quality_domain(state: dict, asset: dict) -> str:
+    if state.get("module", "expressions") == "outfits":
+        return "garment_recolor"
+    return "mouth_state" if asset.get("mouth_state", "default") != "default" else "expression"
+
+
+def validate_domain_review(domain: dict, expected: str | None = None) -> None:
+    try:
+        kind = domain["kind"]
+        valid = (domain["version"] == "1.0" and kind in DOMAIN_CHECKS
+                 and (expected is None or kind == expected)
+                 and valid_edit_text(domain["component"], 500)
+                 and isinstance(domain["checks"], dict)
+                 and set(domain["checks"]) == set(DOMAIN_CHECKS[kind]))
+        if not valid:
+            raise ValueError("Invalid domain.")
+        for item in domain["checks"].values():
+            if not (isinstance(item, dict) and item["status"] in FIDELITY_CHECKS
+                    and valid_edit_text(item["evidence"], 2000)):
+                raise ValueError("Invalid finding.")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise StudioError("INVALID_DOMAIN_REVIEW", "Record the active module/state's complete domain checklist, actual component and visible evidence.") from exc
+
+
+def validate_quality_assessment(assessment: dict) -> None:
+    """Validate attributed visual observations; this is not an image scorer."""
+    try:
+        valid = (isinstance(assessment, dict) and assessment["rubric_version"] == QUALITY_VERSION
+                 and assessment["basis"] == "assistant" and valid_edit_text(assessment["request"], 2000)
+                 and isinstance(assessment["dimensions"], dict)
+                 and set(assessment["dimensions"]) == set(QUALITY_WEIGHTS)
+                 and isinstance(assessment["inspection"], dict)
+                 and set(assessment["inspection"]) == set(QUALITY_INSPECTIONS)
+                 and all(type(v) is bool for v in assessment["inspection"].values()))
+        if not valid:
+            raise ValueError("Invalid rubric.")
+        for item in assessment["dimensions"].values():
+            if not (isinstance(item, dict) and type(item["score"]) is int and 0 <= item["score"] <= 5
+                    and valid_edit_text(item["evidence"], 2000)):
+                raise ValueError("Invalid score/evidence.")
+        for key in ("critical_defects", "uncertainties"):
+            values = assessment[key]
+            if not (isinstance(values, list) and len(values) <= 30
+                    and all(valid_edit_text(v, 1000) for v in values)):
+                raise ValueError("Invalid findings.")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise StudioError("INVALID_QUALITY_REVIEW", "Use rubric 1.0, assistant attribution, four integer scores with evidence, inspection flags and defect/uncertainty lists.") from exc
+    if "domain_review" in assessment:
+        validate_domain_review(assessment["domain_review"])
+
+
+def quality_result(review: dict) -> dict:
+    validate_quality_assessment(review)
+    total = sum(review["dimensions"][key]["score"] * weight for key, weight in QUALITY_WEIGHTS.items()) / 5
+    checks = review.get("domain_review", {}).get("checks", {})
+    domain_failed = any(item["status"] == "failed" for item in checks.values())
+    domain_uncertain = any(item["status"] == "uncertain" for item in checks.values())
+    if domain_failed or review["critical_defects"] or total < 85 or any(v["score"] < 4 for v in review["dimensions"].values()):
+        status = "failed"
+    elif domain_uncertain or review["uncertainties"] or not all(review["inspection"].values()):
+        status = "uncertain"
+    else:
+        status = "passed"
+    return {"status": status, "total": total, "threshold": 85, "dimension_floor": 4}
+
+
+def validate_quality_record(state: dict, asset: dict, review: dict) -> None:
+    validate_quality_assessment(review)
+    if "domain_review" in review:
+        validate_domain_review(review["domain_review"], quality_domain(state, asset))
+    try:
+        valid = (review["source_sha256"] == state["source_sha256"] and review["asset_sha256"] == asset["sha256"]
+                 and review["result"] == quality_result(review) and isinstance(review["comparisons"], list)
+                 and 1 <= len(review["comparisons"]) <= 20 and bool(review["reviewed_at"]))
+        for item in review["comparisons"]:
+            valid = valid and isinstance(item["path"], str) and bool(re.fullmatch(r"[0-9a-f]{64}", item["sha256"]))
+        if not valid:
+            raise ValueError("Invalid binding.")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise StudioError("INVALID_QUALITY_REVIEW", "Quality evidence must bind the source, candidate and saved comparisons.") from exc
+
+
+def delivery_validation(report: dict) -> dict:
+    """Temporarily ignore only canvas mismatch for visual review and preview delivery."""
+    errors = [code for code in report["errors"] if code != "CANVAS_MISMATCH"]
+    warnings = list(report["warnings"])
+    if "CANVAS_MISMATCH" in report["errors"]:
+        warnings.append("CANVAS_MISMATCH")
+    return {**report, "passed": not errors, "errors": errors, "warnings": warnings}
+
+
+def quality_status(root: Path, state: dict, asset: dict) -> str:
+    review = asset.get("quality_review")
+    if review is None:
+        return "pending" if "quality_required" in asset else "unrecorded"
+    if not delivery_validation(check_asset(root, state, asset))["passed"]:
+        return "failed"
+    for item in review["comparisons"]:
+        path = contained(root, item["path"])
+        if not path.is_file() or digest(path) != item["sha256"]:
+            return "stale"
+    prompt = contained(root, asset["prompt_path"]) if "prompt_path" in asset else None
+    if (digest(prompt) if prompt and prompt.is_file() else None) != review.get("prompt_sha256"):
+        return "stale"
+    return quality_result(review)["status"]
+
+
+def require_quality(root: Path, state: dict, asset: dict) -> None:
+    status = quality_status(root, state, asset)
+    if status not in ("passed", "unrecorded"):
+        code = "QUALITY_REVIEW_REQUIRED" if status == "pending" else "QUALITY_CHECK_FAILED"
+        raise StudioError(code, f'{asset["id"]}: internal quality is {status}; inspect and record evidence before delivery.')
+
+
+def enable_quality(root: Path) -> dict:
+    state = read_state(root)
+    if "quality_policy" not in state:
+        backup = root / "run.before-quality.backup.json"
+        if backup.exists():
+            if backup.read_bytes() != (root / "run.json").read_bytes():
+                raise StudioError("MIGRATION_BACKUP_EXISTS", "Existing quality backup differs; resolve the interrupted upgrade first.")
+        else:
+            copy_exclusive(root / "run.json", backup)
+        state["quality_policy"] = {"version": QUALITY_VERSION, "legacy_asset_ids": [a["id"] for a in state["assets"]]}
+        write_state(root, state)
+    return {"quality_policy": state["quality_policy"], "note": "Future candidates require fresh quality review; legacy user feedback and files are preserved."}
+
+
+def record_quality(root: Path, asset_id: str, assessment: dict, comparisons: list[Path]) -> dict:
+    state = read_state(root)
+    asset = get_asset(state, asset_id)
+    validate_quality_assessment(assessment)
+    if "domain_review" not in assessment:
+        raise StudioError("DOMAIN_REVIEW_REQUIRED", "Inspect and record the active module/state's specific checks, not only a global score.")
+    validate_domain_review(assessment["domain_review"], quality_domain(state, asset))
+    report = check_asset(root, state, asset)
+    if report["image"] is None or "ASSET_CHANGED" in report["errors"]:
+        raise StudioError("TECHNICAL_CHECK_FAILED", ", ".join(report["errors"]))
+    if not isinstance(comparisons, list) or not 1 <= len(comparisons) <= 20:
+        raise StudioError("INVALID_QUALITY_REVIEW", "Include saved, inspected source/candidate comparison PNGs.")
+    evidence = []
+    for path in comparisons:
+        path = Path(path).resolve()
+        if not path.is_relative_to(root.resolve()) or path == contained(root, asset["path"]) or path == contained(root, state["source"]):
+            raise StudioError("INVALID_QUALITY_REVIEW", "Use comparison previews inside the project, not standalone source/candidate files.")
+        if image_info(path)["format"] != "PNG":
+            raise StudioError("INVALID_QUALITY_REVIEW", "Comparison evidence must be PNG.")
+        evidence.append({"path": path.relative_to(root.resolve()).as_posix(), "sha256": digest(path)})
+    prompt = contained(root, asset["prompt_path"]) if "prompt_path" in asset else None
+    if prompt is not None and not prompt.is_file():
+        raise StudioError("INVALID_QUALITY_REVIEW", "The saved actual prompt is missing.")
+    # Copy only rubric fields; caller-supplied totals/status/fingerprints cannot override computed bindings.
+    review = {key: assessment[key] for key in ("rubric_version", "basis", "request", "dimensions", "inspection", "critical_defects", "uncertainties", "domain_review")}
+    review.update({"source_sha256": state["source_sha256"], "asset_sha256": asset["sha256"],
+                   "prompt_sha256": digest(prompt) if prompt else None, "comparisons": evidence,
+                   "result": quality_result(review), "reviewed_at": timestamp()})
+    validate_quality_record(state, asset, review)
+    asset.setdefault("quality_history", []).append(review)
+    asset["quality_review"] = review
+    if quality_status(root, state, asset) != "passed" and state["selected"].get(asset_slot(asset)) == asset_id:
+        del state["selected"][asset_slot(asset)]
+    write_state(root, state)
+    return {"asset_id": asset_id, "quality_status": quality_status(root, state, asset), "score": review["result"],
+            "domain_review": review["domain_review"],
+            "technical_passed": report["passed"], "art_review_status": asset["art_review_status"], "selected": state["selected"]}
+
+
+def delivery_assets(root: Path, ids: list[str] | None = None) -> dict:
+    """Return review-ready paths only after every requested candidate passes, without user acceptance."""
+    state = read_state(root)
+    chosen = ids if ids is not None else [a["id"] for a in state["assets"] if "quality_required" in a]
+    if not chosen:
+        raise StudioError("NO_DELIVERY_ASSETS", "Specify quality-reviewed candidates for delivery.")
+    ready = []
+    for asset_id in chosen:
+        asset = get_asset(state, asset_id)
+        if asset["art_review_status"] == "rejected":
+            raise StudioError("ART_REVIEW_REJECTED", f"User rejected {asset_id}.")
+        report = delivery_validation(check_asset(root, state, asset))
+        if not report["passed"]:
+            raise StudioError("TECHNICAL_CHECK_FAILED", ", ".join(report["errors"]))
+        require_fidelity(asset)
+        if quality_status(root, state, asset) != "passed":
+            raise StudioError("QUALITY_CHECK_FAILED", f"{asset_id}: a passed internal review is required for delivery, including legacy candidates.")
+        ready.append({"asset_id": asset_id, "image": str(contained(root, asset["path"])),
+                      "quality_score": asset["quality_review"]["result"]["total"], "art_review_status": asset["art_review_status"],
+                      "canvas": {"width": report["image"]["width"], "height": report["image"]["height"]},
+                      "warnings": report["warnings"]})
+    return {"delivery": ready, "note": "Internally reviewed, ready for user feedback; not automatically accepted, selected or exported."}
+
+
 def init_project(root: Path, source: Path, character: str, mode: str = "auto",
                  module: str = "expressions") -> dict:
     if module not in ("expressions", "outfits"):
@@ -359,6 +577,7 @@ def init_project(root: Path, source: Path, character: str, mode: str = "auto",
         "source": target.name, "source_sha256": info["sha256"],
         "canvas": {"width": info["width"], "height": info["height"]},
         "background_mode": mode, "assets": [], "selected": {}, "created_at": timestamp(),
+        "quality_policy": {"version": QUALITY_VERSION, "legacy_asset_ids": []},
     }
     if module == "outfits":
         state.update({"schema_version": "1.2", "module": "outfits"})
@@ -466,6 +685,8 @@ def save_candidate(root: Path, state: dict, image: Path, fields: dict, report: d
         with contained(root, relative_prompt).open("x", encoding="utf-8") as stream:
             stream.write(prompt)
         asset["prompt_path"] = relative_prompt
+    if "quality_policy" in state:
+        asset["quality_required"] = QUALITY_VERSION
     state["assets"].append(asset)
     write_state(root, state)
     return {"asset": asset, "passed": report["passed"]}
@@ -481,6 +702,7 @@ def review_asset(root: Path, asset_id: str, status: str, note: str = "") -> dict
         raise StudioError("TECHNICAL_CHECK_FAILED", ", ".join(report["errors"]))
     if status == "accepted":
         require_fidelity(asset)
+        require_quality(root, state, asset)
     asset.update({"art_review_status": status, "review_note": note, "reviewed_at": timestamp(),
                   "validation": report, "technical_status": "passed" if report["passed"] else "failed"})
     if status == "accepted":
@@ -500,6 +722,7 @@ def select_asset(root: Path, asset_id: str) -> dict:
     if not report["passed"]:
         raise StudioError("TECHNICAL_CHECK_FAILED", ", ".join(report["errors"]))
     require_fidelity(asset)
+    require_quality(root, state, asset)
     state["selected"][asset_slot(asset)] = asset_id
     write_state(root, state)
     return {"selected": state["selected"]}
@@ -578,6 +801,8 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
             raise StudioError("INVALID_DETAIL_BOX", "Detail box must be inside the source canvas.")
     entries = [{"id": "SOURCE", "path": state["source"], "art_review_status": "reference"}] + assets
     card_width, picture_height, label_height = 360, 420, 100
+    if any("quality_required" in a or "quality_review" in a for a in assets):
+        label_height = 124
     face_height = 250 if face_box else 0
     detail_height = 250 if detail_box else 0
     card_height = picture_height + label_height + face_height + detail_height
@@ -626,6 +851,14 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
             status = fidelity_status(entry)
             draw.text((x + 10, y + picture_height + 78), labels.get(f"fidelity_{status}", f"fidelity: {status}"),
                       fill="#267048" if status == "passed" else "#b45309", font=font(14))
+        if entry["id"] != "SOURCE" and ("quality_required" in entry or "quality_review" in entry):
+            status = quality_status(root, state, entry)
+            score = entry.get("quality_review", {}).get("result", {}).get("total")
+            text = labels.get(f"quality_{status}", f"internal quality: {status}")
+            if score is not None:
+                text += f" | {score:g}/100"
+            draw.text((x + 10, y + picture_height + 99), text,
+                      fill="#267048" if status == "passed" else "#b45309", font=font(14))
         for box_coords, offset in ((face_box, 0), (detail_box, face_height)):
             if not box_coords:
                 continue
@@ -667,6 +900,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         if not report["passed"]:
             raise StudioError("TECHNICAL_CHECK_FAILED", f'{asset_id}: {", ".join(report["errors"])}')
         require_fidelity(asset)
+        require_quality(root, state, asset)
         data = contained(root, asset["path"]).read_bytes()
         if hashlib.sha256(data).hexdigest() != asset["sha256"]:
             raise StudioError("ASSET_CHANGED", f"File changed during export: {asset_id}")
@@ -675,6 +909,8 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         sprites.append({"path": archive_path, "asset_id": asset_id,
                         "source_version": asset["version"], "sha256": asset["sha256"],
                         "technical_status": "passed", "art_review_status": "accepted"})
+        if "quality_review" in asset:
+            sprites[-1]["quality_review"] = asset["quality_review"]
         if is_outfit:
             sprites[-1].update({key: asset[key] for key in ("outfit_id", "edit_type", "target", "color")})
             if "edit_brief" in asset:
@@ -712,6 +948,16 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
 def parser(module: str = "expressions") -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
+    quality = commands.add_parser("quality", help="Record evidence-based internal visual review; does not score images automatically.")
+    quality.add_argument("--project", required=True, type=Path)
+    quality.add_argument("--asset", required=True)
+    quality.add_argument("--assessment-file", required=True, type=Path)
+    quality.add_argument("--comparison", required=True, action="append", type=Path, dest="comparisons")
+    enable = commands.add_parser("enable-quality", help="Back up and enable internal review for future candidates in a legacy project.")
+    enable.add_argument("--project", required=True, type=Path)
+    deliver = commands.add_parser("deliver", help="Return only internally passed, technically valid candidates for user review.")
+    deliver.add_argument("--project", required=True, type=Path)
+    deliver.add_argument("--asset", required=True, action="append", dest="ids")
     if module == "expressions":
         commands.add_parser("presets", help="List supported expression IDs and starting directions; no project required.")
     if module == "outfits":
@@ -783,7 +1029,7 @@ def main(module: str = "expressions") -> int:
             stream.reconfigure(encoding="utf-8")
     args = parser(module).parse_args()
     try:
-        if args.command in ("add", "status", "review", "select", "preview", "export", "prepare", "fidelity"):
+        if args.command in ("add", "status", "review", "select", "preview", "export", "prepare", "fidelity", "quality", "enable-quality", "deliver"):
             require_module(read_state(args.project), module)
         if args.command == "presets":
             result = {"presets": [{"id": key, **preset} for key, preset in EXPRESSION_PRESETS.items()],
@@ -799,6 +1045,16 @@ def main(module: str = "expressions") -> int:
             result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box)
         elif args.command == "fidelity":
             result = record_fidelity(args.project, args.asset, args.target_check, args.protection_check, args.note, args.basis)
+        elif args.command == "enable-quality":
+            result = enable_quality(args.project)
+        elif args.command == "quality":
+            try:
+                assessment = json.loads(args.assessment_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise StudioError("INVALID_QUALITY_REVIEW", "Cannot read the assessment JSON.") from exc
+            result = record_quality(args.project, args.asset, assessment, args.comparisons)
+        elif args.command == "deliver":
+            result = delivery_assets(args.project, args.ids)
         elif args.command == "add":
             if module == "outfits":
                 result = add_outfit(args.project, args.image, args.outfit_id, args.target, args.color, args.prompt_file, args.brief_file)
@@ -807,8 +1063,10 @@ def main(module: str = "expressions") -> int:
         elif args.command == "status":
             state = read_state(args.project)
             result = {"canvas": state["canvas"], "background_mode": state["background_mode"],
+                      "quality_policy": state.get("quality_policy"),
                       "selected": state["selected"], "assets": [
                           {**asset, "current_validation": check_asset(args.project, state, asset),
+                           "quality_status": quality_status(args.project, state, asset),
                            **({"fidelity_status": fidelity_status(asset)} if module == "outfits" else {})} for asset in state["assets"]]}
         elif args.command == "review":
             result = review_asset(args.project, args.asset, args.status, args.note)

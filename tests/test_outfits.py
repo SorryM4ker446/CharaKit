@@ -41,6 +41,10 @@ class OutfitTests(unittest.TestCase):
         fixture(self.source)
         self.root = self.folder / "outfits output"
         outfits.init_project(self.root, self.source, "test_character")
+        # Legacy projects remain compatible; default quality-gated projects have their own suite.
+        state = outfits.read_state(self.root)
+        state.pop("quality_policy")
+        outfits.write_state(self.root, state)
 
     def candidate(self, outfit_id="coat_navy", color="navy blue", size=(96, 144), transparent=True):
         image = self.folder / "candidate.png"
@@ -239,10 +243,16 @@ class OutfitTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         script = installed / "skills/charakit-outfits/scripts/studio.py"
         project = self.folder / "packaged outfit project"
+        from test_quality import assessment
+        assessment_file = self.folder / "synthetic-assessment.json"
+        assessment_file.write_text(json.dumps(assessment(domain="garment_recolor")), encoding="utf-8")
+        preview = project / "preview/packaged-preview.png"
         commands = [
             ("init", "--project", project, "--source", self.source, "--character", "packaged"),
             ("add", "--project", project, "--outfit", "coat_navy", "--target", "jacket", "--color", "navy", "--image", self.source),
-            ("preview", "--project", project, "--outfit", "coat_navy", "--detail-box", 25, 38, 70, 95, "--output", self.folder / "packaged-preview.png"),
+            ("preview", "--project", project, "--outfit", "coat_navy", "--detail-box", 25, 38, 70, 95, "--output", preview),
+            ("quality", "--project", project, "--asset", "coat_navy_v001", "--assessment-file", assessment_file, "--comparison", preview),
+            ("deliver", "--project", project, "--asset", "coat_navy_v001"),
             ("review", "--project", project, "--asset", "coat_navy_v001", "--status", "accepted", "--note", "Synthetic workflow check"),
             ("export", "--project", project),
         ]
