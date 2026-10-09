@@ -1,8 +1,18 @@
-# CharaKit Expressions
+# CharaKit
 
-Version **0.1.2**. A lightweight Codex plugin for creating complete visual novel expression variants from existing character artwork.
+Version **0.1.3**. A modular Codex plugin for visual novel character artwork.
 
-Preserve the entire face, original art style, character design, and visual harmony. Each expression is an independent image. Generation uses the image editing tool available in the Codex host; the plugin does not lock a model or include an external API, database, MCP server, background service, or separate UI.
+The available **CharaKit Expressions** module preserves the entire face, original art style, character design, and visual harmony. Each expression is an independent image. Generation uses the image editing tool available in the Codex host; the plugin does not lock a model or include an external API, database, MCP server, background service, or separate UI.
+
+## Modules
+
+| Module | Skill ID | Status |
+| --- | --- | --- |
+| Expressions | `charakit-expressions` | Available |
+| Outfits | `charakit-outfits` | Planned |
+| Poses | `charakit-poses` | Planned |
+
+The plugin ID is `charakit`. Only `$charakit-expressions` is callable today. [modules.json](modules.json) reserves future module IDs; [ROADMAP.md](ROADMAP.md) defines their scope and order. Planned modules have no packaged Skills.
 
 ## Install
 
@@ -10,7 +20,7 @@ From the repository root, using a Codex CLI that supports plugins:
 
 ```shell
 codex plugin marketplace add .
-codex plugin add charakit-expressions@charakit-local
+codex plugin add charakit@charakit-local
 ```
 
 For a published repository, replace the first command with:

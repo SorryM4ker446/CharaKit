@@ -5,7 +5,9 @@ description: Generate full visual novel character expression variants from exist
 
 # CharaKit Expressions
 
-Deliver complete, independent character images that a game can switch between. Edit the user's source artwork and change only the requested facial expression.
+The available expression module of the CharaKit plugin. Deliver complete, independent character images that a game can switch between. Edit the user's source artwork and change only the requested facial expression.
+
+Outfit and pose modules are planned in [the module roadmap](../../ROADMAP.md). Their reserved IDs are not callable Skills. Do not present clothing or pose editing as an implemented CharaKit module. This Skill remains scoped to expressions.
 
 ## User language
 

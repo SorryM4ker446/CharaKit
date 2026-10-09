@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "charakit",
+  "version": "0.1.3",
+  "description": "A modular Codex plugin for visual novel character artwork. Expression variants are available; outfit and pose editing are planned.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "CharaKit",
+        "shortDescription": "Create character expression variants; outfit and pose modules are planned.",
+        "category": "Productivity"
+      }
+    }
+  }
+}

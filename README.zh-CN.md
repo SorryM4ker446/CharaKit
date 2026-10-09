@@ -1,14 +1,24 @@
-# CharaKit Expressions
+# CharaKit
 
 [English](README.md) | **简体中文**
 
-**CharaKit Expressions** 是一个轻量的 Codex 插件，可基于已有角色立绘，为视觉小说游戏生成完整的表情差分图。
+**CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。当前可用的 **CharaKit Expressions** 表情模块，可基于已有立绘生成完整的表情差分图。
 
-插件由专注表情编辑的 Skill 和本地 Python 助手组成。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与整个面部的对比预览，以及导出选定资源。
+当前表情模块由专注表情编辑的 Skill 和本地 Python 助手组成。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与整个面部的对比预览，以及导出选定资源。
 
-开发版本：**0.1.2**。
+开发版本：**0.1.3**。
 
-## 功能
+## 模块
+
+| 模块 | Skill 标识 | 状态 |
+| --- | --- | --- |
+| CharaKit Expressions | `charakit-expressions` | 已实现：完整表情差分 |
+| CharaKit Outfits | `charakit-outfits` | 计划中：服饰编辑与整套换装 |
+| CharaKit Poses | `charakit-poses` | 计划中：静态动作与姿势编辑 |
+
+插件安装标识为 `charakit`；当前表情模块使用 `$charakit-expressions` 调用。服饰与姿势模块的名称已在[模块定义](plugins/charakit/modules.json)中预留，尚未打包相应 Skill，当前不能调用。开发顺序见[模块规划（英文）](plugins/charakit/ROADMAP.md)。
+
+## 当前表情功能
 
 - 生成平静、开心、难过、生气、惊讶和闭眼版本。
 - 保留整个面部的细节、原画风、角色设计、姿势和整体和谐性。
@@ -32,14 +42,14 @@
 
 ```shell
 codex plugin marketplace add .
-codex plugin add charakit-expressions@charakit-local
+codex plugin add charakit@charakit-local
 ```
 
 发布到 GitHub 后，用户也可以通过仓库安装。请将 `YOUR_GITHUB_OWNER/CharaKit` 替换为实际仓库：
 
 ```shell
 codex plugin marketplace add YOUR_GITHUB_OWNER/CharaKit --ref main
-codex plugin add charakit-expressions@charakit-local
+codex plugin add charakit@charakit-local
 ```
 
 `charakit-local` 是本地源和 Git 仓库源共同使用的固定市场标识。安装后刷新或重启 Codex，并打开新聊天。
@@ -47,7 +57,7 @@ codex plugin add charakit-expressions@charakit-local
 在需要使用的 Python 环境中安装本地助手依赖：
 
 ```shell
-python -m pip install -r plugins/charakit-expressions/requirements.txt
+python -m pip install -r plugins/charakit/requirements.txt
 ```
 
 ## 使用
@@ -70,11 +80,11 @@ python -m pip install -r plugins/charakit-expressions/requirements.txt
 在仓库根目录执行。请根据实际立绘替换图片路径和面部区域坐标：
 
 ```shell
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py init --project art-output/my-character --source character.png --character my-character
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression angry --image generated-angry.png --prompt-file prompt.txt
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-v001.png --face-box 100 100 200 200 --background light
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py review --project art-output/my-character --asset angry_v001 --status accepted --note "用户选中了此版本。"
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py export --project art-output/my-character
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py init --project art-output/my-character --source character.png --character my-character
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression angry --image generated-angry.png --prompt-file prompt.txt
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-v001.png --face-box 100 100 200 200 --background light
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py review --project art-output/my-character --asset angry_v001 --status accepted --note "用户选中了此版本。"
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py export --project art-output/my-character
 ```
 
 `add` 检查失败时会返回退出码 2 和结构化报告，同时保留候选图片。技术检查通过不代表美术已获认可；正式导出需要技术合格和用户认可同时满足。
@@ -88,9 +98,11 @@ README.md                           英文项目说明
 README.zh-CN.md                     简体中文项目说明
 .agents/plugins/marketplace.json     本地／Git 市场入口
 .github/workflows/ci.yml             测试与插件包验证
-plugins/charakit-expressions/
+plugins/charakit/
   plugin.json                       插件清单
   README.md                         独立插件使用说明
+  modules.json                      已实现与计划中模块的定义
+  ROADMAP.md                        模块范围与开发顺序
   requirements.txt                  助手依赖
   skills/charakit-expressions/
     SKILL.md                        工作流与语言规则
@@ -104,9 +116,9 @@ CHANGELOG.md                        变更记录
 ## 开发
 
 ```shell
-python -m pip install -r plugins/charakit-expressions/requirements.txt
+python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-expressions-0.1.2.zip
+python tools/build_plugin.py --output dist/charakit-0.1.3.zip
 ```
 
 测试使用合成图片，不需要第三方角色美术。CI 在 Linux 和 Windows 上运行。构建脚本不会覆盖已存在的 ZIP。
@@ -119,4 +131,4 @@ python tools/build_plugin.py --output dist/charakit-expressions-0.1.2.zip
 
 首次单表情实验未获用户认可。后续五种表情的美术效果获得了用户正面反馈，但输出画布仍未通过尺寸检查。这些私人测试图片不随仓库分发。
 
-更多说明见[插件指南](plugins/charakit-expressions/README.md)和[变更记录](CHANGELOG.md)。
+更多说明见[插件指南](plugins/charakit/README.md)和[变更记录](CHANGELOG.md)。

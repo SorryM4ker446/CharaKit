@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "modules": [
+    {
+      "id": "expressions",
+      "display_name": "CharaKit Expressions",
+      "status": "available",
+      "skill_id": "charakit-expressions",
+      "skill_path": "skills/charakit-expressions/SKILL.md"
+    },
+    {
+      "id": "outfits",
+      "display_name": "CharaKit Outfits",
+      "status": "planned",
+      "skill_id": "charakit-outfits"
+    },
+    {
+      "id": "poses",
+      "display_name": "CharaKit Poses",
+      "status": "planned",
+      "skill_id": "charakit-poses"
+    }
+  ]
+}

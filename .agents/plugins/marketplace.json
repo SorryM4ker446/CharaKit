@@ -1,14 +1,14 @@
 {
   "name": "charakit-local",
   "interface": {
-    "displayName": "CharaKit Expressions"
+    "displayName": "CharaKit Plugins"
   },
   "plugins": [
     {
-      "name": "charakit-expressions",
+      "name": "charakit",
       "source": {
         "source": "local",
-        "path": "./plugins/charakit-expressions"
+        "path": "./plugins/charakit"
       },
       "policy": {
         "installation": "AVAILABLE",

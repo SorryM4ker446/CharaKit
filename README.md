@@ -1,14 +1,24 @@
-# CharaKit Expressions
+# CharaKit
 
 **English** | [简体中文](README.zh-CN.md)
 
-**CharaKit Expressions** is a lightweight Codex plugin that creates complete character expression variants for visual novel games from an existing illustration.
+**CharaKit** is a modular Codex plugin for visual novel character artwork. Its available **CharaKit Expressions** module creates complete expression variants from an existing illustration.
 
-The plugin combines a focused Skill with a local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and whole-face comparisons, and exports selected resources.
+The current module combines a focused Skill with a local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and whole-face comparisons, and exports selected resources.
 
-Development version: **0.1.2**.
+Development version: **0.1.3**.
 
-## What it does
+## Modules
+
+| Module | Skill ID | Status |
+| --- | --- | --- |
+| CharaKit Expressions | `charakit-expressions` | Available: full expression variants |
+| CharaKit Outfits | `charakit-outfits` | Planned: clothing edits and outfit replacement |
+| CharaKit Poses | `charakit-poses` | Planned: static pose and action edits |
+
+Install the plugin as `charakit`; invoke the available expression Skill as `$charakit-expressions`. Outfit and pose IDs are reserved in the [module definitions](plugins/charakit/modules.json). Their Skills are not packaged or callable yet. See the [roadmap](plugins/charakit/ROADMAP.md) for the development sequence.
+
+## Current expression features
 
 - Generate neutral, happy, sad, angry, surprised, and eyes-closed variants.
 - Preserve the entire face, original art style, character design, pose, and visual harmony.
@@ -32,14 +42,14 @@ For a local clone, run from the repository root:
 
 ```shell
 codex plugin marketplace add .
-codex plugin add charakit-expressions@charakit-local
+codex plugin add charakit@charakit-local
 ```
 
 After publishing to GitHub, users can install from the repository. Replace `YOUR_GITHUB_OWNER/CharaKit` with the actual repository:
 
 ```shell
 codex plugin marketplace add YOUR_GITHUB_OWNER/CharaKit --ref main
-codex plugin add charakit-expressions@charakit-local
+codex plugin add charakit@charakit-local
 ```
 
 The marketplace name `charakit-local` is a stable identifier used by both local and Git sources. Refresh or restart Codex and open a new chat after installation.
@@ -47,7 +57,7 @@ The marketplace name `charakit-local` is a stable identifier used by both local 
 Install the helper dependency in the desired Python environment:
 
 ```shell
-python -m pip install -r plugins/charakit-expressions/requirements.txt
+python -m pip install -r plugins/charakit/requirements.txt
 ```
 
 ## Use
@@ -71,11 +81,11 @@ Outputs default to `art-output/<character-key>/`. User artwork and experiment re
 Run from the repository root. Replace image paths and the face coordinates for your artwork:
 
 ```shell
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py init --project art-output/my-character --source character.png --character my-character
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression angry --image generated-angry.png --prompt-file prompt.txt
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-v001.png --face-box 100 100 200 200 --background light
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py review --project art-output/my-character --asset angry_v001 --status accepted --note "User selected this version."
-python plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py export --project art-output/my-character
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py init --project art-output/my-character --source character.png --character my-character
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression angry --image generated-angry.png --prompt-file prompt.txt
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-v001.png --face-box 100 100 200 200 --background light
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py review --project art-output/my-character --asset angry_v001 --status accepted --note "User selected this version."
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py export --project art-output/my-character
 ```
 
 A failing `add` returns exit code 2 with a structured report and retains the candidate. A technical pass does not imply art approval. Formal export requires both technical validity and actual user acceptance.
@@ -89,9 +99,11 @@ README.md                           English overview and instructions
 README.zh-CN.md                     Simplified Chinese overview and instructions
 .agents/plugins/marketplace.json     Local/Git marketplace entry
 .github/workflows/ci.yml             Tests and plugin package verification
-plugins/charakit-expressions/
+plugins/charakit/
   plugin.json                       Plugin manifest
   README.md                         Standalone plugin instructions
+  modules.json                      Available and planned module definitions
+  ROADMAP.md                        Module scope and development sequence
   requirements.txt                  Helper dependency
   skills/charakit-expressions/
     SKILL.md                        Workflow and language behavior
@@ -105,9 +117,9 @@ CHANGELOG.md                        Version notes
 ## Development
 
 ```shell
-python -m pip install -r plugins/charakit-expressions/requirements.txt
+python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-expressions-0.1.2.zip
+python tools/build_plugin.py --output dist/charakit-0.1.3.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.
@@ -120,4 +132,4 @@ Image editing can redraw details outside the face or return a different canvas s
 
 The initial single-expression experiment was rejected. A later five-expression batch received positive feedback on its visual effect, but its output canvas still failed validation. Those private test images are not distributed with this repository.
 
-See the [plugin guide](plugins/charakit-expressions/README.md) and [changelog](CHANGELOG.md) for details.
+See the [plugin guide](plugins/charakit/README.md) and [changelog](CHANGELOG.md) for details.

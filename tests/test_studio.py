@@ -12,7 +12,7 @@ import zipfile
 
 from PIL import Image, ImageDraw
 
-SCRIPT = Path(__file__).resolve().parents[1] / "plugins/charakit-expressions/skills/charakit-expressions/scripts/studio.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "plugins/charakit/skills/charakit-expressions/scripts/studio.py"
 spec = importlib.util.spec_from_file_location("studio", SCRIPT)
 studio = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(studio)
