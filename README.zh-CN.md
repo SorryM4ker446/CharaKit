@@ -44,17 +44,17 @@
 
 ```shell
 codex plugin marketplace add .
-codex plugin add charakit@charakit-local
+codex plugin add charakit@charakit
 ```
 
 发布到 GitHub 后，用户也可以通过仓库安装。请将 `YOUR_GITHUB_OWNER/CharaKit` 替换为实际仓库：
 
 ```shell
 codex plugin marketplace add YOUR_GITHUB_OWNER/CharaKit --ref main
-codex plugin add charakit@charakit-local
+codex plugin add charakit@charakit
 ```
 
-`charakit-local` 是本地源和 Git 仓库源共同使用的固定市场标识。安装后刷新或重启 Codex，并打开新聊天。
+市场和插件都使用 `charakit` 标识。安装参数 `charakit@charakit` 表示来自 `charakit` 市场的 `charakit` 插件，本地源和 Git 仓库源使用相同标识。安装后刷新或重启 Codex，并打开新聊天。
 
 在需要使用的 Python 环境中安装本地助手依赖：
 

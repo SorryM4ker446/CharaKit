@@ -44,17 +44,17 @@ For a local clone, run from the repository root:
 
 ```shell
 codex plugin marketplace add .
-codex plugin add charakit@charakit-local
+codex plugin add charakit@charakit
 ```
 
 After publishing to GitHub, users can install from the repository. Replace `YOUR_GITHUB_OWNER/CharaKit` with the actual repository:
 
 ```shell
 codex plugin marketplace add YOUR_GITHUB_OWNER/CharaKit --ref main
-codex plugin add charakit@charakit-local
+codex plugin add charakit@charakit
 ```
 
-The marketplace name `charakit-local` is a stable identifier used by both local and Git sources. Refresh or restart Codex and open a new chat after installation.
+The marketplace and plugin both use the identifier `charakit`. The install selector `charakit@charakit` means plugin `charakit` from marketplace `charakit`, for both local and Git sources. Refresh or restart Codex and open a new chat after installation.
 
 Install the helper dependency in the desired Python environment:
 

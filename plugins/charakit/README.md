@@ -20,7 +20,7 @@ From the repository root, using a Codex CLI that supports plugins:
 
 ```shell
 codex plugin marketplace add .
-codex plugin add charakit@charakit-local
+codex plugin add charakit@charakit
 ```
 
 For a published repository, replace the first command with:
@@ -28,6 +28,8 @@ For a published repository, replace the first command with:
 ```shell
 codex plugin marketplace add YOUR_GITHUB_OWNER/CharaKit --ref main
 ```
+
+The selector `charakit@charakit` combines the plugin ID and marketplace ID; both are `charakit`.
 
 Restart or refresh Codex and open a new chat to load the installed Skill. Image editing tool availability depends on the host; installing the plugin does not add a missing image tool.
 
