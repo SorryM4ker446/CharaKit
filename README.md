@@ -8,6 +8,8 @@ The current module combines a focused Skill with a local Python helper. Codex us
 
 Development version: **0.1.3**.
 
+Release notes are published with GitHub Releases.
+
 ## Modules
 
 | Module | Skill ID | Status |
@@ -111,7 +113,6 @@ plugins/charakit/
     scripts/studio.py               Local file helper
 tests/test_studio.py                 Synthetic-fixture workflow tests
 tools/build_plugin.py               Plugin ZIP builder
-CHANGELOG.md                        Version notes
 ```
 
 ## Development
@@ -128,8 +129,8 @@ The plugin ZIP contains only the plugin's files. Keep user images, prompts, loca
 
 ## Current limitations
 
-Image editing can redraw details outside the face or return a different canvas size. Prompt constraints do not guarantee identity, style, design, or positional stability. Automatic checks validate file requirements; users evaluate the actual art and test expression switching in their game.
+Expression edits may alter details outside the face or produce a different canvas size. Preserving character identity, facial detail, original style, and alignment requires visual review; prompt instructions alone cannot guarantee consistency.
 
-The initial single-expression experiment was rejected. A later five-expression batch received positive feedback on its visual effect, but its output canvas still failed validation. Those private test images are not distributed with this repository.
+Automatic checks cover file format, canvas dimensions, transparency, and file integrity. They do not assess artistic quality or how expression changes look in a game. Export requires passing technical checks and approval after visual review.
 
-See the [plugin guide](plugins/charakit/README.md) and [changelog](CHANGELOG.md) for details.
+See the [plugin guide](plugins/charakit/README.md) for details.
