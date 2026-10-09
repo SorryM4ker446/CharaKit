@@ -7,6 +7,8 @@ description: Generate full visual novel character expression variants from exist
 
 The available expression module of the CharaKit plugin. Deliver complete, independent character images that a game can switch between. Edit the user's source artwork and change only the requested facial expression.
 
+Support twelve fixed expression presets. Read [expression-guidelines.md](references/expression-guidelines.md) to map a request to a preset and shape its prompt; `presets` lists the supported IDs. Generate only the requested expressions. Independently selectable mouth, gaze, and emotion-specific closed-eye states remain planned.
+
 Outfit and pose modules are planned in [the module roadmap](../../ROADMAP.md). Their reserved IDs are not callable Skills. Do not present clothing or pose editing as an implemented CharaKit module. This Skill remains scoped to expressions.
 
 ## User language
@@ -25,8 +27,8 @@ Outfit and pose modules are planned in [the module roadmap](../../ROADMAP.md). T
 - Use the same immutable source as the primary reference for every expression. For a revision, keep that source as the baseline and optionally include the previous candidate. Do not derive successive expressions from generated variants.
 - Preserve the **entire face**: eyes, eyebrows, nose, lips, contours, proportions, skin tone, shading, linework, and brushwork. Eyes are one part of this requirement. Allow necessary expression changes without redesigning, blurring, or simplifying facial features.
 - Preserve the original style and character design: hair, ears, accessories, clothing, weapons, pose, proportions, composition, materials, and lighting. Make only the changes needed for the requested emotion; keep the expression harmonious with the whole illustration.
-- Return the complete original framing. Do not deliver a face crop as the final asset, extract reusable facial parts, or composite a generated face onto the original. Do not add emotion symbols, sweat drops, tears, or text by default.
-- Adapt intensity and wording to the source and request. Read [expression-guidelines.md](references/expression-guidelines.md) when shaping a prompt.
+- Return the complete original framing. Do not deliver a face crop as the final asset, extract reusable facial parts, or composite a generated face onto the original. Subtle blush is appropriate for `shy`, and visible tears are part of `crying`, unless excluded by the user. Do not add these effects to other presets by default, or add emotion symbols, sweat drops, or text without a request.
+- Adapt intensity and wording to the source and request.
 
 ## Save and check
 
@@ -47,6 +49,7 @@ Save each generated image as a candidate before checking it. Saving or displayin
 Example commands; replace bracketed paths with actual paths:
 
 ```text
+python <skill>/scripts/studio.py presets
 python <skill>/scripts/studio.py init --project <output-dir> --source <source.png> --character <character-key>
 python <skill>/scripts/studio.py add --project <output-dir> --expression angry --image <generated.png> --prompt-file <prompt.txt>
 python <skill>/scripts/studio.py preview --project <output-dir> --output <preview.png> --face-box <left> <top> <right> <bottom> --labels-file <labels.json>
@@ -55,6 +58,7 @@ python <skill>/scripts/studio.py select --project <output-dir> --asset angry_v00
 python <skill>/scripts/studio.py export --project <output-dir>
 ```
 
+- `presets` returns the supported expression IDs, English names, and starting directions without a project. Translate names and directions for the user; fixed IDs remain unchanged.
 - `init` snapshots the source and records canvas and background mode without overwriting a project. Existing images can be checked with `inspect` / `validate` without initialization.
 - `add` preserves the candidate and returns a report even if technical checks fail. A nonzero exit code does not mean the saved candidate should be discarded.
 - `preview` shows full images on light, dark, or checker backgrounds. `--face-box` uses source-canvas pixel coordinates; magnification is for inspection only. Size mismatches are explicitly labeled, not corrected.

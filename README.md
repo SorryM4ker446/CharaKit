@@ -6,7 +6,7 @@
 
 The current module combines a focused Skill with a local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and whole-face comparisons, and exports selected resources.
 
-Development version: **0.1.3**.
+Development version: **0.1.4**.
 
 Release notes are published with GitHub Releases.
 
@@ -22,12 +22,14 @@ Install the plugin as `charakit`; invoke the available expression Skill as `$cha
 
 ## Current expression features
 
-- Generate neutral, happy, sad, angry, surprised, and eyes-closed variants.
+- Support twelve fixed presets: neutral, happy, sad, angry, surprised, eyes closed, shy, confused, wry smile, worried, confident, and crying.
 - Preserve the entire face, original art style, character design, pose, and visual harmony.
 - Revise a single expression while keeping other candidates and history.
 - Compare full illustrations and enlarged face regions on light, dark, or checker backgrounds.
 - Check exact canvas dimensions, actual PNG content, transparency, and file fingerprints.
 - Export accepted, technically valid PNGs with a manifest and ZIP.
+
+List preset IDs and starting directions with the helper's `presets` command. The six newer presets have workflow support and editing guidelines; their visual quality still requires review of generated results. See the [expression guide](plugins/charakit/skills/charakit-expressions/references/expression-guidelines.md) for the intended differences between emotions. Each preset keeps its own versions and selection; existing six-preset projects require no migration. Independently selectable mouth and gaze states remain planned.
 
 Every variant is a complete image. There is no facial-part extraction, face compositing, database, external image API, ComfyUI integration, MCP service, or dedicated application.
 
@@ -74,6 +76,8 @@ Preserve the entire face, original style, design, and visual harmony.
 
 Ask for a specific intensity, revise one version, or select images for export.
 
+For example, request only shy, confused, and crying versions, then revise the crying version to use fewer tears. The other expression versions and selections are retained.
+
 **The plugin responds in your language.** Progress updates, visible expression names, generation prompts, quality explanations, limitations, and delivery notes follow your current request or explicitly preferred language. CLI arguments, JSON keys, filenames, and status/error codes remain stable English identifiers. Preview labels can be localized through `--labels-file`.
 
 Outputs default to `art-output/<character-key>/`. User artwork and experiment records are ignored by Git and excluded from distribution packages.
@@ -83,6 +87,7 @@ Outputs default to `art-output/<character-key>/`. User artwork and experiment re
 Run from the repository root. Replace image paths and the face coordinates for your artwork:
 
 ```shell
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py presets
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py init --project art-output/my-character --source character.png --character my-character
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression angry --image generated-angry.png --prompt-file prompt.txt
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-v001.png --face-box 100 100 200 200 --background light
@@ -120,7 +125,7 @@ tools/build_plugin.py               Plugin ZIP builder
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.3.zip
+python tools/build_plugin.py --output dist/charakit-0.1.4.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.

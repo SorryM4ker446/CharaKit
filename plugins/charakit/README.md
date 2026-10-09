@@ -1,6 +1,6 @@
 # CharaKit
 
-Version **0.1.3**. A modular Codex plugin for visual novel character artwork.
+Version **0.1.4**. A modular Codex plugin for visual novel character artwork.
 
 The available **CharaKit Expressions** module preserves the entire face, original art style, character design, and visual harmony. Each expression is an independent image. Generation uses the image editing tool available in the Codex host; the plugin does not lock a model or include an external API, database, MCP server, background service, or separate UI.
 
@@ -43,6 +43,8 @@ and eyes-closed versions. Preserve the entire face, original style,
 character design, composition, and transparent background.
 ```
 
+Twelve fixed presets are supported: `neutral`, `happy`, `sad`, `angry`, `surprised`, `eyes_closed`, `shy`, `confused`, `wry_smile`, `worried`, `confident`, and `crying`. Request a subset, such as shy and crying, or revise only one of them. Each preset keeps its own history and selected version. Existing projects keep their schema and need no migration. The six newer presets have workflow support and editing directions; generated art still needs visual review. See the [expression guide](skills/charakit-expressions/references/expression-guidelines.md).
+
 You can also request a revision or export:
 
 ```text
@@ -70,9 +72,10 @@ The helper is `skills/charakit-expressions/scripts/studio.py`. Use its absolute 
 python skills/charakit-expressions/scripts/studio.py --help
 ```
 
-Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`.
+Commands: `presets`, `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`.
 
 - Source snapshots, versioned candidates, preview images, and exports are not overwritten.
+- `presets` lists supported IDs, English names, and starting directions without a project. Codex translates the human-readable descriptions into the user's language.
 - `run.json` records fingerprints, technical checks, feedback, and selected versions.
 - Failed `add` checks return exit code 2 but keep the saved candidate.
 - `preview --face-box LEFT TOP RIGHT BOTTOM` uses source-canvas coordinates for whole-face inspection. `--background` accepts `checker`, `light`, or `dark`.

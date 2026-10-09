@@ -13,6 +13,7 @@ Compare enlarged corresponding face regions in the original and candidate:
 - Contours and proportions: cheeks, chin, and the relationships between facial features.
 - Skin: tone, subtle detail, shading, and lighting; no flattening, dirty colors, or excessive sharpening.
 - Whole face: consistent linework, brushwork, and detail density. Do not limit inspection to the eyes or recognizability in a thumbnail.
+- Expression: distinguish `confused` from `surprised`, `worried` from `sad`, and `wry_smile` from `happy`. Keep confidence suited to the character. Blush for `shy` and tears for `crying` must match the source rendering and retain facial detail; do not flag these intended changes as defects merely because they differ from the source.
 
 ## Full image and game display
 
@@ -40,6 +41,7 @@ Optional label keys:
 | --- | --- |
 | `source`, `reference` | Source image title and reference status |
 | `neutral`, `happy`, `sad`, `angry`, `surprised`, `eyes_closed` | Visible expression titles; version numbers are retained |
+| `shy`, `confused`, `wry_smile`, `worried`, `confident`, `crying` | Newer fixed expression titles; version numbers are retained |
 | `unreviewed`, `accepted`, `rejected` | Visible art-review status |
 | `technical_passed`, `technical_failed` | Visible technical status |
 | Error code, such as `CANVAS_MISMATCH` | Short translated problem description |

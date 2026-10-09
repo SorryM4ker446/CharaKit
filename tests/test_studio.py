@@ -107,6 +107,70 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(studio.read_state(self.root)["selected"]["angry"], first["id"])
         self.assertEqual(len(studio.read_state(self.root)["assets"]), 2)
 
+    def test_presets_cli_lists_new_choices_without_creating_a_project(self):
+        result = subprocess.run([sys.executable, str(SCRIPT), "presets"],
+                                cwd=self.folder, capture_output=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        presets = json.loads(result.stdout)["presets"]
+        self.assertEqual([p["id"] for p in presets], [
+            "neutral", "happy", "sad", "angry", "surprised", "eyes_closed",
+            "shy", "confused", "wry_smile", "worried", "confident", "crying",
+        ])
+        self.assertTrue(all(p["name"] and p["direction"] for p in presets))
+        self.assertFalse((self.folder / "run.json").exists())
+
+    def test_new_presets_cli_versions_and_export_keep_legacy_selection(self):
+        legacy = self.accepted("happy")
+        legacy_bytes = (self.root / legacy["path"]).read_bytes()
+        chosen = {"happy": legacy}
+        for expression in ("shy", "confused", "wry_smile", "worried", "confident", "crying"):
+            with self.subTest(expression=expression):
+                image = self.folder / f"{expression}.png"
+                fixture(image, color="#446688")
+                result = subprocess.run([sys.executable, str(SCRIPT), "add", "--project", str(self.root),
+                                         "--image", str(image), "--expression", expression],
+                                        capture_output=True, encoding="utf-8")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                first = json.loads(result.stdout)["asset"]
+                studio.review_asset(self.root, first["id"], "accepted", "User chose this expression.")
+                revision = self.candidate(expression)
+                self.assertEqual(revision["version"], 2)
+                self.assertEqual(revision["parent_asset_id"], first["id"])
+                studio.review_asset(self.root, revision["id"], "accepted", "User reviewed the revision.")
+                studio.select_asset(self.root, first["id"])
+                chosen[expression] = first
+                self.assertEqual(studio.read_state(self.root)["selected"]["happy"], legacy["id"])
+        state = studio.read_state(self.root)
+        self.assertEqual(state["schema_version"], "1.0")
+        self.assertEqual(state["selected"], {key: asset["id"] for key, asset in chosen.items()})
+        result = studio.export_pack(self.root)
+        with zipfile.ZipFile(result["export"]) as archive:
+            self.assertEqual(set(archive.namelist()), {"manifest.json"} | {
+                f"sprites/test_character/{key}.png" for key in chosen})
+            manifest = json.loads(archive.read("manifest.json"))
+            self.assertEqual({s["expression"]: s["asset_id"] for s in manifest["sprites"]},
+                             {key: asset["id"] for key, asset in chosen.items()})
+            for expression, asset in chosen.items():
+                self.assertEqual(archive.read(f"sprites/test_character/{expression}.png"),
+                                 (self.root / asset["path"]).read_bytes())
+        self.assertEqual((self.root / legacy["path"]).read_bytes(), legacy_bytes)
+
+    def test_new_preset_failures_and_unknown_ids_preserve_existing_project(self):
+        legacy = self.accepted("happy")
+        failed = self.candidate("crying", size=(32, 48))
+        self.assertIn("CANVAS_MISMATCH", failed["validation"]["errors"])
+        self.assert_code("TECHNICAL_CHECK_FAILED", studio.review_asset, self.root, failed["id"], "accepted")
+        self.assertEqual(studio.export_pack(self.root)["asset_ids"], [legacy["id"]])
+        state_before = (self.root / "run.json").read_bytes()
+        image = self.folder / "unsupported.png"
+        fixture(image)
+        self.assert_code("INVALID_EXPRESSION", studio.add_asset, self.root, image, "custom_expression")
+        result = subprocess.run([sys.executable, str(SCRIPT), "add", "--project", str(self.root),
+                                 "--image", str(image), "--expression", "custom_expression"],
+                                capture_output=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual((self.root / "run.json").read_bytes(), state_before)
+
     def test_changed_candidate_cannot_be_exported(self):
         asset = self.accepted()
         fixture(self.root / asset["path"], color="#0000ff")
@@ -218,7 +282,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue((self.root / response["asset"]["path"]).is_file())
 
     def test_localized_preview_cli_changes_labels_without_changing_assets_or_records(self):
-        asset = self.candidate(size=(32, 48))
+        asset = self.candidate("crying", size=(32, 48))
         candidate_bytes = (self.root / asset["path"]).read_bytes()
         metadata_bytes = (self.root / "run.json").read_bytes()
         default_output = self.folder / "preview-default.png"
@@ -226,7 +290,7 @@ class WorkflowTests(unittest.TestCase):
         studio.make_preview(self.root, default_output)
         labels = self.folder / "labels.json"
         labels.write_text(json.dumps({"source": "Original", "reference": "Referencia",
-                                     "angry": "Enojado", "unreviewed": "Sin revisión",
+                                     "crying": "Llorando", "unreviewed": "Sin revisión",
                                      "technical_failed": "Error tecnico",
                                      "CANVAS_MISMATCH": "Tamano distinto"}, ensure_ascii=False), encoding="utf-8")
         result = subprocess.run([sys.executable, str(SCRIPT), "preview", "--project", str(self.root),

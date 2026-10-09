@@ -16,7 +16,21 @@ import zipfile
 
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
-EXPRESSIONS = ("neutral", "happy", "sad", "angry", "surprised", "eyes_closed")
+EXPRESSION_PRESETS = {
+    "neutral": {"name": "Neutral", "direction": "Calm; reuse the source when it already matches."},
+    "happy": {"name": "Happy", "direction": "Moderate smile; no laughter by default."},
+    "sad": {"name": "Sad", "direction": "Restrained disappointment; no tears by default."},
+    "angry": {"name": "Angry", "direction": "Displeased brows, gaze, and mouth; no shouting by default."},
+    "surprised": {"name": "Surprised", "direction": "Moderately widened eyes and a slightly open mouth."},
+    "eyes_closed": {"name": "Eyes closed", "direction": "Natural closed eyes; preserve the original mouth unless requested otherwise."},
+    "shy": {"name": "Shy", "direction": "Bashful gaze and a restrained mouth; subtle blush unless excluded."},
+    "confused": {"name": "Confused", "direction": "Questioning brows, gaze, and mouth; distinguish from startled surprise."},
+    "wry_smile": {"name": "Wry smile", "direction": "A restrained awkward or resigned smile; distinguish from happiness."},
+    "worried": {"name": "Worried", "direction": "Concerned brows and a tense gaze or mouth; distinguish from sadness."},
+    "confident": {"name": "Confident", "direction": "An assured gaze and restrained pleased smile suited to the character."},
+    "crying": {"name": "Crying", "direction": "Visible tears with coordinated distressed brows and mouth; preserve eye detail."},
+}
+EXPRESSIONS = tuple(EXPRESSION_PRESETS)
 MODES = ("transparent_sprite", "preserve_background")
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PIXELS = 40_000_000
@@ -411,6 +425,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
+    commands.add_parser("presets", help="List supported expression IDs and starting directions; no project required.")
     inspect = commands.add_parser("inspect", help="Inspect a PNG/JPEG without editing it.")
     inspect.add_argument("image", type=Path)
     validate = commands.add_parser("validate", help="Check a candidate against its source canvas.")
@@ -451,7 +466,9 @@ def main() -> int:
             stream.reconfigure(encoding="utf-8")
     args = parser().parse_args()
     try:
-        if args.command == "inspect":
+        if args.command == "presets":
+            result = {"presets": [{"id": key, **preset} for key, preset in EXPRESSION_PRESETS.items()]}
+        elif args.command == "inspect":
             result = image_info(args.image)
         elif args.command == "validate":
             source = image_info(args.source)

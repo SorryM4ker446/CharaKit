@@ -6,7 +6,7 @@
 
 当前表情模块由专注表情编辑的 Skill 和本地 Python 助手组成。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与整个面部的对比预览，以及导出选定资源。
 
-开发版本：**0.1.3**。
+开发版本：**0.1.4**。
 
 版本更新说明发布在 GitHub Releases 中。
 
@@ -22,12 +22,25 @@
 
 ## 当前表情功能
 
-- 生成平静、开心、难过、生气、惊讶和闭眼版本。
+- 支持十二种固定表情：平静、开心、难过、生气、惊讶、闭眼、害羞、困惑、无奈／苦笑、担忧／不安、得意／自信和哭泣。
 - 保留整个面部的细节、原画风、角色设计、姿势和整体和谐性。
 - 单独重做一个表情，保留其他候选和历史版本。
 - 在浅色、深色或棋盘背景上对比完整立绘和面部放大区域。
 - 检查原画布尺寸、实际 PNG 格式、透明背景和文件指纹。
 - 将用户已认可、技术检查通过的 PNG 与清单一起导出为 ZIP。
+
+新增表情的固定标识如下，可通过助手的 `presets` 命令查看全部预设与生成方向：
+
+| 表情 | 标识 | 表现重点 |
+| --- | --- | --- |
+| 害羞 | `shy` | 适度脸红与害羞的目光 |
+| 困惑 | `confused` | 疑问与不理解，区别于惊讶 |
+| 无奈／苦笑 | `wry_smile` | 克制的尴尬或无奈笑容，区别于开心 |
+| 担忧／不安 | `worried` | 关切与紧张，区别于难过 |
+| 得意／自信 | `confident` | 符合角色气质的自信目光与笑意 |
+| 哭泣 | `crying` | 可见眼泪，保留眼部与面部细节 |
+
+这六种新增预设已具备文件工作流支持和生成指引，实际生图效果仍需逐张检查。每种表情独立保留版本和选择，已有六种表情项目无需迁移。独立选择的开口／闭嘴与视线状态仍在规划中。
 
 每个表情差分都是一张完整图片。插件不提取五官部件、不把生成的脸拼回原图，也不包含数据库、外部图像 API、ComfyUI 接入、MCP 服务或独立应用。
 
@@ -73,6 +86,8 @@ python -m pip install -r plugins/charakit/requirements.txt
 
 可以指定表情强度、只修改某个版本，或选择需要导出的图片。
 
+例如：「只生成害羞、困惑和哭泣三个版本」，随后要求「哭泣版本的眼泪少一点」。单张重做会保留其他表情的版本和选择。
+
 **插件会按你使用的语言回复。** 进度更新、表情名称、生成提示词、检查说明、限制说明和交付说明都会跟随当前请求的语言或你明确指定的语言。CLI 参数、JSON 字段、文件名和状态／错误代码保持固定的英文标识。预览标签可通过 `--labels-file` 本地化。
 
 默认输出目录为 `art-output/<character-key>/`。用户美术和实验记录被 Git 忽略，也不会进入发布包。
@@ -82,6 +97,7 @@ python -m pip install -r plugins/charakit/requirements.txt
 在仓库根目录执行。请根据实际立绘替换图片路径和面部区域坐标：
 
 ```shell
+python plugins/charakit/skills/charakit-expressions/scripts/studio.py presets
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py init --project art-output/my-character --source character.png --character my-character
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression angry --image generated-angry.png --prompt-file prompt.txt
 python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-v001.png --face-box 100 100 200 200 --background light
@@ -119,7 +135,7 @@ tools/build_plugin.py               插件 ZIP 构建脚本
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.3.zip
+python tools/build_plugin.py --output dist/charakit-0.1.4.zip
 ```
 
 测试使用合成图片，不需要第三方角色美术。CI 在 Linux 和 Windows 上运行。构建脚本不会覆盖已存在的 ZIP。
