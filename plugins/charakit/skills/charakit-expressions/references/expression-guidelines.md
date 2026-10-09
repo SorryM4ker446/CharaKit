@@ -23,7 +23,7 @@ Generate only the expressions requested. If the user requests a complete standar
 
 `wry_smile` covers both an awkward smile and resignation at this stage; `confident` covers confidence and pride. Do not invent extra IDs for synonyms. Intensity changes remain versions of the same expression and mouth state, with one selected version per combination. Static mouth-open and mouth-closed states are supported through [mouth-states.md](mouth-states.md); gaze and emotion-specific closed-eye states remain planned.
 
-Blush is appropriate to `shy`, and tears are part of `crying`; apply user exclusions and the source style. These effects are not defaults for other presets. Revise only the requested preset from the immutable source, retain prior candidates, and keep other selections intact.
+Blush is appropriate to `shy`, and tears are part of `crying`; apply user exclusions and the source style. These effects are not defaults for other presets. Revise only the requested preset with the immutable source as the design authority, retain prior candidates, and keep other selections intact. Explicit [bounded refinement](../../../references/refinement.md) also uses the previous complete image as the edit target for corrections identified in its review.
 
 The six newer presets (`shy` through `crying`) have file-workflow support and editing directions. Artistic fidelity and distinctness require reviewing actual generated images; automated workflow tests do not validate image-generation quality.
 

@@ -6,13 +6,17 @@
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.13**.
+Development version: **0.1.14**.
+
+Opt-in [review-driven bounded refinement](plugins/charakit/references/refinement.md) permits three total rounds per expression/mouth-state or garment/color case: the first image plus at most two targeted revisions. Use the previous complete image as the edit target and the immutable original as the design authority. Stop on passage or the limit; deliver only the passed final and retain process images for inspection. Codex still performs host-tool generation and visual review; the helper records budgets and gates. Host-native generation previews may appear automatically.
+
+Fresh assessments use rubric 1.1: at least **80/100**, every dimension at least **4/5**, and unchanged domain, critical-defect, uncertainty, technical and fidelity vetoes. Minor brushwork variation can pass; pixel equality is not required by default. Historical rubric 1.0 reviews retain their 85 threshold and recorded verdicts. Use helper 0.1.14 or later.
 
 New internal reviews require the checklist for the active module/state, not just a global score: expression, explicit mouth state, or garment recolor. Garment checks specialize by the source's actual component and material/interfaces. Any failed/uncertain item vetoes delivery even at 100/100. Use helper 0.1.13 or later; historical reviews remain readable without invented domain findings.
 
 Resolution is temporarily excluded from visual scoring and preview-delivery rejection. Actual canvas mismatch remains recorded and is returned as a delivery warning; other quality/fidelity/technical gates remain. Formal acceptance and ZIP export still require the source canvas. Use helper 0.1.12 or later for this exception.
 
-Quality-first development and delivery follow the shared [internal review policy](plugins/charakit/references/quality-review.md). New candidates are reviewed against four evidence-backed dimensions; delivery requires at least 85/100, every dimension at least 4/5, no critical defects or uncertainty, and current technical/fidelity passage. These are assistant visual judgments, not an objective automated similarity model. Internal passage remains separate from user acceptance. Legacy files are preserved; enable the policy before new work in old projects. Use helper 0.1.11 or later to enforce these gates.
+Quality-first development and delivery follow the shared [internal review policy](plugins/charakit/references/quality-review.md). New candidates need evidence-backed dimension scores, all active domain checks, and applicable technical/fidelity passage. These are assistant visual judgments, not an objective automated similarity model. Internal passage remains separate from user acceptance. Legacy files are preserved; enable quality before new work in old projects.
 
 All available modules use shared [editing boundaries](plugins/charakit/references/edit-boundaries.md): identify the target, allowed property, target invariants, and protected interfaces/remainder. Unrequested components and properties stay protected. Prompts and inspections derive from the request, domain, and actual source; a past test character does not define the template. Outfits provides [garment-specific rules](plugins/charakit/skills/charakit-outfits/references/garment-domains.md); Expressions specializes allowed facial movement and mouth state without authorizing other edits.
 
@@ -195,7 +199,7 @@ tools/build_plugin.py               Plugin ZIP builder
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.13.zip
+python tools/build_plugin.py --output dist/charakit-0.1.14.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.

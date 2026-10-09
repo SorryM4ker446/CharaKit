@@ -38,9 +38,11 @@ Resolution is temporarily excluded from quality assessment: do not deduct rubric
 
 Default user-facing delivery shows internally passed candidates. Keep failed/pending/uncertain candidates in the project, report the unmet requirements and counts in text, and avoid embedding/linking them as deliverables. If the user explicitly requests experiments, comparisons or failed outputs, show them with clear failure labels; this does not accept them or relax export gates. Tool-native previews may appear automatically before review; the Skill cannot suppress the host's UI, and cannot promise that no rejected image will ever be visible. `preview` is an inspection command, not gated delivery.
 
-Do not silently add generations to an explicit requested count. Internal rejection alone grants no unlimited retry budget. Default additional generations: zero. A user-authorized revision or explicit additional-attempt budget can retry the failed slot from the immutable source, with targeted prompt changes, preserved history and fresh review. Stop at the budget or when the available backend cannot address the defect; explain the unmet criteria rather than lowering the threshold. Never repair a protected component through a second local edit.
+Do not silently add generations to an explicit requested count. Default additional generations remain zero without user authorization. When the user enables review-driven automatic improvement, use [bounded refinement](refinement.md): at most three total rounds per requested case, editing the previous complete version with the immutable original as the design authority. Preserve evidence, perform fresh review and stop on passage or exhaustion. Do not reset the budget, repeatedly regrade unchanged artwork, or weaken gates to force passage. Protected-region restoration is allowed only for defects observed in the review, and all final editing stays in the host image tool, never local repainting/compositing.
 
-## Rubric 1.0
+## Rubrics 1.0 and 1.1
+
+Fresh reviews use rubric **1.1**, with an 80/100 total threshold and the same 4/5 dimension floor and domain/technical/fidelity vetoes. This makes four scores of 4 (acceptable with minor imperfections) eligible to pass. Rubric **1.0** keeps its historical 85/100 threshold; saved verdicts are not rewritten. See [refinement calibration](refinement.md#review-calibration) for minor rendering variation versus material identity/structure/scope violations. A detectable difference alone is not a failed domain item; do not demand pixel equality unless explicitly required.
 
 Each dimension receives an integer 0–5 with source-grounded evidence. These are ordinal assistant judgments, not probabilities, certified identity measurements or objective pixel scores.
 
@@ -55,9 +57,9 @@ All active domain checks must pass in addition to the score thresholds below. Do
 
 Score anchors: **5** meets the requirement with convincing inspected evidence; **4** meets it with small noncritical imperfections; **3** has an evident requirement deviation or incomplete achievement; **2** has substantial defects; **1** largely misses the requirement; **0** is unusable for that dimension. Do not reward extra beautification when it violates preservation. When evidence is insufficient, add uncertainty and mark the relevant inspection false; high guessed scores cannot clear that block.
 
-The weighted total is `sum(score × weight) / 5`, on a 0–100 scale. Passage requires **total ≥ 85, every dimension ≥ 4, all inspection flags true, no critical defects, no uncertainty, and passing applicable technical/fidelity requirements**. A serious defect is a veto regardless of total: unrequested iris recoloring or face redesign, wrong expression/state/target, non-target geometry/color changes, missing/cropped parts, conspicuous redraws or artifacts. File format, source/candidate fingerprints, transparency and empty-image rules are separate hard delivery gates. Exact canvas remains recorded but blocks only formal acceptance/selection/export at present. Record relevant uncertainty rather than pretending the checklist is exhaustive.
+The weighted total is `sum(score × weight) / 5`, on a 0–100 scale. Passage requires **total ≥ 80 for rubric 1.1 (≥ 85 for 1.0), every dimension ≥ 4, all inspection flags true, no critical defects, no uncertainty, and passing applicable technical/fidelity requirements**. A serious defect is a veto regardless of total: unrequested iris recoloring or face redesign, wrong expression/state/target, meaningful non-target geometry/color changes, missing/cropped parts, conspicuous redraws or artifacts. Minor rendering variations that preserve the requirement can pass with 4 and explicit evidence. File format, fingerprints, transparency and empty-image rules remain separate gates. Exact canvas blocks formal acceptance/selection/export. Record relevant uncertainty rather than pretending the checklist is exhaustive.
 
-85 and the weights are an initial product policy, not empirically calibrated predictors of user satisfaction. Track agreement with actual user reviews, rejected deliveries and first-attempt pass rates across varied characters/parts before changing thresholds. Filtering may reduce bad deliveries but does not itself improve generation or prove a lower revision rate.
+The thresholds and weights are product policies, not empirically calibrated predictors of user satisfaction. Rubric 1.1 corrects the inconsistency between four acceptable 4/5 scores and the old total gate; it does not establish improved generation quality. Track actual user reviews and first-attempt/final pass rates across characters and parts. Bounded improvement uses review findings but does not guarantee passage or fewer user revisions.
 
 ## Assessment and commands
 
@@ -65,7 +67,7 @@ Example structure below is deliberately incomplete for delivery: all scores are 
 
 ```json
 {
-  "rubric_version": "1.0",
+  "rubric_version": "1.1",
   "basis": "assistant",
   "request": "Actual requested operation and boundaries",
   "domain_review": {
@@ -107,4 +109,4 @@ python <skill>/scripts/studio.py deliver --project <project> --asset <candidate-
 
 Project schema remains 1.0/1.1 for Expressions and 1.2 for Outfits, with additive versioned `quality_policy`, candidate `quality_required`, `quality_review` and `quality_history`. Use helper **0.1.11 or later**: older helpers ignore these fields and cannot enforce the gate. Legacy projects/assets are readable without writes and retain their original acceptance/export behavior unless they acquire a quality review; the new `deliver` command requires a passed review even for legacy candidates. `enable-quality` affects future candidates, not historical claims. A quality-reviewed export includes the review in its manifest and preserves PNG bytes.
 
-Use helper **0.1.13 or later** for mandatory domain checks on new reviews. `quality` rejects missing, incomplete or wrong-module/state checklists before writing. Saved older reviews without `domain_review` retain their previous semantics and are read without invented findings; inspect again through the updated Skill before using an old result in a new generation/revision task. The dimension rubric, schema versions, resolution exception and explicit user-acceptance rules remain unchanged.
+Use helper **0.1.13 or later** for mandatory domain checks, and **0.1.14 or later** for rubric 1.1 and bounded refinement. `quality` rejects missing, incomplete or wrong-module/state checklists before writing. Saved older reviews retain their own threshold and semantics without invented findings; inspect old reviews lacking domain evidence before a new generation/revision task. Project schemas, resolution exception and explicit user acceptance remain unchanged.

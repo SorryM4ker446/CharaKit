@@ -1,12 +1,14 @@
 # CharaKit
 
-Version **0.1.13**. A modular Codex plugin for visual novel character artwork.
+Version **0.1.14**. A modular Codex plugin for visual novel character artwork.
+
+Opt-in [bounded refinement](references/refinement.md) allows three total rounds per expression/mouth-state or garment/color case, using the previous complete image as the edit target and the immutable original as the design authority. Stop on passage or exhaustion, retain process evidence, and use `refine-deliver` for the passed final only. Codex still invokes the host tool and judges real comparisons; the helper tracks rounds and gates, not automatic visual scores. Fresh rubric 1.1 assessments use 80/100 with a 4/5 floor and all existing domain/technical/fidelity vetoes. Historical rubric 1.0 keeps its 85 threshold. Requires helper 0.1.14 or later; native tool previews may still appear automatically.
 
 New `quality` reviews require the active module/state's domain checklist: expression, explicit mouth state or garment recolor. Garments specialize by actual component, material and interfaces. Failed/uncertain items veto delivery regardless of the global score; use helper 0.1.13 or later. Older reviews remain readable without fabricated domain findings.
 
 Resolution is temporarily outside visual scoring and preview-delivery rejection. `deliver` returns actual dimensions and canvas-mismatch warnings; decoding, PNG, transparency, fingerprints and quality/fidelity gates remain. Formal acceptance/selection/ZIP export retain exact-canvas checks. Use helper 0.1.12 or later for this exception.
 
-Follow the shared [quality-first baseline and review policy](references/quality-review.md). `quality` records assistant visual observations with source/candidate/prompt/comparison bindings; `deliver` returns only internally passed, technically valid candidates, retaining independent Outfits fidelity gates. Passage requires 85/100, a 4/5 floor per dimension and no critical defects or uncertainty. It does not accept/select assets or prove objective fidelity. New projects default on; `enable-quality` backs up a legacy project and gates future candidates without rewriting historical claims. Use helper 0.1.11 or later; older helpers cannot enforce these additive review fields.
+Follow the shared [quality-first baseline and review policy](references/quality-review.md). `quality` records assistant observations with source/candidate/prompt/comparison bindings; `deliver` returns internally passed candidates with applicable technical and Outfits fidelity gates. The saved rubric version determines the total threshold; every dimension must be at least 4 with no critical defects or uncertainty. Internal passage does not accept/select assets or prove objective fidelity. New projects default on; `enable-quality` preserves historical claims while gating future candidates.
 
 Artwork quality takes priority over prompt length. Domain-specific prompts inherit actual source attributes, preserve facial and non-target detail, and state the visible movements/effects required for the requested edit. Do not replace uncertain iris/skin colors with guessed labels; prompt correctness and output fidelity are checked separately.
 
@@ -112,7 +114,7 @@ The entrypoints are `skills/charakit-expressions/scripts/studio.py` and `skills/
 python skills/charakit-expressions/scripts/studio.py --help
 ```
 
-Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`, `enable-quality`, `quality`, `deliver`; Expressions also provides `presets`, and Outfits provides `prepare` and `fidelity`. The CLI rejects a project belonging to the other module before writing. Existing Expressions projects retain schema 1.0/1.1 and their original paths.
+Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`, `enable-quality`, `quality`, `deliver`, `refine-start`, `refine-status`, `refine-add`, `refine-deliver`; Expressions also provides `presets`, and Outfits provides `prepare` and `fidelity`. The CLI rejects a project belonging to the other module before writing. Existing Expressions projects retain schema 1.0/1.1 and their original paths.
 
 - Source snapshots, versioned candidates, preview images, and exports are not overwritten.
 - `presets` lists supported expressions and mouth states, English names, and starting directions without a project. Codex translates the human-readable descriptions into the user's language.

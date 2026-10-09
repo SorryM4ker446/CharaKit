@@ -43,6 +43,8 @@ MAX_PIXELS = 40_000_000
 QUALITY_WEIGHTS = {"target": 30, "identity": 25, "protection": 30, "rendering": 15}
 QUALITY_INSPECTIONS = ("full_image", "target_detail", "protected_details", "normal_display", "background_edges")
 QUALITY_VERSION = "1.0"
+RUBRIC_THRESHOLDS = {"1.0": 85, "1.1": 80}
+MAX_REFINEMENT_ROUNDS = 3
 DOMAIN_CHECKS = {
     "expression": ("emotion", "face_design", "nonface_protection", "rendering"),
     "mouth_state": ("emotion", "mouth_state", "face_design", "nonface_protection", "rendering"),
@@ -206,6 +208,7 @@ def read_state(root: Path) -> dict:
             require(all(a.get("quality_required") == QUALITY_VERSION for a in state["assets"]
                         if a["id"] not in state["quality_policy"]["legacy_asset_ids"]))
         by_id = {asset["id"]: asset for asset in state["assets"]}
+        validate_refinements(state)
         for slot, asset_id in state["selected"].items():
             require(isinstance(asset_id, str) and asset_id in by_id)
             require(slot == asset_slot(by_id[asset_id]))
@@ -326,7 +329,7 @@ def prepare_outfit(root: Path, outfit_id: str, target: str, color: str, boundary
 def fidelity_status(asset: dict) -> str:
     review = asset.get("fidelity_review")
     if review is None:
-        return "pending" if "edit_brief" in asset else "unrecorded"
+        return "pending" if "edit_brief" in asset or ("outfit_id" in asset and "refinement_case" in asset) else "unrecorded"
     if "failed" in (review["target_check"], review["protection_check"]):
         return "failed"
     return "passed" if review["target_check"] == review["protection_check"] == "passed" else "uncertain"
@@ -344,6 +347,8 @@ def record_fidelity(root: Path, asset_id: str, target_check: str, protection_che
     state = read_state(root)
     require_module(state, "outfits")
     asset = get_asset(state, asset_id)
+    if "refinement_case" in asset and "fidelity_review" in asset:
+        raise StudioError("REFINEMENT_ALREADY_REVIEWED", "A refinement round's fidelity findings are recorded once; improve a new image instead of rewriting its verdict.")
     if (target_check not in FIDELITY_CHECKS or protection_check not in FIDELITY_CHECKS
             or basis not in ("assistant", "user") or not valid_edit_text(note, 1000)):
         raise StudioError("INVALID_FIDELITY_REVIEW", "Record observed target/protection results, their basis, and a short factual note.")
@@ -388,7 +393,7 @@ def validate_domain_review(domain: dict, expected: str | None = None) -> None:
 def validate_quality_assessment(assessment: dict) -> None:
     """Validate attributed visual observations; this is not an image scorer."""
     try:
-        valid = (isinstance(assessment, dict) and assessment["rubric_version"] == QUALITY_VERSION
+        valid = (isinstance(assessment, dict) and assessment["rubric_version"] in RUBRIC_THRESHOLDS
                  and assessment["basis"] == "assistant" and valid_edit_text(assessment["request"], 2000)
                  and isinstance(assessment["dimensions"], dict)
                  and set(assessment["dimensions"]) == set(QUALITY_WEIGHTS)
@@ -407,7 +412,7 @@ def validate_quality_assessment(assessment: dict) -> None:
                     and all(valid_edit_text(v, 1000) for v in values)):
                 raise ValueError("Invalid findings.")
     except (KeyError, TypeError, ValueError) as exc:
-        raise StudioError("INVALID_QUALITY_REVIEW", "Use rubric 1.0, assistant attribution, four integer scores with evidence, inspection flags and defect/uncertainty lists.") from exc
+        raise StudioError("INVALID_QUALITY_REVIEW", "Use rubric 1.0 or 1.1, assistant attribution, four integer scores with evidence, inspection flags and defect/uncertainty lists.") from exc
     if "domain_review" in assessment:
         validate_domain_review(assessment["domain_review"])
 
@@ -418,13 +423,14 @@ def quality_result(review: dict) -> dict:
     checks = review.get("domain_review", {}).get("checks", {})
     domain_failed = any(item["status"] == "failed" for item in checks.values())
     domain_uncertain = any(item["status"] == "uncertain" for item in checks.values())
-    if domain_failed or review["critical_defects"] or total < 85 or any(v["score"] < 4 for v in review["dimensions"].values()):
+    threshold = RUBRIC_THRESHOLDS[review["rubric_version"]]
+    if domain_failed or review["critical_defects"] or total < threshold or any(v["score"] < 4 for v in review["dimensions"].values()):
         status = "failed"
     elif domain_uncertain or review["uncertainties"] or not all(review["inspection"].values()):
         status = "uncertain"
     else:
         status = "passed"
-    return {"status": status, "total": total, "threshold": 85, "dimension_floor": 4}
+    return {"status": status, "total": total, "threshold": threshold, "dimension_floor": 4}
 
 
 def validate_quality_record(state: dict, asset: dict, review: dict) -> None:
@@ -492,6 +498,8 @@ def enable_quality(root: Path) -> dict:
 def record_quality(root: Path, asset_id: str, assessment: dict, comparisons: list[Path]) -> dict:
     state = read_state(root)
     asset = get_asset(state, asset_id)
+    if "refinement_case" in asset and "quality_review" in asset:
+        raise StudioError("REFINEMENT_ALREADY_REVIEWED", "A refinement round is reviewed once; improve a new image instead of repeatedly rescoring it.")
     validate_quality_assessment(assessment)
     if "domain_review" not in assessment:
         raise StudioError("DOMAIN_REVIEW_REQUIRED", "Inspect and record the active module/state's specific checks, not only a global score.")
@@ -528,6 +536,159 @@ def record_quality(root: Path, asset_id: str, assessment: dict, comparisons: lis
             "technical_passed": report["passed"], "art_review_status": asset["art_review_status"], "selected": state["selected"]}
 
 
+def review_fingerprint(review: dict) -> str:
+    return hashlib.sha256(json.dumps(review, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def validate_refinements(state: dict) -> None:
+    """Validate additive round records without rewriting older projects."""
+    cases = state.get("refinements", {})
+    if not isinstance(cases, dict):
+        raise ValueError("Invalid refinement cases.")
+    by_id = {a["id"]: a for a in state["assets"]}
+    tracked = set()
+    for case_id, case in cases.items():
+        if not isinstance(case, dict):
+            raise ValueError("Invalid refinement case.")
+        if not (case["version"] == "1.0"
+                and type(case["max_rounds"]) is int and 1 <= case["max_rounds"] <= MAX_REFINEMENT_ROUNDS
+                and isinstance(case["asset_ids"], list) and 1 <= len(case["asset_ids"]) <= case["max_rounds"]
+                and case_id == case["asset_ids"][0]
+                and case["source_sha256"] == state["source_sha256"]):
+            raise ValueError("Invalid refinement budget.")
+        for index, asset_id in enumerate(case["asset_ids"]):
+            asset = by_id[asset_id]
+            if (asset_id in tracked or asset_slot(asset) != case["slot"]
+                    or asset.get("refinement_case") != case_id or type(asset.get("refinement_round")) is not int
+                    or asset.get("refinement_round") != index + 1):
+                raise ValueError("Invalid refinement lineage.")
+            tracked.add(asset_id)
+            if index:
+                parent = by_id[case["asset_ids"][index - 1]]
+                inputs = asset["refinement_inputs"]
+                if not (asset["parent_asset_id"] == parent["id"]
+                        and inputs["source"] == {"path": state["source"], "sha256": state["source_sha256"]}
+                        and inputs["edit_target"] == {"path": parent["path"], "sha256": parent["sha256"]}
+                        and inputs["review_sha256"] in [review_fingerprint(r) for r in parent.get("quality_history", [])]):
+                    raise ValueError("Invalid refinement input binding.")
+    if any(a["id"] not in tracked for a in state["assets"] if "refinement_case" in a):
+        raise ValueError("Orphan refinement candidate.")
+
+
+def start_refinement(root: Path, asset_id: str, max_rounds: int = MAX_REFINEMENT_ROUNDS) -> dict:
+    """Explicit bounded authorization: initial candidate is round one."""
+    state = read_state(root)
+    asset = get_asset(state, asset_id)
+    if type(max_rounds) is not int or not 1 <= max_rounds <= MAX_REFINEMENT_ROUNDS:
+        raise StudioError("INVALID_REFINEMENT_BUDGET", "Use one to three total rounds, including the initial image.")
+    if "refinement_case" in asset:
+        case = state["refinements"][asset["refinement_case"]]
+        if case["max_rounds"] != max_rounds:
+            raise StudioError("REFINEMENT_BUDGET_FIXED", "Restarting cannot reset or enlarge this case's budget.")
+        return refinement_status(root, asset["refinement_case"])
+    if "quality_policy" not in state:
+        raise StudioError("QUALITY_REVIEW_REQUIRED", "Enable quality before starting a refinement case in a legacy project.")
+    if "quality_review" in asset and "domain_review" not in asset["quality_review"]:
+        raise StudioError("DOMAIN_REVIEW_REQUIRED", "Inspect the active domain before using a historical review for refinement.")
+    for case_id, case in state.get("refinements", {}).items():
+        if case["slot"] == asset_slot(asset) and refinement_status(root, case_id)["action"] not in ("deliver", "exhausted", "blocked"):
+            raise StudioError("REFINEMENT_IN_PROGRESS", "Complete the existing case for this expression/state or garment/color first.")
+    asset.update(refinement_case=asset_id, refinement_round=1, quality_required=QUALITY_VERSION)
+    state.setdefault("refinements", {})[asset_id] = {
+        "version": "1.0", "slot": asset_slot(asset), "max_rounds": max_rounds,
+        "source_sha256": state["source_sha256"], "asset_ids": [asset_id], "created_at": timestamp(),
+    }
+    write_state(root, state)
+    return refinement_status(root, asset_id)
+
+
+def refinement_status(root: Path, case_id: str) -> dict:
+    """Read-only next action and source-grounded repair evidence; never generates art."""
+    state = read_state(root)
+    case = state.get("refinements", {}).get(case_id)
+    if case is None:
+        raise StudioError("REFINEMENT_NOT_FOUND", "Start a refinement case using its initial candidate.")
+    asset = get_asset(state, case["asset_ids"][-1])
+    report = delivery_validation(check_asset(root, state, asset))
+    quality = quality_status(root, state, asset)
+    fidelity = fidelity_status(asset)
+    review = asset.get("quality_review", {})
+    issues = [{"check": "technical", "status": "failed", "evidence": code} for code in report["errors"]]
+    if quality == "stale":
+        issues.append({"check": "evidence_binding", "status": "failed", "evidence": "Saved prompt or comparison changed; this round's observations cannot be reused."})
+    if asset["art_review_status"] == "rejected":
+        issues.append({"check": "user_feedback", "status": "failed", "evidence": "The user rejected this image; stop this automatic case."})
+    for key, finding in review.get("domain_review", {}).get("checks", {}).items():
+        if finding["status"] != "passed":
+            issues.append({"check": key, **finding})
+    for key, finding in review.get("dimensions", {}).items():
+        if finding["score"] < 4:
+            issues.append({"check": key, "status": "failed", "evidence": finding["evidence"]})
+    for key in ("critical_defects", "uncertainties"):
+        issues.extend({"check": key, "status": "failed" if key == "critical_defects" else "uncertain", "evidence": item} for item in review.get(key, []))
+    if fidelity in ("failed", "uncertain"):
+        issues.append({"check": "fidelity", "status": fidelity, "evidence": asset["fidelity_review"]["note"]})
+    for key, inspected in review.get("inspection", {}).items():
+        if not inspected:
+            issues.append({"check": key, "status": "uncertain", "evidence": "Inspection has not been completed."})
+    fatal = report["image"] is None or "ASSET_CHANGED" in report["errors"] or asset["art_review_status"] == "rejected"
+    if fatal or quality == "stale":
+        action = "blocked"
+    elif quality in ("pending", "unrecorded") or fidelity == "pending":
+        action = "review"
+    elif quality == "passed" and fidelity in ("passed", "unrecorded") and report["passed"]:
+        action = "deliver"
+    elif len(case["asset_ids"]) >= case["max_rounds"]:
+        action = "exhausted"
+    else:
+        action = "revise"
+    return {
+        "case_id": case_id, "slot": case["slot"], "action": action,
+        "round": len(case["asset_ids"]), "max_rounds": case["max_rounds"],
+        "remaining_revisions": case["max_rounds"] - len(case["asset_ids"]),
+        "current_asset": asset["id"], "final_asset": asset["id"] if action == "deliver" else None,
+        "quality_status": quality, "fidelity_status": fidelity, "issues": issues,
+        "references": {"source": str(contained(root, state["source"])), "edit_target": str(contained(root, asset["path"]))},
+        "history": [{"asset_id": a["id"], "round": a["refinement_round"], "image": str(contained(root, a["path"])),
+                     "quality_status": quality_status(root, state, a), "score": a.get("quality_review", {}).get("result", {}).get("total")}
+                    for a in (get_asset(state, ident) for ident in case["asset_ids"])],
+        "note": "References and issues guide the host image tool. Process images are inspection evidence; only the passed final is deliverable. Exhaustion does not grant acceptance.",
+    }
+
+
+def add_refinement(root: Path, case_id: str, image: Path, prompt_file: Path,
+                   references: list[Path]) -> dict:
+    plan = refinement_status(root, case_id)
+    if plan["action"] != "revise":
+        raise StudioError("REFINEMENT_NOT_READY", f'This case requires {plan["action"]}, not another generation.')
+    state = read_state(root)
+    case = state["refinements"][case_id]
+    parent = get_asset(state, case["asset_ids"][-1])
+    expected = [contained(root, state["source"]), contained(root, parent["path"])]
+    if len(references) != 2 or [p.resolve() for p in references] != [p.resolve() for p in expected]:
+        raise StudioError("INVALID_REFINEMENT_REFERENCES", "Record the immutable source first and the previous complete candidate as the edit target second.")
+    if digest(expected[1]) != parent["sha256"]:
+        raise StudioError("TECHNICAL_CHECK_FAILED", "The previous candidate changed.")
+    prompt = prompt_file.read_text(encoding="utf-8")
+    if not prompt.strip():
+        raise StudioError("INVALID_REFINEMENT_PROMPT", "Save the actual targeted revision prompt.")
+    keys = ("outfit_id", "edit_type", "target", "color", "edit_brief") if "outfit_id" in parent else ("expression", "mouth_state")
+    fields = {key: parent[key] for key in keys if key in parent}
+    fields.update(refinement_case=case_id, refinement_round=len(case["asset_ids"]) + 1,
+                  refinement_inputs={"source": {"path": state["source"], "sha256": state["source_sha256"]},
+                                     "edit_target": {"path": parent["path"], "sha256": parent["sha256"]},
+                                     "review_sha256": review_fingerprint(parent["quality_review"])})
+    report = validate_image(image, state["canvas"], state["background_mode"])
+    return save_candidate(root, state, image, fields, report, prompt)
+
+
+def deliver_refinement(root: Path, case_id: str) -> dict:
+    plan = refinement_status(root, case_id)
+    if plan["action"] != "deliver":
+        raise StudioError("REFINEMENT_NOT_PASSED", f'This case is {plan["action"]}; no passed final image is available.')
+    return {**delivery_assets(root, [plan["final_asset"]]), "case_id": case_id, "rounds_used": plan["round"]}
+
+
 def delivery_assets(root: Path, ids: list[str] | None = None) -> dict:
     """Return review-ready paths only after every requested candidate passes, without user acceptance."""
     state = read_state(root)
@@ -537,6 +698,8 @@ def delivery_assets(root: Path, ids: list[str] | None = None) -> dict:
     ready = []
     for asset_id in chosen:
         asset = get_asset(state, asset_id)
+        if "refinement_case" in asset and state["refinements"][asset["refinement_case"]]["asset_ids"][-1] != asset_id:
+            raise StudioError("REFINEMENT_INTERMEDIATE", "Process candidates are inspection evidence, not final deliverables.")
         if asset["art_review_status"] == "rejected":
             raise StudioError("ART_REVIEW_REJECTED", f"User rejected {asset_id}.")
         report = delivery_validation(check_asset(root, state, asset))
@@ -680,6 +843,10 @@ def save_candidate(root: Path, state: dict, image: Path, fields: dict, report: d
         "art_review_status": "unreviewed", "validation": report,
         "model": "unknown", "created_at": timestamp(),
     }
+    if "refinement_case" in fields:
+        case = state["refinements"][fields["refinement_case"]]
+        asset["parent_asset_id"] = case["asset_ids"][-1]
+        case["asset_ids"].append(asset_id)
     if prompt is not None:
         relative_prompt = f"candidates/{asset_id}.prompt.txt"
         with contained(root, relative_prompt).open("x", encoding="utf-8") as stream:
@@ -958,6 +1125,18 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
     deliver = commands.add_parser("deliver", help="Return only internally passed, technically valid candidates for user review.")
     deliver.add_argument("--project", required=True, type=Path)
     deliver.add_argument("--asset", required=True, action="append", dest="ids")
+    start = commands.add_parser("refine-start", help="Authorize at most three total generation/review rounds for one case.")
+    start.add_argument("--project", required=True, type=Path)
+    start.add_argument("--asset", required=True)
+    start.add_argument("--max-rounds", type=int, choices=range(1, MAX_REFINEMENT_ROUNDS + 1), default=MAX_REFINEMENT_ROUNDS)
+    for name in ("refine-status", "refine-add", "refine-deliver"):
+        command = commands.add_parser(name)
+        command.add_argument("--project", required=True, type=Path)
+        command.add_argument("--case", required=True, dest="case_id")
+        if name == "refine-add":
+            command.add_argument("--image", required=True, type=Path)
+            command.add_argument("--prompt-file", required=True, type=Path)
+            command.add_argument("--reference", required=True, action="append", type=Path, dest="references")
     if module == "expressions":
         commands.add_parser("presets", help="List supported expression IDs and starting directions; no project required.")
     if module == "outfits":
@@ -1029,7 +1208,7 @@ def main(module: str = "expressions") -> int:
             stream.reconfigure(encoding="utf-8")
     args = parser(module).parse_args()
     try:
-        if args.command in ("add", "status", "review", "select", "preview", "export", "prepare", "fidelity", "quality", "enable-quality", "deliver"):
+        if args.command in ("add", "status", "review", "select", "preview", "export", "prepare", "fidelity", "quality", "enable-quality", "deliver", "refine-start", "refine-status", "refine-add", "refine-deliver"):
             require_module(read_state(args.project), module)
         if args.command == "presets":
             result = {"presets": [{"id": key, **preset} for key, preset in EXPRESSION_PRESETS.items()],
@@ -1055,6 +1234,14 @@ def main(module: str = "expressions") -> int:
             result = record_quality(args.project, args.asset, assessment, args.comparisons)
         elif args.command == "deliver":
             result = delivery_assets(args.project, args.ids)
+        elif args.command == "refine-start":
+            result = start_refinement(args.project, args.asset, args.max_rounds)
+        elif args.command == "refine-status":
+            result = refinement_status(args.project, args.case_id)
+        elif args.command == "refine-add":
+            result = add_refinement(args.project, args.case_id, args.image, args.prompt_file, args.references)
+        elif args.command == "refine-deliver":
+            result = deliver_refinement(args.project, args.case_id)
         elif args.command == "add":
             if module == "outfits":
                 result = add_outfit(args.project, args.image, args.outfit_id, args.target, args.color, args.prompt_file, args.brief_file)

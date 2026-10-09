@@ -26,7 +26,7 @@ Garment recoloring uses the separate [CharaKit Outfits Skill](../charakit-outfit
 
 - Inspect the source first. Prefer a single character with a clear front or slightly angled face. Preserve transparency for transparent artwork; do not assume an illustration with a background is a transparent sprite.
 - Use the OpenAI image editing tool currently available in the Codex host. Follow its current reference-image, transparency, and file-saving requirements. If unavailable, explain the missing capability. This plugin has no external API integration and cannot select a hidden model through a prompt.
-- Use the same immutable source as the primary reference for every expression. For a revision, keep that source as the baseline and optionally include the previous candidate. Do not derive successive expressions from generated variants.
+- Use the same immutable source as the primary reference for every expression. For an ordinary revision, keep that source as the baseline and optionally include the previous candidate. In explicitly enabled bounded refinement, also supply the previous complete candidate as the edit target, following the shared refinement workflow; do not make it the identity/design baseline.
 - Preserve the **entire face**: eyes, eyebrows, nose, lips, contours, proportions, skin tone, shading, linework, and brushwork. Eyes are one part of this requirement. Allow necessary expression changes without redesigning, blurring, or simplifying facial features.
 - Preserve the original style and character design: hair, ears, accessories, clothing, weapons, pose, proportions, composition, materials, and lighting. Make only the changes needed for the requested emotion; keep the expression harmonious with the whole illustration.
 - Return the complete original framing. Do not deliver a face crop as the final asset, extract reusable facial parts, or composite a generated face onto the original. Subtle blush is appropriate for `shy`, and visible tears are part of `crying`, unless excluded by the user. Do not add these effects to other presets by default, or add emotion symbols, sweat drops, or text without a request.
@@ -80,6 +80,8 @@ python <skill>/scripts/studio.py export --project <output-dir>
 - Operate sequentially within one character directory; multiple chats must not modify the same `run.json` concurrently.
 
 ## Revisions and delivery
+
+When the user enables automatic improvement from review findings, read and follow [bounded refinement](../../references/refinement.md). Each expression/mouth-state combination gets at most three total rounds (first image plus two targeted revisions). Use rubric 1.1 for fresh assessments; minor rendering differences can pass at 4/5, while actual scope/identity violations still veto. Use `refine-start`, `refine-status`, `refine-add` and `refine-deliver`; stop on passage or the limit, present only the passed final, and retain process versions for requested inspection. The host may still display native generation previews. This mode is the explicit attempt-budget exception to the ordinary one-revision rule below.
 
 Revise only the requested image; preserve other expressions and history. Produce one new candidate for an explicit revision request and review it afresh; show it as a deliverable only after the internal gate passes. Report blocked results in text, unless the user requested inspection of failed/experimental images. No additional generations without an explicit revision or attempt budget; do not retry indefinitely or silently regenerate images the user likes.
 
