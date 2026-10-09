@@ -18,17 +18,17 @@ from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
 EXPRESSION_PRESETS = {
     "neutral": {"name": "Neutral", "direction": "Calm; reuse the source when it already matches."},
-    "happy": {"name": "Happy", "direction": "Moderate smile; no laughter by default."},
-    "sad": {"name": "Sad", "direction": "Restrained disappointment; no tears by default."},
-    "angry": {"name": "Angry", "direction": "Displeased brows, gaze, and mouth; no shouting by default."},
+    "happy": {"name": "Happy", "direction": "Relaxed brows, warmer eyes, and visibly lifted mouth corners form a natural moderate smile; distinguish from the baseline, without defaulting to laughter."},
+    "sad": {"name": "Sad", "direction": "Raised inner brows, lowered/softened eyelids, and downward mouth corners convey sadness; no tears by default."},
+    "angry": {"name": "Angry", "direction": "Lowered inward-drawn brows, tighter eyelids, and a tense displeased mouth convey anger; preserve eye design, without defaulting to shouting."},
     "surprised": {"name": "Surprised", "direction": "Moderately widened eyes and a slightly open mouth."},
     "eyes_closed": {"name": "Eyes closed", "direction": "Natural closed eyes; preserve the original mouth unless requested otherwise."},
     "shy": {"name": "Shy", "direction": "Bashful gaze and a restrained mouth; subtle blush unless excluded."},
-    "confused": {"name": "Confused", "direction": "Questioning brows, gaze, and mouth; distinguish from startled surprise."},
-    "wry_smile": {"name": "Wry smile", "direction": "A restrained awkward or resigned smile; distinguish from happiness."},
-    "worried": {"name": "Worried", "direction": "Concerned brows and a tense gaze or mouth; distinguish from sadness."},
+    "confused": {"name": "Confused", "direction": "A slightly asymmetric questioning brow and uncertain mouth convey trying to understand; distinguish from startled surprise and worried tension."},
+    "wry_smile": {"name": "Wry smile", "direction": "An uneasy/resigned brow and a small asymmetric smile; distinguish reluctant smiling from warm happiness and nonsmiling worry."},
+    "worried": {"name": "Worried", "direction": "Inner brows drawn together and slightly raised, attentive concerned eyes, and a tense nonsmiling mouth; distinguish from questioning confusion and downcast sadness, without tears by default."},
     "confident": {"name": "Confident", "direction": "An assured gaze and restrained pleased smile suited to the character."},
-    "crying": {"name": "Crying", "direction": "Visible tears with coordinated distressed brows and mouth; preserve eye detail."},
+    "crying": {"name": "Crying", "direction": "Visible tear pooling along lower eyelids and fine natural cheek tear tracks, with distressed brows and a tightened/downturned mouth; preserve original iris colors, pupils, and highlights, without defaulting to loud sobbing."},
 }
 EXPRESSIONS = tuple(EXPRESSION_PRESETS)
 MOUTH_PRESETS = {

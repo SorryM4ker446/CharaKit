@@ -25,11 +25,13 @@ Full outfit replacement, additions/removals, and poses remain planned. This tabl
 
 ## Construct the prompt
 
-Use a compact instruction built from the selected operation and domain, not a fixed prompt copied from a test character:
+Prioritize artwork quality, faithful preservation, and a clearly achieved edit. Prompt length is not an optimization target. Build a complete, organized instruction from the selected operation and domain, using enough detail to express the necessary changes and constraints. Do not copy a fixed prompt from a test character:
 
 > Edit the complete source. Apply [requested property change] only to [identified target and included surfaces]. Preserve [target properties that must stay fixed]. Exclude [source-specific boundary components]. Keep all other components and their original rendering unchanged. Output the complete source framing and canvas with its original transparency/background, without text or a comparison sheet.
 
-Fill the slots with inspected source facts; omit irrelevant exclusions. Domain guidance supplies constraints, not default colors, costumes, props, or visual features. Mention a particular neighboring component only when it exists and helps disambiguate the edit. Do not list every imaginable object, copy a previous character's defects, or describe how to reconstruct protected regions. Concision must not remove the allowed property, target invariants, boundary, or remainder protection.
+Fill the slots with inspected source facts; omit irrelevant exclusions. Domain guidance supplies constraints, not default colors, costumes, props, or visual features. Mention a particular neighboring component only when it exists and helps disambiguate the edit. Do not list every imaginable object, copy a previous character's defects, or describe how to reconstruct protected regions. Retain all necessary target cues, internal invariants, boundary exclusions and remainder protection; include detailed preservation requirements when they help protect the source's design or rendering.
+
+When preserving an attribute, prefer inheritance from the source over an uncertain descriptive label. Do not turn a guessed iris/skin/material color into a generation instruction. Retain the active domain's positive target cues: expression movements and required tears/blush differ from a recolor's color-only permission. Clear organization, consistency with the source, and visual success determine whether a prompt is suitable; brevity does not.
 
 Use the immutable complete source as the primary edit reference. Auxiliary references have an explicit purpose and must not silently replace the source or grant further editing permission. Save the actual submitted prompt and reference paths. For Outfits, persist scope in the existing `prepare` brief's target, color, boundary, and protected descriptions; for Expressions, retain it in the prompt and review notes. These rules introduce no JSON fields or schema migration.
 

@@ -31,6 +31,8 @@ Garment recoloring uses the separate [CharaKit Outfits Skill](../charakit-outfit
 - Preserve the original style and character design: hair, ears, accessories, clothing, weapons, pose, proportions, composition, materials, and lighting. Make only the changes needed for the requested emotion; keep the expression harmonious with the whole illustration.
 - Return the complete original framing. Do not deliver a face crop as the final asset, extract reusable facial parts, or composite a generated face onto the original. Subtle blush is appropriate for `shy`, and visible tears are part of `crying`, unless excluded by the user. Do not add these effects to other presets by default, or add emotion symbols, sweat drops, or text without a request.
 - Adapt intensity and wording to the source and request.
+- Build the prompt using the expression-specific structure in [expression-guidelines.md](references/expression-guidelines.md). Prioritize quality and faithful preservation over prompt length. Inherit source attributes instead of guessing or assigning iris/skin colors, and retain the detail needed to protect facial design/rendering and distinguish the emotion. Do not apply an Outfits color-only template or suppress every emotion to a slight change.
+- Before submitting, compare the actual prompt with the source and request: no invented appearance attributes, required emotion effects present, and only the intended movements allowed. Check the first result of a larger set before reusing a shared description in the remaining prompts; correct a mistaken description in unsubmitted jobs without expanding the generation count.
 
 ## Save and check
 

@@ -6,9 +6,11 @@
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.9**.
+Development version: **0.1.10**.
 
 All available modules use shared [editing boundaries](plugins/charakit/references/edit-boundaries.md): identify the target, allowed property, target invariants, and protected interfaces/remainder. Unrequested components and properties stay protected. Prompts and inspections derive from the request, domain, and actual source; a past test character does not define the template. Outfits provides [garment-specific rules](plugins/charakit/skills/charakit-outfits/references/garment-domains.md); Expressions specializes allowed facial movement and mouth state without authorizing other edits.
+
+Artwork quality takes priority over prompt length. Retain the source's actual appearance, including each eye's original color distribution and design, without assigning guessed colors. Expression prompts include the coordinated movements and visible effects needed to distinguish emotions; generation and inspection check these separately from file validity.
 
 Release notes are published with GitHub Releases.
 
@@ -51,7 +53,7 @@ Use a separate outfit project, for example `art-output/my-character/outfits/`, w
 
 Outfit projects and manifests use schema 1.2. Existing expression projects remain schema 1.0/1.1 and keep their original helper path, IDs, and export filenames. The complete plugin now includes a shared `lib/studio_core.py`; keep it with both Skills. See the [Outfits Skill](plugins/charakit/skills/charakit-outfits/SKILL.md) for details.
 
-Before generation, `prepare` saves an edit boundary, protected-region descriptions, and a source-only detail reference. The default uses one complete source and concise instructions stating the allowed recolor, exclusions, preservation, and output. The detailed checklist stays in the brief; the crop is submitted only for an ambiguous target or a requested reference comparison when supported. All final artwork changes remain in the host image tool; the crop is not a mask, pixel lock, or final asset.
+Before generation, `prepare` saves an edit boundary, protected-region descriptions, and a source-only detail reference. The default uses one complete source and a complete domain-specific prompt stating the allowed recolor, invariants, exclusions, preservation, and output. Quality takes priority over prompt length; necessary detail is retained in the submission as well as the inspection brief. The crop is submitted only for an ambiguous target or a requested reference comparison when supported. All final artwork changes remain in the host image tool; the crop is not a mask, pixel lock, or final asset.
 
 Compare the full image, face, garment, and relevant non-target details such as weapons, hair outlines, hands, and neighboring equipment. Additional `preview --detail-box` calls with distinct output paths can enlarge these regions. Non-target repainting remains a known limitation; simplifying the prompt/reference workflow has not been shown to resolve it.
 
@@ -182,7 +184,7 @@ tools/build_plugin.py               Plugin ZIP builder
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.9.zip
+python tools/build_plugin.py --output dist/charakit-0.1.10.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.

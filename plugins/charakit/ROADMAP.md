@@ -14,7 +14,7 @@ Expressions and the recolor workflow in Outfits are available. Generated recolor
 
 1. Improve expression consistency, canvas alignment, and transparent edges for use in games.
 2. Validate expression and static mouth-state quality on actual artwork; add independently selectable gaze states when needed.
-3. Evaluate concise recolor instructions using one complete source by default, optional target references, and enlarged checks of non-target regions on actual artwork before expanding garment edits.
+3. Evaluate quality-focused, domain-specific editing instructions using one complete source by default, optional target references, and enlarged checks of target and protected regions on actual artwork before expanding garment edits.
 4. Expand to full outfit replacement.
 5. Introduce simple static pose changes before more complex action poses.
 6. Support requested combinations of outfits, poses, and expressions.

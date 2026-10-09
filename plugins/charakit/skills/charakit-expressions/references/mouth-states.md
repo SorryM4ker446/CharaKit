@@ -20,6 +20,8 @@ Every image independently uses the immutable source as its primary reference. Fo
 
 In the user's language, state the emotion, mouth state, allowed change, and preserved full-face details. When changing only mouth state, preserve emotional intensity and the established eyes/brows as well as clothing, hair, pose, and layout. Allow the lip and mouth-interior changes needed for a natural opening; do not paste a new mouth onto the source.
 
+Use the source-inheritance and prompt checks in [expression-guidelines.md](expression-guidelines.md): retain each eye's actual color distribution and design without assigning a guessed hue. Include the preservation detail needed for quality; changing lip shape does not permit a new iris palette, face design, or weakened emotion. Avoid contradictory instructions such as requiring closed lips and a speaking opening together.
+
 Compare full illustrations and whole-face enlargements. Check whether the requested state is visibly present, whether the emotion is stable between states, whether teeth/tongue/mouth interior match the original rendering, and whether head position, facial proportions, and outlines move during switching. Technical checks cannot verify these visual properties.
 
 ## Saved resources and compatibility

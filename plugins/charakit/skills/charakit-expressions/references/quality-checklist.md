@@ -4,16 +4,18 @@ Explain the checks, outcomes, and limitations in the user's language. Internal s
 
 ## Entire face
 
+First compare the submitted prompt to the source/request. An incorrect appearance label, missing required tears/blush, or conflicting motion constraint is a prompt defect, even if the tool followed it. Record it separately from output fidelity; do not attribute every mismatch to the backend. Keep the actual prompt as evidence.
+
 Compare enlarged corresponding face regions in the original and candidate:
 
-- Eyes: iris color and layers, pupils, highlights, eyelashes, eyeliner, and eyelid rendering.
+- Eyes: each eye's source color distribution and gradients, iris layers/pattern, pupils, highlights, eyelashes, eyeliner, and eyelid rendering. Check whether a mixed iris palette was replaced by a uniform hue; emotion does not authorize recoloring.
 - Eyebrows: characteristic shape, thickness, color, and brushwork; position may change for expression.
 - Nose: original form, linework, shading, and volume.
 - Lips and mouth: rendering, color, edges, and proportions; mouth shape may change for expression.
 - Contours and proportions: cheeks, chin, and the relationships between facial features.
 - Skin: tone, subtle detail, shading, and lighting; no flattening, dirty colors, or excessive sharpening.
 - Whole face: consistent linework, brushwork, and detail density. Do not limit inspection to the eyes or recognizability in a thumbnail.
-- Expression: distinguish `confused` from `surprised`, `worried` from `sad`, and `wry_smile` from `happy`. Keep confidence suited to the character. Blush for `shy` and tears for `crying` must match the source rendering and retain facial detail; do not flag these intended changes as defects merely because they differ from the source.
+- Expression: check a perceptible difference from the source and between similar requested presets, especially confusion/worry/sadness/crying and wry/happy. Keep confidence suited to the character. Blush for `shy` and tears for `crying` must be visible, match the source rendering and retain facial detail; existing eye highlights alone do not establish crying. Do not flag these intended changes as defects merely because they differ from the source.
 - Mouth state: verify explicit open/closed states visually. Keep emotion, gaze, brows, and intensity consistent between the two, with natural mouth-interior rendering and stable facial proportions. A metadata label does not prove the generated image matches the request.
 
 ## Full image and game display

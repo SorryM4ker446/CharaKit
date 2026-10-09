@@ -1,6 +1,8 @@
 # CharaKit
 
-Version **0.1.9**. A modular Codex plugin for visual novel character artwork.
+Version **0.1.10**. A modular Codex plugin for visual novel character artwork.
+
+Artwork quality takes priority over prompt length. Domain-specific prompts inherit actual source attributes, preserve facial and non-target detail, and state the visible movements/effects required for the requested edit. Do not replace uncertain iris/skin colors with guessed labels; prompt correctness and output fidelity are checked separately.
 
 Use the shared [editing boundaries](references/edit-boundaries.md) across available modules: target, allowed property, target invariants, and protected interfaces/remainder. Unrequested components and properties remain protected. Derive prompt wording and inspection regions from the actual source and active domain; Outfits uses [garment domains](skills/charakit-outfits/references/garment-domains.md), while Expressions distinguishes emotion movements from mouth-only changes. These rules do not expand implemented capabilities or enforce pixel locks.
 
@@ -76,7 +78,7 @@ hair, other clothing, and pose. Generate two candidates and compare them.
 
 Outfits uses its own project, such as `art-output/my-character/outfits/`, with schema 1.2. Each target garment/color option has independent versions, review, and selection. Actual image quality requires visual review. See the [Outfits Skill](skills/charakit-outfits/SKILL.md).
 
-Use `prepare` before generation to save the allowed boundary, protected regions, and a source-only detail reference. Default to one complete source and a concise prompt describing the allowed recolor, exclusions, preservation, and output. Retain the detailed checklist in the brief; send the crop only for ambiguous target identification or a requested reference comparison when supported. The local crop is not an edit mask or a final asset; all final edits stay in the host image tool.
+Use `prepare` before generation to save the allowed boundary, protected regions, and a source-only detail reference. Default to one complete source and a complete domain-specific prompt describing the allowed recolor, invariants, exclusions, preservation, and output. Prioritize quality over prompt length, retaining necessary detail in both the submission and inspection brief. Send the crop only for ambiguous target identification or a requested reference comparison when supported. The local crop is not an edit mask or a final asset; all final edits stay in the host image tool.
 
 Compare the full image, whole face, target garment, and relevant non-target details such as weapons, hair, hands, and neighboring equipment. Repeat `preview --detail-box` with distinct output paths for additional regions. After inspection, use `fidelity` to record target and protection observations independently. Assistant observations remain separate from user acceptance and technical checks. Non-target repainting remains a known limitation; this simplified workflow is not a proven visual fix.
 
