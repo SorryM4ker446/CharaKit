@@ -31,6 +31,12 @@ EXPRESSION_PRESETS = {
     "crying": {"name": "Crying", "direction": "Visible tears with coordinated distressed brows and mouth; preserve eye detail."},
 }
 EXPRESSIONS = tuple(EXPRESSION_PRESETS)
+MOUTH_PRESETS = {
+    "default": {"name": "Unspecified", "direction": "Use the expression direction; do not infer open or closed from old assets."},
+    "closed": {"name": "Mouth closed", "direction": "Closed lips suited to the emotion; retain its brows, eyes, and intensity."},
+    "open": {"name": "Mouth open", "direction": "A small natural speaking opening suited to the emotion; not surprise, shouting, or a phoneme sequence."},
+}
+MOUTH_STATES = tuple(MOUTH_PRESETS)
 MODES = ("transparent_sprite", "preserve_background")
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PIXELS = 40_000_000
@@ -114,6 +120,12 @@ def contained(root: Path, relative: str) -> Path:
     return path
 
 
+def asset_slot(asset: dict) -> str:
+    """Keep legacy keys stable; explicit mouth states are independent resources."""
+    mouth = asset.get("mouth_state", "default")
+    return asset["expression"] if mouth == "default" else f'{asset["expression"]}_mouth_{mouth}'
+
+
 def read_state(root: Path) -> dict:
     def require(condition: bool) -> None:
         if not condition:
@@ -121,7 +133,7 @@ def read_state(root: Path) -> dict:
 
     try:
         state = json.loads((root / "run.json").read_text(encoding="utf-8"))
-        require(state["schema_version"] == "1.0")
+        require(state["schema_version"] in ("1.0", "1.1"))
         require(bool(re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", state["character_key"])))
         require(state["background_mode"] in MODES)
         require(isinstance(state["assets"], list) and isinstance(state["selected"], dict))
@@ -130,13 +142,20 @@ def read_state(root: Path) -> dict:
         ids = set()
         for asset in state["assets"]:
             require(asset["expression"] in EXPRESSIONS)
+            require(asset.get("mouth_state", "default") in MOUTH_STATES)
+            require(state["schema_version"] == "1.1" or asset.get("mouth_state", "default") == "default")
             require(type(asset["version"]) is int and asset["version"] > 0)
-            require(asset["id"] == f'{asset["expression"]}_v{asset["version"]:03d}')
+            require(asset["id"] == f'{asset_slot(asset)}_v{asset["version"]:03d}')
             require(asset["id"] not in ids)
             require(asset["art_review_status"] in ("unreviewed", "accepted", "rejected"))
             require(bool(re.fullmatch(r"[0-9a-f]{64}", asset["sha256"])))
             contained(root, asset["path"])
             ids.add(asset["id"])
+        by_id = {asset["id"]: asset for asset in state["assets"]}
+        for slot, asset_id in state["selected"].items():
+            require(isinstance(asset_id, str) and asset_id in by_id)
+            require(slot == asset_slot(by_id[asset_id]))
+            require(by_id[asset_id]["art_review_status"] == "accepted")
         source = contained(root, state["source"])
         require(bool(re.fullmatch(r"[0-9a-f]{64}", state["source_sha256"])))
     except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -212,19 +231,32 @@ def check_asset(root: Path, state: dict, asset: dict) -> dict:
     return report
 
 
-def add_asset(root: Path, image: Path, expression: str, prompt_file: Path | None = None) -> dict:
+def add_asset(root: Path, image: Path, expression: str, prompt_file: Path | None = None,
+              mouth_state: str = "default") -> dict:
     state = read_state(root)
     if expression not in EXPRESSIONS:
         raise StudioError("INVALID_EXPRESSION", "Unknown standard expression.")
+    if mouth_state not in MOUTH_STATES:
+        raise StudioError("INVALID_MOUTH_STATE", "Use default, closed, or open.")
     report = validate_image(image, state["canvas"], state["background_mode"])
     prompt = prompt_file.read_text(encoding="utf-8") if prompt_file else None
-    version = max((a["version"] for a in state["assets"] if a["expression"] == expression), default=0) + 1
-    while (root / "candidates" / f"{expression}_v{version:03d}.png").exists():
+    slot = asset_slot({"expression": expression, "mouth_state": mouth_state})
+    previous = [a for a in state["assets"] if asset_slot(a) == slot]
+    version = max((a["version"] for a in previous), default=0) + 1
+    while (root / "candidates" / f"{slot}_v{version:03d}.png").exists():
         version += 1
-    asset_id = f"{expression}_v{version:03d}"
+    asset_id = f"{slot}_v{version:03d}"
     relative = f"candidates/{asset_id}.png"
+    if mouth_state != "default" and state["schema_version"] == "1.0":
+        # Preserve legacy metadata before importing the first explicit state.
+        backup = root / "run.schema-1.0.backup.json"
+        if backup.exists():
+            if backup.read_bytes() != (root / "run.json").read_bytes():
+                raise StudioError("MIGRATION_BACKUP_EXISTS", "Existing backup differs from run.json; preserve it and resolve the interrupted upgrade first.")
+        else:
+            copy_exclusive(root / "run.json", backup)
+        state["schema_version"] = "1.1"
     copy_exclusive(image, contained(root, relative))
-    previous = [a for a in state["assets"] if a["expression"] == expression]
     asset = {
         "id": asset_id, "expression": expression, "version": version, "path": relative,
         "parent_asset_id": max(previous, key=lambda item: item["version"])["id"] if previous else None,
@@ -234,6 +266,8 @@ def add_asset(root: Path, image: Path, expression: str, prompt_file: Path | None
         "art_review_status": "unreviewed", "validation": report,
         "model": "unknown", "created_at": timestamp(),
     }
+    if mouth_state != "default":
+        asset["mouth_state"] = mouth_state
     if prompt is not None:
         relative_prompt = f"candidates/{asset_id}.prompt.txt"
         with contained(root, relative_prompt).open("x", encoding="utf-8") as stream:
@@ -255,9 +289,9 @@ def review_asset(root: Path, asset_id: str, status: str, note: str = "") -> dict
     asset.update({"art_review_status": status, "review_note": note, "reviewed_at": timestamp(),
                   "validation": report, "technical_status": "passed" if report["passed"] else "failed"})
     if status == "accepted":
-        state["selected"][asset["expression"]] = asset_id
-    elif state["selected"].get(asset["expression"]) == asset_id:
-        del state["selected"][asset["expression"]]
+        state["selected"][asset_slot(asset)] = asset_id
+    elif state["selected"].get(asset_slot(asset)) == asset_id:
+        del state["selected"][asset_slot(asset)]
     write_state(root, state)
     return {"asset_id": asset_id, "art_review_status": status, "selected": state["selected"]}
 
@@ -270,7 +304,7 @@ def select_asset(root: Path, asset_id: str) -> dict:
     report = check_asset(root, state, asset)
     if not report["passed"]:
         raise StudioError("TECHNICAL_CHECK_FAILED", ", ".join(report["errors"]))
-    state["selected"][asset["expression"]] = asset_id
+    state["selected"][asset_slot(asset)] = asset_id
     write_state(root, state)
     return {"selected": state["selected"]}
 
@@ -314,10 +348,19 @@ def load_preview_labels(path: Path | None) -> dict[str, str]:
 
 def make_preview(root: Path, output: Path, ids: list[str] | None = None,
                  face_box: list[int] | None = None, background: str = "checker",
-                 labels: dict[str, str] | None = None) -> dict:
+                 labels: dict[str, str] | None = None, expression: str | None = None,
+                 mouth_state: str | None = None) -> dict:
     state = read_state(root)
     labels = labels or {}
-    assets = [get_asset(state, item) for item in ids] if ids else state["assets"]
+    if expression is not None and expression not in EXPRESSIONS:
+        raise StudioError("INVALID_EXPRESSION", "Unknown standard expression.")
+    if mouth_state is not None and mouth_state not in MOUTH_STATES:
+        raise StudioError("INVALID_MOUTH_STATE", "Use default, closed, or open.")
+    assets = [get_asset(state, item) for item in ids] if ids is not None else state["assets"]
+    assets = [a for a in assets if (expression is None or a["expression"] == expression)
+              and (mouth_state is None or a.get("mouth_state", "default") == mouth_state)]
+    if not assets and (ids is not None or expression is not None or mouth_state is not None):
+        raise StudioError("NO_MATCHING_ASSETS", "No candidates match the preview selection.")
     if background not in ("checker", "light", "dark"):
         raise StudioError("INVALID_BACKGROUND_MODE", "Unknown preview background.")
     if face_box:
@@ -347,9 +390,18 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
         title = entry["id"]
         if entry["id"] == "SOURCE":
             title = labels.get("source", title)
+        elif entry.get("mouth_state", "default") != "default":
+            mouth_key = f'mouth_{entry["mouth_state"]}'
+            title = f'{labels.get(entry["expression"], entry["expression"])} / {labels.get(mouth_key, entry["mouth_state"])} v{entry["version"]:03d}'
         elif entry["expression"] in labels:
             title = f'{labels[entry["expression"]]} v{entry["version"]:03d}'
-        draw.text((x + 10, y + picture_height + 7), f'{title} | {rgba.width} x {rgba.height}', fill="#222222", font=font(17))
+        title_line = f'{title} | {rgba.width} x {rgba.height}'
+        title_font = font(17)
+        for size in range(16, 9, -1):
+            if draw.textlength(title_line, font=title_font) <= card_width - 20:
+                break
+            title_font = font(size)
+        draw.text((x + 10, y + picture_height + 7), title_line, fill="#222222", font=title_font)
         label = labels.get(entry["art_review_status"], entry["art_review_status"])
         if report:
             status_key = "technical_passed" if report["passed"] else "technical_failed"
@@ -371,6 +423,7 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
     with output.open("xb") as stream:
         sheet.save(stream, format="PNG")
     return {"preview": str(output.resolve()), "size": list(sheet.size), "face_box": face_box,
+            "asset_ids": [a["id"] for a in assets],
             "note": "Preview is scaled for inspection; this does not correct candidate alignment or dimensions."}
 
 
@@ -381,11 +434,14 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
     if not chosen:
         raise StudioError("NO_SELECTED_ASSETS", "Accept and select at least one candidate before export.")
     seen, payloads, sprites = set(), {}, []
+    has_mouth_states = any(get_asset(state, item).get("mouth_state", "default") != "default" for item in chosen)
     for asset_id in chosen:
         asset = get_asset(state, asset_id)
         expression = asset["expression"]
-        if expression in seen:
-            raise StudioError("DUPLICATE_EXPRESSION", "Choose exactly one version per expression.")
+        slot = asset_slot(asset)
+        if slot in seen:
+            code = "DUPLICATE_EXPRESSION" if asset.get("mouth_state", "default") == "default" else "DUPLICATE_STATE"
+            raise StudioError(code, "Choose exactly one version per expression and mouth state.")
         if asset["art_review_status"] != "accepted":
             raise StudioError("ART_REVIEW_REQUIRED", f"User has not accepted {asset_id}.")
         report = check_asset(root, state, asset)
@@ -394,13 +450,15 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         data = contained(root, asset["path"]).read_bytes()
         if hashlib.sha256(data).hexdigest() != asset["sha256"]:
             raise StudioError("ASSET_CHANGED", f"File changed during export: {asset_id}")
-        archive_path = f'sprites/{state["character_key"]}/{expression}.png'
+        archive_path = f'sprites/{state["character_key"]}/{slot}.png'
         payloads[archive_path] = data
         sprites.append({"expression": expression, "path": archive_path, "asset_id": asset_id,
                         "source_version": asset["version"], "sha256": asset["sha256"],
                         "technical_status": "passed", "art_review_status": "accepted"})
-        seen.add(expression)
-    manifest = {"schema_version": "1.0", "character_key": state["character_key"],
+        if has_mouth_states:
+            sprites[-1]["mouth_state"] = asset.get("mouth_state", "default")
+        seen.add(slot)
+    manifest = {"schema_version": "1.1" if has_mouth_states else "1.0", "character_key": state["character_key"],
                 "asset_kind": "full_character_expression", "background_mode": state["background_mode"],
                 "canvas": state["canvas"], "sprites": sprites}
     payloads["manifest.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
@@ -442,6 +500,7 @@ def parser() -> argparse.ArgumentParser:
         elif name == "add":
             command.add_argument("--image", required=True, type=Path)
             command.add_argument("--expression", choices=EXPRESSIONS, required=True)
+            command.add_argument("--mouth-state", choices=MOUTH_STATES, default="default")
             command.add_argument("--prompt-file", type=Path)
         elif name in ("review", "select"):
             command.add_argument("--asset", required=True)
@@ -452,6 +511,8 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--asset", action="append", dest="ids")
             command.add_argument("--output", required=name == "preview", type=Path)
             if name == "preview":
+                command.add_argument("--expression", choices=EXPRESSIONS, help="Show only this expression, retaining all versions and mouth states.")
+                command.add_argument("--mouth-state", choices=MOUTH_STATES, help="Show only this mouth state.")
                 command.add_argument("--face-box", type=int, nargs=4)
                 command.add_argument("--background", choices=("checker", "light", "dark"), default="checker")
                 command.add_argument("--labels-file", type=Path, help="UTF-8 JSON label overrides in the user's language.")
@@ -467,7 +528,8 @@ def main() -> int:
     args = parser().parse_args()
     try:
         if args.command == "presets":
-            result = {"presets": [{"id": key, **preset} for key, preset in EXPRESSION_PRESETS.items()]}
+            result = {"presets": [{"id": key, **preset} for key, preset in EXPRESSION_PRESETS.items()],
+                      "mouth_states": [{"id": key, **preset} for key, preset in MOUTH_PRESETS.items()]}
         elif args.command == "inspect":
             result = image_info(args.image)
         elif args.command == "validate":
@@ -476,7 +538,7 @@ def main() -> int:
         elif args.command == "init":
             result = init_project(args.project, args.source, args.character, args.background)
         elif args.command == "add":
-            result = add_asset(args.project, args.image, args.expression, args.prompt_file)
+            result = add_asset(args.project, args.image, args.expression, args.prompt_file, args.mouth_state)
         elif args.command == "status":
             state = read_state(args.project)
             result = {"canvas": state["canvas"], "background_mode": state["background_mode"],
@@ -488,7 +550,7 @@ def main() -> int:
             result = select_asset(args.project, args.asset)
         elif args.command == "preview":
             result = make_preview(args.project, args.output, args.ids, args.face_box, args.background,
-                                  load_preview_labels(args.labels_file))
+                                  load_preview_labels(args.labels_file), args.expression, args.mouth_state)
         else:
             result = export_pack(args.project, args.output, args.ids, args.preview)
         print(json.dumps(result, ensure_ascii=False, indent=2))

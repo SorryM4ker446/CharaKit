@@ -1,13 +1,13 @@
 ---
 name: charakit-expressions
-description: Generate full visual novel character expression variants from existing artwork while preserving facial detail, original style, design, and visual harmony. Use for expression editing, individual revisions, comparison previews, version selection, and PNG exports.
+description: Generate full visual novel character expressions and static mouth-open or mouth-closed variants from existing artwork while preserving facial detail, original style, design, and visual harmony. Use for expression editing, individual revisions, comparison previews, version selection, and PNG exports.
 ---
 
 # CharaKit Expressions
 
 The available expression module of the CharaKit plugin. Deliver complete, independent character images that a game can switch between. Edit the user's source artwork and change only the requested facial expression.
 
-Support twelve fixed expression presets. Read [expression-guidelines.md](references/expression-guidelines.md) to map a request to a preset and shape its prompt; `presets` lists the supported IDs. Generate only the requested expressions. Independently selectable mouth, gaze, and emotion-specific closed-eye states remain planned.
+Support twelve fixed expression presets and independently selectable static mouth states. Read [expression-guidelines.md](references/expression-guidelines.md) to map a request to a preset and shape its prompt; `presets` lists expressions and mouth states. For mouth-open/closed requests or revisions, read [mouth-states.md](references/mouth-states.md). Generate only requested expressions and states. Gaze and emotion-specific closed-eye states remain planned.
 
 Outfit and pose modules are planned in [the module roadmap](../../ROADMAP.md). Their reserved IDs are not callable Skills. Do not present clothing or pose editing as an implemented CharaKit module. This Skill remains scoped to expressions.
 
@@ -52,17 +52,19 @@ Example commands; replace bracketed paths with actual paths:
 python <skill>/scripts/studio.py presets
 python <skill>/scripts/studio.py init --project <output-dir> --source <source.png> --character <character-key>
 python <skill>/scripts/studio.py add --project <output-dir> --expression angry --image <generated.png> --prompt-file <prompt.txt>
+python <skill>/scripts/studio.py add --project <output-dir> --expression happy --mouth-state closed --image <generated-closed.png> --prompt-file <closed-prompt.txt>
+python <skill>/scripts/studio.py add --project <output-dir> --expression happy --mouth-state open --image <generated-open.png> --prompt-file <open-prompt.txt>
 python <skill>/scripts/studio.py preview --project <output-dir> --output <preview.png> --face-box <left> <top> <right> <bottom> --labels-file <labels.json>
 python <skill>/scripts/studio.py review --project <output-dir> --asset angry_v001 --status accepted --note <user-feedback>
 python <skill>/scripts/studio.py select --project <output-dir> --asset angry_v001
 python <skill>/scripts/studio.py export --project <output-dir>
 ```
 
-- `presets` returns the supported expression IDs, English names, and starting directions without a project. Translate names and directions for the user; fixed IDs remain unchanged.
+- `presets` returns expression IDs and `mouth_states` with English names and directions without a project. Translate names and directions for the user; fixed IDs remain unchanged.
 - `init` snapshots the source and records canvas and background mode without overwriting a project. Existing images can be checked with `inspect` / `validate` without initialization.
-- `add` preserves the candidate and returns a report even if technical checks fail. A nonzero exit code does not mean the saved candidate should be discarded.
-- `preview` shows full images on light, dark, or checker backgrounds. `--face-box` uses source-canvas pixel coordinates; magnification is for inspection only. Size mismatches are explicitly labeled, not corrected.
-- `review` accepts a technically valid candidate and selects it for that expression. `select` switches between accepted versions.
+- `add --mouth-state default|closed|open` preserves a candidate and returns a report even if technical checks fail. Omission uses `default`, which does not mean closed. Explicit states have independent versions; the first explicit state backs up schema 1.0 metadata and upgrades it to 1.1. A nonzero exit code does not mean the saved candidate should be discarded.
+- `preview` shows full images on light, dark, or checker backgrounds. `--face-box` uses source-canvas pixel coordinates; magnification is for inspection only. Use repeated `--asset` arguments to compare chosen candidates side by side, including two candidates for one state. `--expression` and `--mouth-state` optionally filter candidates; an expression filter retains all its states and versions. Size mismatches are explicitly labeled, not corrected.
+- `review` accepts a technically valid candidate and selects it for its expression and mouth state. `select` switches between accepted versions in that same state, preserving the other selections.
 - `export` rechecks selected files and fingerprints and packages only accepted, technically valid PNGs with a manifest.
 - Check for Pillow before first use and install `requirements.txt` in the current environment if needed. No API key is involved.
 - Operate sequentially within one character directory; multiple chats must not modify the same `run.json` concurrently.

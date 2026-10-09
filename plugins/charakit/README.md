@@ -1,6 +1,6 @@
 # CharaKit
 
-Version **0.1.4**. A modular Codex plugin for visual novel character artwork.
+Version **0.1.5**. A modular Codex plugin for visual novel character artwork.
 
 The available **CharaKit Expressions** module preserves the entire face, original art style, character design, and visual harmony. Each expression is an independent image. Generation uses the image editing tool available in the Codex host; the plugin does not lock a model or include an external API, database, MCP server, background service, or separate UI.
 
@@ -43,7 +43,11 @@ and eyes-closed versions. Preserve the entire face, original style,
 character design, composition, and transparent background.
 ```
 
-Twelve fixed presets are supported: `neutral`, `happy`, `sad`, `angry`, `surprised`, `eyes_closed`, `shy`, `confused`, `wry_smile`, `worried`, `confident`, and `crying`. Request a subset, such as shy and crying, or revise only one of them. Each preset keeps its own history and selected version. Existing projects keep their schema and need no migration. The six newer presets have workflow support and editing directions; generated art still needs visual review. See the [expression guide](skills/charakit-expressions/references/expression-guidelines.md).
+Twelve fixed presets are supported: `neutral`, `happy`, `sad`, `angry`, `surprised`, `eyes_closed`, `shy`, `confused`, `wry_smile`, `worried`, `confident`, and `crying`. Request a subset or revise only one expression/state. Each combination keeps its own history and selected version. Generated art still needs visual review. See the [expression guide](skills/charakit-expressions/references/expression-guidelines.md).
+
+Static mouth-open and mouth-closed states use this same Skill. For example: “Create happy, mouth closed and naturally open for speaking, two candidates per state, with paired previews.” See [mouth-states.md](skills/charakit-expressions/references/mouth-states.md). These are full static images, without lip synchronization or animation.
+
+The omitted mouth state is `default` (unspecified), not automatically closed. Schema 1.0 projects remain readable. The first explicit-state import backs up metadata and upgrades it to schema 1.1 while preserving source files, candidates, and selections. Use 0.1.5 or later with upgraded projects.
 
 You can also request a revision or export:
 
@@ -75,13 +79,15 @@ python skills/charakit-expressions/scripts/studio.py --help
 Commands: `presets`, `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`.
 
 - Source snapshots, versioned candidates, preview images, and exports are not overwritten.
-- `presets` lists supported IDs, English names, and starting directions without a project. Codex translates the human-readable descriptions into the user's language.
+- `presets` lists supported expressions and mouth states, English names, and starting directions without a project. Codex translates the human-readable descriptions into the user's language.
+- `add --mouth-state default|closed|open` versions each expression/state independently.
 - `run.json` records fingerprints, technical checks, feedback, and selected versions.
 - Failed `add` checks return exit code 2 but keep the saved candidate.
 - `preview --face-box LEFT TOP RIGHT BOTTOM` uses source-canvas coordinates for whole-face inspection. `--background` accepts `checker`, `light`, or `dark`.
 - `preview --labels-file labels.json` supports user-language labels; see the Skill's quality checklist.
+- `preview --expression happy` includes all happy candidates and states; `--mouth-state open` optionally narrows it. Use repeated `--asset` arguments for a specific two-candidate comparison.
 - `review --status accepted` requires explicit user feedback and passing technical checks. Positive feedback on a failed candidate can be saved separately.
-- `export` revalidates the selected, accepted versions and packages their unchanged PNG bytes with a manifest.
+- `export` revalidates the selected, accepted versions and packages their unchanged PNG bytes with a manifest. Explicit states export separately, for example `happy_mouth_open.png` and `happy_mouth_closed.png`; duplicates within one expression/state are blocked.
 - Work sequentially within a character directory; simultaneous writers are unsupported.
 
 Inputs are static PNG/JPEG files up to 50 MiB and 40 million pixels. Final assets must be PNGs matching the source canvas. Transparency checks are basic; artistic fidelity, clean edges, and game-switching stability require visual review. The helper never generates images, repairs faces, composites facial parts, rescales candidates, or changes alpha.

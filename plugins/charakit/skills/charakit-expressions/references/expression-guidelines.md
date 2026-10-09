@@ -21,7 +21,7 @@ Twelve fixed presets are supported. Users can specify intensity and particular f
 
 Generate only the expressions requested. If the user requests a complete standard set, use these twelve presets, reusing the source for `neutral` when appropriate. Map ordinary-language requests to the fixed IDs; explain the available choices when a request has no suitable preset rather than silently substituting a different emotion.
 
-`wry_smile` covers both an awkward smile and resignation at this stage; `confident` covers confidence and pride. Do not invent extra IDs for synonyms. Intensity changes remain versions of the same expression, with one selected version per preset. Independently selectable mouth-open, gaze, or emotion-specific closed-eye states remain planned.
+`wry_smile` covers both an awkward smile and resignation at this stage; `confident` covers confidence and pride. Do not invent extra IDs for synonyms. Intensity changes remain versions of the same expression and mouth state, with one selected version per combination. Static mouth-open and mouth-closed states are supported through [mouth-states.md](mouth-states.md); gaze and emotion-specific closed-eye states remain planned.
 
 Blush is appropriate to `shy`, and tears are part of `crying`; apply user exclusions and the source style. These effects are not defaults for other presets. Revise only the requested preset from the immutable source, retain prior candidates, and keep other selections intact.
 

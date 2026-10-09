@@ -35,10 +35,10 @@ class WorkflowTests(unittest.TestCase):
         self.root = self.folder / "character output"
         studio.init_project(self.root, self.source, "test_character")
 
-    def candidate(self, expression="angry", size=(64, 96), transparent=True):
+    def candidate(self, expression="angry", size=(64, 96), transparent=True, mouth_state="default"):
         path = self.folder / "candidate-\u00e9.png"
         fixture(path, size=size, color="#bb3366", transparent=transparent)
-        return studio.add_asset(self.root, path, expression)["asset"]
+        return studio.add_asset(self.root, path, expression, mouth_state=mouth_state)["asset"]
 
     def accepted(self, expression="angry"):
         asset = self.candidate(expression)
@@ -112,6 +112,7 @@ class WorkflowTests(unittest.TestCase):
                                 cwd=self.folder, capture_output=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
         presets = json.loads(result.stdout)["presets"]
+        self.assertEqual([p["id"] for p in json.loads(result.stdout)["mouth_states"]], ["default", "closed", "open"])
         self.assertEqual([p["id"] for p in presets], [
             "neutral", "happy", "sad", "angry", "surprised", "eyes_closed",
             "shy", "confused", "wry_smile", "worried", "confident", "crying",
@@ -315,6 +316,170 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stderr)["error"]["code"], "INVALID_PREVIEW_LABELS")
         self.assertFalse(output.exists())
+
+    def test_legacy_read_and_default_add_do_not_upgrade_or_infer_mouth_state(self):
+        legacy = self.accepted("surprised")
+        before = (self.root / "run.json").read_bytes()
+        self.assertEqual(studio.read_state(self.root)["schema_version"], "1.0")
+        self.assertEqual((self.root / "run.json").read_bytes(), before)
+        self.assertNotIn("mouth_state", legacy)
+        self.assertFalse((self.root / "run.schema-1.0.backup.json").exists())
+        result = studio.export_pack(self.root)
+        self.assertEqual(result["manifest"]["schema_version"], "1.0")
+        self.assertEqual(result["manifest"]["sprites"][0]["path"], "sprites/test_character/surprised.png")
+        self.assertNotIn("mouth_state", result["manifest"]["sprites"][0])
+
+    def test_mouth_upgrade_backs_up_legacy_and_keeps_independent_versions(self):
+        legacy = self.accepted("happy")
+        legacy_record = studio.read_state(self.root)["assets"][0]
+        before = (self.root / "run.json").read_bytes()
+        source_before = (self.root / "source.png").read_bytes()
+        closed = self.candidate("happy", mouth_state="closed")
+        opened = self.candidate("happy", mouth_state="open")
+        revised = self.candidate("happy", mouth_state="open")
+        self.assertEqual(closed["id"], "happy_mouth_closed_v001")
+        self.assertEqual(opened["id"], "happy_mouth_open_v001")
+        self.assertEqual(revised["id"], "happy_mouth_open_v002")
+        self.assertIsNone(closed["parent_asset_id"])
+        self.assertIsNone(opened["parent_asset_id"])
+        self.assertEqual(revised["parent_asset_id"], opened["id"])
+        state = studio.read_state(self.root)
+        self.assertEqual(state["schema_version"], "1.1")
+        self.assertEqual(state["selected"], {"happy": legacy["id"]})
+        self.assertEqual((self.root / "run.schema-1.0.backup.json").read_bytes(), before)
+        self.assertEqual((self.root / "source.png").read_bytes(), source_before)
+        self.assertEqual(state["assets"][0], legacy_record)
+        next_default = self.candidate("happy")
+        self.assertEqual(next_default["id"], "happy_v002")
+        self.assertEqual(next_default["parent_asset_id"], legacy["id"])
+
+    def test_mouth_selection_revision_and_rejection_only_affect_matching_state(self):
+        legacy = self.accepted("happy")
+        closed = self.candidate("happy", mouth_state="closed")
+        opened = self.candidate("happy", mouth_state="open")
+        for asset in (closed, opened):
+            studio.review_asset(self.root, asset["id"], "accepted", "User selected this state.")
+        newer = self.candidate("happy", mouth_state="open")
+        studio.review_asset(self.root, newer["id"], "accepted")
+        studio.select_asset(self.root, opened["id"])
+        self.assertEqual(studio.read_state(self.root)["selected"], {
+            "happy": legacy["id"], "happy_mouth_closed": closed["id"], "happy_mouth_open": opened["id"],
+        })
+        studio.review_asset(self.root, newer["id"], "rejected")
+        self.assertEqual(studio.read_state(self.root)["selected"]["happy_mouth_open"], opened["id"])
+        studio.review_asset(self.root, opened["id"], "rejected")
+        self.assertEqual(studio.read_state(self.root)["selected"], {
+            "happy": legacy["id"], "happy_mouth_closed": closed["id"],
+        })
+
+    def test_export_mixes_legacy_and_both_mouth_states_with_unchanged_bytes(self):
+        legacy = self.accepted("angry")
+        assets = [legacy, self.candidate("angry", mouth_state="closed"),
+                  self.candidate("angry", mouth_state="open")]
+        for asset in assets[1:]:
+            studio.review_asset(self.root, asset["id"], "accepted")
+        result = studio.export_pack(self.root)
+        self.assertEqual(result["manifest"]["schema_version"], "1.1")
+        self.assertEqual([s["mouth_state"] for s in result["manifest"]["sprites"]], ["default", "closed", "open"])
+        with zipfile.ZipFile(result["export"]) as archive:
+            self.assertEqual(len(archive.namelist()), 4)
+            for asset, sprite in zip(assets, result["manifest"]["sprites"]):
+                self.assertEqual(sprite["path"], f'sprites/test_character/{studio.asset_slot(asset)}.png')
+                self.assertEqual(archive.read(sprite["path"]), (self.root / asset["path"]).read_bytes())
+        default_only = studio.export_pack(self.root, ids=[legacy["id"]])
+        self.assertEqual(default_only["manifest"]["schema_version"], "1.0")
+
+    def test_export_duplicate_mouth_versions_fails_before_creating_archive(self):
+        first = self.candidate("happy", mouth_state="open")
+        second = self.candidate("happy", mouth_state="open")
+        for asset in (first, second):
+            studio.review_asset(self.root, asset["id"], "accepted")
+        output = self.folder / "duplicate.zip"
+        self.assert_code("DUPLICATE_STATE", studio.export_pack, self.root, output, [first["id"], second["id"]])
+        self.assertFalse(output.exists())
+
+    def test_invalid_mouth_state_does_not_modify_project(self):
+        before = (self.root / "run.json").read_bytes()
+        self.assert_code("INVALID_MOUTH_STATE", studio.add_asset, self.root, self.source, "happy", mouth_state="talking")
+        self.assertEqual((self.root / "run.json").read_bytes(), before)
+        self.assertFalse((self.root / "candidates").exists())
+        self.assertFalse((self.root / "run.schema-1.0.backup.json").exists())
+
+    def test_failed_mouth_candidate_is_retained_and_cannot_replace_valid_selection(self):
+        closed = self.candidate("worried", mouth_state="closed")
+        studio.review_asset(self.root, closed["id"], "accepted")
+        failed = self.candidate("worried", size=(32, 48), mouth_state="open")
+        self.assertTrue((self.root / failed["path"]).exists())
+        self.assert_code("TECHNICAL_CHECK_FAILED", studio.review_asset, self.root, failed["id"], "accepted")
+        self.assert_code("ART_REVIEW_REQUIRED", studio.select_asset, self.root, failed["id"])
+        self.assertEqual(studio.export_pack(self.root)["asset_ids"], [closed["id"]])
+
+    def test_mouth_metadata_and_selection_cannot_mislabel_assets(self):
+        opened = self.candidate("happy", mouth_state="open")
+        studio.review_asset(self.root, opened["id"], "accepted")
+        original = studio.read_state(self.root)
+        for mutation in ("mouth", "id", "selection", "schema"):
+            with self.subTest(mutation=mutation):
+                state = json.loads(json.dumps(original))
+                if mutation == "mouth":
+                    state["assets"][0]["mouth_state"] = "unknown"
+                elif mutation == "id":
+                    state["assets"][0]["mouth_state"] = "closed"
+                elif mutation == "selection":
+                    state["selected"] = {"happy_mouth_closed": opened["id"]}
+                else:
+                    state["schema_version"] = "1.0"
+                studio.write_state(self.root, state)
+                self.assert_code("INVALID_PROJECT", studio.read_state, self.root)
+        studio.write_state(self.root, original)
+
+    def test_cli_mouth_import_prompt_and_filtered_two_candidate_preview(self):
+        assets = [self.candidate("happy", mouth_state="closed"), self.candidate("sad", mouth_state="open")]
+        prompt = self.folder / "prompt.txt"
+        prompt.write_text("保持开心，仅自然张嘴。", encoding="utf-8")
+        result = subprocess.run([sys.executable, str(SCRIPT), "add", "--project", str(self.root),
+                                 "--image", str(self.source), "--expression", "happy", "--mouth-state", "open",
+                                 "--prompt-file", str(prompt)], capture_output=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        opened = json.loads(result.stdout)["asset"]
+        self.assertEqual(opened["mouth_state"], "open")
+        self.assertEqual((self.root / opened["prompt_path"]).read_text(encoding="utf-8"), prompt.read_text(encoding="utf-8"))
+        before = (self.root / "run.json").read_bytes()
+        labels = self.folder / "labels.json"
+        labels.write_text(json.dumps({"happy": "Happy", "mouth_closed": "Closed", "mouth_open": "Open"}), encoding="utf-8")
+        output = self.folder / "two-mouth-states.png"
+        result = subprocess.run([sys.executable, str(SCRIPT), "preview", "--project", str(self.root),
+                                 "--expression", "happy", "--output", str(output), "--labels-file", str(labels),
+                                 "--face-box", "10", "10", "54", "40"], capture_output=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["asset_ids"], [assets[0]["id"], opened["id"]])
+        with Image.open(output) as preview:
+            self.assertEqual(preview.size, (1080, 770))
+        selected = studio.make_preview(self.root, self.folder / "open-only.png", expression="happy", mouth_state="open")
+        self.assertEqual(selected["asset_ids"], [opened["id"]])
+        self.assertEqual((self.root / "run.json").read_bytes(), before)
+
+    def test_empty_mouth_preview_filter_does_not_create_misleading_source_only_sheet(self):
+        self.candidate("happy", mouth_state="closed")
+        output = self.folder / "empty.png"
+        self.assert_code("NO_MATCHING_ASSETS", studio.make_preview, self.root, output, expression="happy", mouth_state="open")
+        self.assertFalse(output.exists())
+
+    def test_conflicting_upgrade_backup_stops_before_candidate_copy(self):
+        backup = self.root / "run.schema-1.0.backup.json"
+        backup.write_bytes(b"previous backup")
+        before = (self.root / "run.json").read_bytes()
+        self.assert_code("MIGRATION_BACKUP_EXISTS", studio.add_asset, self.root, self.source, "happy", mouth_state="open")
+        self.assertEqual((self.root / "run.json").read_bytes(), before)
+        self.assertEqual(backup.read_bytes(), b"previous backup")
+        self.assertFalse((self.root / "candidates").exists())
+
+    def test_matching_upgrade_backup_allows_interrupted_upgrade_to_resume(self):
+        before = (self.root / "run.json").read_bytes()
+        (self.root / "run.schema-1.0.backup.json").write_bytes(before)
+        self.candidate("happy", mouth_state="closed")
+        self.assertEqual(studio.read_state(self.root)["schema_version"], "1.1")
+        self.assertEqual((self.root / "run.schema-1.0.backup.json").read_bytes(), before)
 
 if __name__ == "__main__":
     unittest.main()
