@@ -1,5 +1,7 @@
 # CharaKit Expressions
 
+**English** | [简体中文](README.zh-CN.md)
+
 **CharaKit Expressions** is a lightweight Codex plugin that creates complete character expression variants for visual novel games from an existing illustration.
 
 The plugin combines a focused Skill with a local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and whole-face comparisons, and exports selected resources.
@@ -83,6 +85,8 @@ If a user likes an image that fails technical checks, preserve their feedback se
 ## Repository layout
 
 ```text
+README.md                           English overview and instructions
+README.zh-CN.md                     Simplified Chinese overview and instructions
 .agents/plugins/marketplace.json     Local/Git marketplace entry
 .github/workflows/ci.yml             Tests and plugin package verification
 plugins/charakit-expressions/
