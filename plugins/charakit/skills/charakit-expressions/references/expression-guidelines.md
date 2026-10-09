@@ -27,11 +27,11 @@ Blush is appropriate to `shy`, and tears are part of `crying`; apply user exclus
 
 The six newer presets (`shy` through `crying`) have file-workflow support and editing directions. Artistic fidelity and distinctness require reviewing actual generated images; automated workflow tests do not validate image-generation quality.
 
-## Prompt example
+## Construct the expression prompt
 
-> Edit this complete character illustration to show restrained anger: slightly lower the eyebrows, tighten the gaze, and express displeasure with the mouth. Preserve the detail and existing design of the entire face, including the eyes, brows, nose, lips, facial contours, skin tone, and shading. Blend the change into the original brushwork, linework, and coloring, with coordinated eyes, brows, and mouth. Preserve the hair, accessories, clothing, weapon, pose, composition, and lighting. Return the complete original framing with a genuine transparent background and no text or emotion symbols.
+Use the shared [editing boundaries](../../../references/edit-boundaries.md) and the chosen preset's starting direction to identify the allowed facial movements and protected remainder. State the emotion/intensity, permitted movements/effects, facial design invariants, and full-image output. Do not describe the face as frozen when an expression needs movement, or treat permission to move a feature as permission to replace its design.
 
-Translate and adapt this starting point to the user's request. For opaque artwork, replace the transparency requirement with preservation of the source background. Hidden RGB values in transparent pixels are not visible background content.
+Eyes/brows may move as needed for the expression while retaining iris design, lash/line style, and characteristic brow rendering. Lips may change shape while preserving their style and facial proportions. Nose form, identity, head pose, skin rendering, and unrelated regions remain protected. Translate the concrete instruction into the user's language and derive named exclusions from the source. Preserve its transparency or opaque background; hidden RGB is not visible background content.
 
 For an unsatisfactory candidate, identify a visible issue before a targeted revision: weakened nose shading, thicker mouth lines, a rounder face, changed skin tone, or simplified iris layers. Do not use "prettier" or "more detailed" as a reason to redesign the face.
 

@@ -2,11 +2,13 @@
 
 [English](README.md) | **简体中文**
 
-**CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。当前可用的 **CharaKit Expressions** 表情模块，可基于已有立绘生成完整的表情差分图。
+**CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。**CharaKit Expressions** 生成完整表情差分，**CharaKit Outfits** 为指定的一件现有衣物改色。
 
-当前表情模块由专注表情编辑的 Skill 和本地 Python 助手组成。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与整个面部的对比预览，以及导出选定资源。
+两个模块各有独立 Skill，共用本地 Python 文件助手。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与局部对比预览，以及导出选定资源。
 
-开发版本：**0.1.5**。
+开发版本：**0.1.9**。
+
+所有已实现模块遵循共同的[编辑边界规则](plugins/charakit/references/edit-boundaries.md)：明确目标、允许变化的属性、目标内部不变量，以及边界和其余区域的保护要求。未请求的部件与属性默认受保护。提示词和检查由请求、部件领域及实际原图推导，历史测试角色不成为通用模板。Outfits 提供[服饰专项规则](plugins/charakit/skills/charakit-outfits/references/garment-domains.md)；Expressions 分别限定表情动作和嘴部状态，不因此扩大其他部件的编辑范围。
 
 版本更新说明发布在 GitHub Releases 中。
 
@@ -15,10 +17,10 @@
 | 模块 | Skill 标识 | 状态 |
 | --- | --- | --- |
 | CharaKit Expressions | `charakit-expressions` | 已实现：完整表情差分 |
-| CharaKit Outfits | `charakit-outfits` | 计划中：服饰编辑与整套换装 |
+| CharaKit Outfits | `charakit-outfits` | 已实现：单件衣物改色；整套换装仍在规划中 |
 | CharaKit Poses | `charakit-poses` | 计划中：静态动作与姿势编辑 |
 
-插件安装标识为 `charakit`；当前表情模块使用 `$charakit-expressions` 调用。服饰与姿势模块的名称已在[模块定义](plugins/charakit/modules.json)中预留，尚未打包相应 Skill，当前不能调用。开发顺序见[模块规划（英文）](plugins/charakit/ROADMAP.md)。
+插件安装标识为 `charakit`；表情与静态嘴部状态使用 `$charakit-expressions`，指定衣物改色使用 `$charakit-outfits`。姿势模块仍在规划中，尚不能调用。详见[模块定义](plugins/charakit/modules.json)与[模块规划（英文）](plugins/charakit/ROADMAP.md)。
 
 ## 当前表情功能
 
@@ -46,6 +48,39 @@
 未指定嘴部状态时使用 `default`，不把旧图片自动判定成闭嘴。旧项目可直接读取；首次加入明确张嘴／闭嘴状态时，会备份旧记录并升级到 schema 1.1，源图、历史候选和选择保留。升级后的项目需使用 0.1.5 或更高兼容版本。
 
 每个表情差分都是一张完整图片。插件不提取五官部件、不把生成的脸拼回原图，也不包含数据库、外部图像 API、ComfyUI 接入、MCP 服务或独立应用。
+
+## 指定衣物改色
+
+```text
+使用 $charakit-outfits，只把这张立绘的外套面料改成深蓝色。
+保留饰边、纽扣、材质、衣褶、明暗，以及领带、裙子、头发、
+整个面部、表情、嘴部状态和姿势。生成两张候选，preview 中对比两张，
+同时放大面部与外套区域。
+```
+
+本阶段仅支持一件现有衣物的颜色变化，整套换装、配饰增减、穿脱状态及自动组合管理仍在规划中。实际生图的改色范围和细节保留需要人工检查，工作流测试通过不等于美术验收。
+
+服饰使用独立项目，例如 `art-output/my-character/outfits/`，保留自己的不可变源图。助手记录方案标识、目标衣物与颜色；每个“目标衣物＋颜色”方案独立保留版本和选择。单张修订沿用原目标与颜色，改变定义时另建方案标识。
+
+服饰项目与导出清单使用 schema 1.2。现有表情项目仍用 1.0／1.1，入口、标识和导出文件名保留。完整插件包含共用的 `lib/studio_core.py`，请与两个 Skill 一起保留。详见[服饰 Skill](plugins/charakit/skills/charakit-outfits/SKILL.md)。
+
+生成前，`prepare` 保存允许改色的边界、保护区域描述和原图局部参考。默认只提交一张完整原图，使用简洁指令说明允许改色、排除项、其余内容保留及输出要求。详细检查清单保留在编辑说明中；仅在目标识别含糊或用户请求参考图对照、且工具支持时提交局部参考。最终美术修改仍全部由宿主图像工具完成；局部图不是蒙版、像素锁定或最终资源。
+
+对比整图、整个面部、目标衣物，以及武器、头发轮廓、手部和邻近装备等相关非目标细节。可重复使用 `preview --detail-box`，以不同输出路径放大这些区域。非目标区域重绘仍是已知限制；简化提示词和参考图流程尚未证明能解决它。
+
+查看结果后，`fidelity` 分别记录“目标改色”和“保护区域保留”的人工观察：通过、失败或不确定，并说明观察依据。它不会自动认可候选。关联编辑说明的候选需要两项观察通过，同时满足技术检查与真实用户认可，才能选择／导出。旧记录不改写，也不推断历史检查；新门槛需使用 0.1.7 或更新助手，旧助手不会执行这些门槛。
+
+```shell
+python plugins/charakit/skills/charakit-outfits/scripts/studio.py init --project art-output/my-character/outfits --source character.png --character my-character
+python plugins/charakit/skills/charakit-outfits/scripts/studio.py prepare --project art-output/my-character/outfits --outfit coat_navy --target "外套面料" --color "深蓝色" --boundary "只改主体布料，排除里衬、饰边与纽扣" --protect "整个面部、表情、头发与姿势" --protect "其他衣物和配饰" --target-box 80 250 280 500
+python plugins/charakit/skills/charakit-outfits/scripts/studio.py add --project art-output/my-character/outfits --outfit coat_navy --target "外套面料" --color "深蓝色" --image generated-coat-navy.png --prompt-file prompt.txt --brief-file art-output/my-character/outfits/briefs/coat_navy_v001.json
+python plugins/charakit/skills/charakit-outfits/scripts/studio.py preview --project art-output/my-character/outfits --outfit coat_navy --output art-output/my-character/outfits/preview/coat-navy-v001.png --face-box 100 100 200 200 --detail-box 80 250 280 500
+python plugins/charakit/skills/charakit-outfits/scripts/studio.py fidelity --project art-output/my-character/outfits --asset coat_navy_v001 --target-check passed --protection-check uncertain --note "目标颜色可见；面部与附近饰边尚需检查，保护区域暂不确定"
+```
+
+请替换为实际路径与预览区域坐标。反馈、选择与导出沿用表情助手的同名命令。完整 PNG 导出到 `sprites/<character>/outfits/<outfit-id>.png`，保持候选字节不变；技术失败候选仍不能正式导出。
+
+上面的保真命令只演示“不确定”结果，不能照抄为实际验收。依据真实对比记录观察；修订沿用编辑说明，但不继承上一张的检查结论。边界需要进一步明确时可准备新版说明。
 
 ## 环境要求
 
@@ -136,11 +171,20 @@ plugins/charakit/
   modules.json                      已实现与计划中模块的定义
   ROADMAP.md                        模块范围与开发顺序
   requirements.txt                  助手依赖
+  lib/studio_core.py                两个模块共用的文件工作流
   skills/charakit-expressions/
     SKILL.md                        工作流与语言规则
     references/                     表情与检查指南
     scripts/studio.py               本地文件助手
+  skills/charakit-outfits/
+    SKILL.md                        指定衣物改色工作流
+    references/recolor-guide.md     改色与检查指南
+    references/garment-domains.md    部件、材质与界面专项规则
+    scripts/studio.py               服饰文件助手入口
+  references/edit-boundaries.md     跨模块共用的编辑范围规则
 tests/test_studio.py                 使用合成图片的工作流测试
+tests/test_outfits.py                改色与打包工作流测试
+tests/test_outfit_fidelity.py        原图局部参考与人工保真检查测试
 tools/build_plugin.py               插件 ZIP 构建脚本
 ```
 
@@ -149,7 +193,7 @@ tools/build_plugin.py               插件 ZIP 构建脚本
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.5.zip
+python tools/build_plugin.py --output dist/charakit-0.1.9.zip
 ```
 
 测试使用合成图片，不需要第三方角色美术。CI 在 Linux 和 Windows 上运行。构建脚本不会覆盖已存在的 ZIP。
@@ -158,7 +202,7 @@ python tools/build_plugin.py --output dist/charakit-0.1.5.zip
 
 ## 当前限制
 
-表情编辑可能改变面部以外的细节，或生成不同尺寸的画布。角色身份、面部细节、原画风和位置对齐需要人工检查，仅靠提示词无法保证一致性。
+表情或衣物编辑可能改变未请求的细节，或生成不同尺寸的画布。角色身份、面部细节、原画风和位置对齐需要人工检查，仅靠提示词无法保证一致性。
 
 自动检查覆盖文件格式、画布尺寸、透明背景和文件完整性，不评价美术质量或游戏中的表情切换效果。正式导出需要通过技术检查，并在人工检查后确认采用。
 

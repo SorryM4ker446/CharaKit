@@ -10,6 +10,8 @@ Use the existing Expressions Skill for mouth-open and mouth-closed requests. The
 
 An explicit mouth state overrides a preset's starting mouth direction. For example, surprised/closed retains surprised eyes and brows while closing the mouth. Eyes-closed/open keeps the eyes closed. Mouth state metadata describes the request; it is not an automatic visual judgment.
 
+Apply the shared [editing boundaries](../../../references/edit-boundaries.md) at mouth-component scope. When only changing mouth state, allow the lip contour and interior changes necessary for opening/closure; retain lip rendering, facial proportions, and the established eyes, brows, gaze, emotion, and head pose. When emotion and mouth state are both requested, apply both declared permissions without extending them to clothing, hair, props, or other unrequested properties.
+
 ## Generation and revision
 
 Generate only requested combinations. An ordinary request for happy does not require happy/open and happy/closed. For “happy, open and closed, two candidates each,” save four images: two versions in each state. Do not create new expression IDs such as `talking`.

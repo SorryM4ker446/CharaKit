@@ -1,6 +1,8 @@
 # CharaKit
 
-Version **0.1.5**. A modular Codex plugin for visual novel character artwork.
+Version **0.1.9**. A modular Codex plugin for visual novel character artwork.
+
+Use the shared [editing boundaries](references/edit-boundaries.md) across available modules: target, allowed property, target invariants, and protected interfaces/remainder. Unrequested components and properties remain protected. Derive prompt wording and inspection regions from the actual source and active domain; Outfits uses [garment domains](skills/charakit-outfits/references/garment-domains.md), while Expressions distinguishes emotion movements from mouth-only changes. These rules do not expand implemented capabilities or enforce pixel locks.
 
 The available **CharaKit Expressions** module preserves the entire face, original art style, character design, and visual harmony. Each expression is an independent image. Generation uses the image editing tool available in the Codex host; the plugin does not lock a model or include an external API, database, MCP server, background service, or separate UI.
 
@@ -9,10 +11,10 @@ The available **CharaKit Expressions** module preserves the entire face, origina
 | Module | Skill ID | Status |
 | --- | --- | --- |
 | Expressions | `charakit-expressions` | Available |
-| Outfits | `charakit-outfits` | Planned |
+| Outfits | `charakit-outfits` | Available: one-garment recoloring |
 | Poses | `charakit-poses` | Planned |
 
-The plugin ID is `charakit`. Only `$charakit-expressions` is callable today. [modules.json](modules.json) reserves future module IDs; [ROADMAP.md](ROADMAP.md) defines their scope and order. Planned modules have no packaged Skills.
+The plugin ID is `charakit`. Use `$charakit-expressions` for expressions and static mouth states, or `$charakit-outfits` for recoloring one existing garment. Full outfit replacement, accessory additions/removals, and poses remain planned. [modules.json](modules.json) and [ROADMAP.md](ROADMAP.md) define availability and scope.
 
 ## Install
 
@@ -64,19 +66,45 @@ Export the versions I selected as game-ready PNGs and a ZIP.
 
 ## Local helper
 
+For garment recoloring, attach the source and ask:
+
+```text
+Use $charakit-outfits to recolor only the jacket fabric to navy blue.
+Keep trim, buttons, material, folds, lighting, face, expression, mouth state,
+hair, other clothing, and pose. Generate two candidates and compare them.
+```
+
+Outfits uses its own project, such as `art-output/my-character/outfits/`, with schema 1.2. Each target garment/color option has independent versions, review, and selection. Actual image quality requires visual review. See the [Outfits Skill](skills/charakit-outfits/SKILL.md).
+
+Use `prepare` before generation to save the allowed boundary, protected regions, and a source-only detail reference. Default to one complete source and a concise prompt describing the allowed recolor, exclusions, preservation, and output. Retain the detailed checklist in the brief; send the crop only for ambiguous target identification or a requested reference comparison when supported. The local crop is not an edit mask or a final asset; all final edits stay in the host image tool.
+
+Compare the full image, whole face, target garment, and relevant non-target details such as weapons, hair, hands, and neighboring equipment. Repeat `preview --detail-box` with distinct output paths for additional regions. After inspection, use `fidelity` to record target and protection observations independently. Assistant observations remain separate from user acceptance and technical checks. Non-target repainting remains a known limitation; this simplified workflow is not a proven visual fix.
+
+```shell
+python skills/charakit-outfits/scripts/studio.py init --project art-output/my-character/outfits --source character.png --character my-character
+python skills/charakit-outfits/scripts/studio.py prepare --project art-output/my-character/outfits --outfit coat_navy --target "jacket fabric" --color "navy blue" --boundary "Fabric only; exclude trim and buttons" --protect "Entire face, expression, hair, pose and other clothing" --target-box 80 250 280 500
+python skills/charakit-outfits/scripts/studio.py add --project art-output/my-character/outfits --outfit coat_navy --target "jacket fabric" --color "navy blue" --image generated.png --prompt-file prompt.txt --brief-file art-output/my-character/outfits/briefs/coat_navy_v001.json
+python skills/charakit-outfits/scripts/studio.py preview --project art-output/my-character/outfits --outfit coat_navy --output comparison.png --face-box 100 100 200 200 --detail-box 80 250 280 500
+python skills/charakit-outfits/scripts/studio.py fidelity --project art-output/my-character/outfits --asset coat_navy_v001 --target-check passed --protection-check uncertain --note "Color changed; protected regions need further inspection"
+```
+
+Replace paths and coordinates. `--detail-box` adds a garment enlargement below the optional face row. Revisions use the same target/color definition; use a new outfit ID for a different garment or color. Review, select, and export commands follow the Expressions workflow. Selected outfit PNGs export unchanged to `sprites/<character>/outfits/<outfit-id>.png`.
+
+Brief-linked candidates require both observed checks passed before acceptance, selection, or export. The example records uncertainty, not approval; report only actual visible findings. A failed/uncertain record clears this candidate's selection without rewriting the user's review history. Revisions inherit the brief and need fresh observations. Legacy records remain readable without invented checks; use helper 0.1.7 or newer for the new gates, which older helpers do not enforce. Prompt guidance and extra references cannot guarantee unchanged non-target pixels.
+
 Requires Python **3.11+** and Pillow. Install from this plugin directory:
 
 ```shell
 python -m pip install -r requirements.txt
 ```
 
-The helper is `skills/charakit-expressions/scripts/studio.py`. Use its absolute installed path when calling it outside this directory:
+The entrypoints are `skills/charakit-expressions/scripts/studio.py` and `skills/charakit-outfits/scripts/studio.py`; both use `lib/studio_core.py` inside this plugin. Keep the complete plugin together. Use the entrypoint's absolute installed path when calling it outside this directory:
 
 ```shell
 python skills/charakit-expressions/scripts/studio.py --help
 ```
 
-Commands: `presets`, `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`.
+Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`; Expressions also provides `presets`, and Outfits provides `prepare` and `fidelity`. The CLI rejects a project belonging to the other module before writing. Existing Expressions projects retain schema 1.0/1.1 and their original paths.
 
 - Source snapshots, versioned candidates, preview images, and exports are not overwritten.
 - `presets` lists supported expressions and mouth states, English names, and starting directions without a project. Codex translates the human-readable descriptions into the user's language.

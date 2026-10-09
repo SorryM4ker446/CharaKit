@@ -18,6 +18,7 @@ Compare enlarged corresponding face regions in the original and candidate:
 
 ## Full image and game display
 
+- Compare against the allowed movements and invariants defined by the active expression/mouth domain, then inspect relevant interfaces and protected details selected from the source. Use additional `preview --detail-box` outputs for complex non-face details where useful; do not assume a particular prop or garment exists.
 - Preserve style, clothing patterns, hair, accessories, weapons, and character design.
 - Keep facial linework, color, materials, and lighting harmonious with the body.
 - Compare at identical display size and position; inspect head/body movement and outline flicker.
@@ -30,7 +31,7 @@ Compare enlarged corresponding face regions in the original and candidate:
 - Explicit selection or satisfaction counts as art feedback; do not ask for duplicate confirmation.
 - `review --status accepted` requires technical validity. If the user likes a technically failed image, preserve that feedback in a separate review note while retaining the failure. Formal export remains blocked.
 - Record a specific art defect only when the user identifies it or it is visible in the current candidate. A checklist item is not evidence of a defect.
-- A previous experiment exposed whole-face fidelity and canvas-size problems. A later five-expression batch received positive user feedback on its art effect while still failing canvas validation. Do not carry the older rejection forward as a rejection of later candidates.
+- Keep observations and feedback tied to the actual candidate/version. A defect or approval in an earlier experiment does not establish either for a later image.
 
 ## Localized preview labels
 

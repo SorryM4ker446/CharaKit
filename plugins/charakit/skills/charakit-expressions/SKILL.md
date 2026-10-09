@@ -7,9 +7,11 @@ description: Generate full visual novel character expressions and static mouth-o
 
 The available expression module of the CharaKit plugin. Deliver complete, independent character images that a game can switch between. Edit the user's source artwork and change only the requested facial expression.
 
+Read the shared [editing boundaries](../../references/edit-boundaries.md) when defining a request and inspecting a result. Distinguish allowed expression movements from facial design invariants; a mouth-only request protects the established emotion and non-mouth features. Protect every unrequested component/property, and derive concrete boundaries and comparison regions from the actual source rather than a previous test character.
+
 Support twelve fixed expression presets and independently selectable static mouth states. Read [expression-guidelines.md](references/expression-guidelines.md) to map a request to a preset and shape its prompt; `presets` lists expressions and mouth states. For mouth-open/closed requests or revisions, read [mouth-states.md](references/mouth-states.md). Generate only requested expressions and states. Gaze and emotion-specific closed-eye states remain planned.
 
-Outfit and pose modules are planned in [the module roadmap](../../ROADMAP.md). Their reserved IDs are not callable Skills. Do not present clothing or pose editing as an implemented CharaKit module. This Skill remains scoped to expressions.
+Garment recoloring uses the separate [CharaKit Outfits Skill](../charakit-outfits/SKILL.md). Full outfit replacement and pose editing remain planned in [the module roadmap](../../ROADMAP.md). This Skill remains scoped to expressions; keep outfit projects and candidates separate.
 
 ## User language
 
@@ -44,7 +46,7 @@ Save each generated image as a candidate before checking it. Saving or displayin
 
 ## Local helper
 
-`scripts/studio.py` uses Python 3.11+ and Pillow, runs once, and exits. Resolve its absolute path from the actual installed Skill location. Use proper shell quoting for paths with spaces or Unicode.
+`scripts/studio.py` uses Python 3.11+ and Pillow, runs once, and exits. Resolve its absolute path from the actual installed Skill location. Keep the complete plugin including its shared `lib/studio_core.py` together. Use proper shell quoting for paths with spaces or Unicode.
 
 Example commands; replace bracketed paths with actual paths:
 

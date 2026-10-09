@@ -28,4 +28,4 @@ jobs:
       - name: Build plugin package
         run: python tools/build_plugin.py --output dist/charakit.zip
       - name: Verify package contents and integrity
-        run: python -c "import zipfile; p=zipfile.ZipFile('dist/charakit.zip'); assert p.testzip() is None; assert 'plugin.json' in p.namelist(); assert 'skills/charakit-expressions/SKILL.md' in p.namelist(); assert all(not n.startswith(('art-output/', '.dev-checks/')) and not n.endswith('.pyc') for n in p.namelist()); p.close()"
+        run: python -c "import zipfile; p=zipfile.ZipFile('dist/charakit.zip'); assert p.testzip() is None; assert {'plugin.json', 'lib/studio_core.py', 'skills/charakit-expressions/SKILL.md', 'skills/charakit-outfits/SKILL.md'}.issubset(p.namelist()); assert all(not n.startswith(('art-output/', '.dev-checks/')) and not n.endswith('.pyc') for n in p.namelist()); p.close()"

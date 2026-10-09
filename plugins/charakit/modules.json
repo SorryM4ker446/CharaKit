@@ -11,8 +11,9 @@
     {
       "id": "outfits",
       "display_name": "CharaKit Outfits",
-      "status": "planned",
-      "skill_id": "charakit-outfits"
+      "status": "available",
+      "skill_id": "charakit-outfits",
+      "skill_path": "skills/charakit-outfits/SKILL.md"
     },
     {
       "id": "poses",
