@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.dev-checks/
+dist/
+art-output/
+
+# Local credentials and operating-system files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+Thumbs.db

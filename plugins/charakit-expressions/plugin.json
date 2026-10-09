@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "charakit-expressions",
+  "version": "0.1.2",
+  "description": "Generate full character expression variants in Codex while preserving facial detail, original style, design and visual harmony.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "CharaKit Expressions",
+        "shortDescription": "Create full character expression variants while preserving facial detail, original style, and design.",
+        "category": "Productivity"
+      }
+    }
+  }
+}
