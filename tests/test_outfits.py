@@ -236,6 +236,7 @@ class OutfitTests(unittest.TestCase):
         with zipfile.ZipFile(package) as archive:
             self.assertIsNone(archive.testzip())
             self.assertIn("lib/studio_core.py", archive.namelist())
+            self.assertIn("lib/delivery_report.py", archive.namelist())
             self.assertIn("skills/charakit-outfits/SKILL.md", archive.namelist())
             self.assertFalse(any(name.endswith(".pyc") for name in archive.namelist()))
             archive.extractall(installed)
@@ -253,6 +254,7 @@ class OutfitTests(unittest.TestCase):
             ("preview", "--project", project, "--outfit", "coat_navy", "--detail-box", 25, 38, 70, 95, "--output", preview),
             ("quality", "--project", project, "--asset", "coat_navy_v001", "--assessment-file", assessment_file, "--comparison", preview),
             ("deliver", "--project", project, "--asset", "coat_navy_v001"),
+            ("report", "--project", project, "--output", self.folder / "packaged delivery report", "--language", "en"),
             ("review", "--project", project, "--asset", "coat_navy_v001", "--status", "accepted", "--note", "Synthetic workflow check"),
             ("export", "--project", project),
         ]

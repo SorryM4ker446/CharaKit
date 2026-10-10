@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "charakit",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "A modular Codex plugin for visual novel character expressions and garment recoloring. Full outfit replacement and pose editing are planned.",
   "extensions": {
     "com.openai": {

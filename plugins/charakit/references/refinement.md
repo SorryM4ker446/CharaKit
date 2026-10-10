@@ -23,6 +23,8 @@ Generation or tool errors do not authorize an extra request. A stale review, mod
 
 Default conversation delivery contains only the passed final per case, plus a concise result when the limit is reached. Show intermediate images only if the user asks to inspect them. Host-native image-tool previews can appear automatically and cannot be suppressed by this Skill; do not promise the host will display no process images. All candidate bytes remain archived. This mode can use up to three images per requested case; “final only” describes presentation, not eliminating intermediate generation work or cost.
 
+Finish the batch with the shared [delivery report](delivery-report.md). `report` assembles passed final PNGs, a final-only preview with source references, and a Markdown/JSON report of all in-scope cases. Exhausted cases receive a failure explanation without a final PNG; if none pass, no image preview is generated. Saved per-round scores/findings and process evidence are included without regrading. Use helper 0.1.15 or later for this delivery package.
+
 ## Helper example
 
 Replace paths and IDs with actual returned values. The image-tool step remains a Codex action between status and import; this is not an autonomous Python image-generation loop.

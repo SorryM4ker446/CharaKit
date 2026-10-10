@@ -1,6 +1,8 @@
 # CharaKit
 
-Version **0.1.14**. A modular Codex plugin for visual novel character artwork.
+Version **0.1.15**. A modular Codex plugin for visual novel character artwork.
+
+Finish each generation/revision batch with [final images, a preview and a report](references/delivery-report.md). The shared `report` command reads saved reviews from one or more implemented-module projects, copies only gated final PNGs unchanged, builds a final preview and writes Markdown/JSON with scores, findings and evidence links. All-failed runs produce reports only. Reporting never generates, regrades, accepts or selects artwork. Requires helper 0.1.15 or later.
 
 Opt-in [bounded refinement](references/refinement.md) allows three total rounds per expression/mouth-state or garment/color case, using the previous complete image as the edit target and the immutable original as the design authority. Stop on passage or exhaustion, retain process evidence, and use `refine-deliver` for the passed final only. Codex still invokes the host tool and judges real comparisons; the helper tracks rounds and gates, not automatic visual scores. Fresh rubric 1.1 assessments use 80/100 with a 4/5 floor and all existing domain/technical/fidelity vetoes. Historical rubric 1.0 keeps its 85 threshold. Requires helper 0.1.14 or later; native tool previews may still appear automatically.
 
@@ -114,7 +116,7 @@ The entrypoints are `skills/charakit-expressions/scripts/studio.py` and `skills/
 python skills/charakit-expressions/scripts/studio.py --help
 ```
 
-Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`, `enable-quality`, `quality`, `deliver`, `refine-start`, `refine-status`, `refine-add`, `refine-deliver`; Expressions also provides `presets`, and Outfits provides `prepare` and `fidelity`. The CLI rejects a project belonging to the other module before writing. Existing Expressions projects retain schema 1.0/1.1 and their original paths.
+Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `preview`, `export`, `enable-quality`, `quality`, `deliver`, `refine-start`, `refine-status`, `refine-add`, `refine-deliver`, `report`; Expressions also provides `presets`, and Outfits provides `prepare` and `fidelity`. Module-specific commands reject a project belonging to the other module before writing; shared `report` may read both. Existing Expressions projects retain schema 1.0/1.1 and their original paths.
 
 - Source snapshots, versioned candidates, preview images, and exports are not overwritten.
 - `presets` lists supported expressions and mouth states, English names, and starting directions without a project. Codex translates the human-readable descriptions into the user's language.

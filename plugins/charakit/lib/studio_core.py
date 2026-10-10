@@ -1112,9 +1112,29 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
     return {"export": str(output.resolve()), "asset_ids": chosen, "manifest": manifest}
 
 
+def generate_report(projects: list[Path], output: Path, **options) -> dict:
+    """Snapshot final delivery gates and saved reviews without changing project state."""
+    import importlib.util
+    from types import SimpleNamespace
+    path = Path(__file__).with_name("delivery_report.py")
+    spec = importlib.util.spec_from_file_location("charakit_delivery_report", path)
+    report = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(report)
+    return report.generate_report(SimpleNamespace(**globals()), projects, output, **options)
+
+
 def parser(module: str = "expressions") -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
+    report = commands.add_parser("report", help="Build gated final PNGs, a final preview and a saved-review report; never generates or scores art.")
+    report.add_argument("--project", required=True, action="append", type=Path, dest="projects")
+    report.add_argument("--output", required=True, type=Path, help="New delivery directory; existing files are never overwritten.")
+    report.add_argument("--asset", action="append", dest="ids", help="Restrict one project's cases; tracked assets resolve to the current refinement version.")
+    report.add_argument("--language", choices=("zh-CN", "en"), default="zh-CN")
+    report.add_argument("--title")
+    report.add_argument("--labels-file", type=Path)
+    report.add_argument("--face-box", type=int, nargs=4)
+    report.add_argument("--background", choices=("checker", "light", "dark"), default="light")
     quality = commands.add_parser("quality", help="Record evidence-based internal visual review; does not score images automatically.")
     quality.add_argument("--project", required=True, type=Path)
     quality.add_argument("--asset", required=True)
@@ -1210,7 +1230,11 @@ def main(module: str = "expressions") -> int:
     try:
         if args.command in ("add", "status", "review", "select", "preview", "export", "prepare", "fidelity", "quality", "enable-quality", "deliver", "refine-start", "refine-status", "refine-add", "refine-deliver"):
             require_module(read_state(args.project), module)
-        if args.command == "presets":
+        if args.command == "report":
+            result = generate_report(args.projects, args.output, ids=args.ids, language=args.language,
+                                     title=args.title, labels=load_preview_labels(args.labels_file),
+                                     face_box=args.face_box, background=args.background)
+        elif args.command == "presets":
             result = {"presets": [{"id": key, **preset} for key, preset in EXPRESSION_PRESETS.items()],
                       "mouth_states": [{"id": key, **preset} for key, preset in MOUTH_PRESETS.items()]}
         elif args.command == "inspect":

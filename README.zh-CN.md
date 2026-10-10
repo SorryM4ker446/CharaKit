@@ -6,7 +6,9 @@
 
 两个模块各有独立 Skill，共用本地 Python 文件助手。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与局部对比预览，以及导出选定资源。
 
-开发版本：**0.1.14**。
+开发版本：**0.1.15**。
+
+每次生图／修订结束默认交付[成品 PNG、最终版 preview 与完整报告](plugins/charakit/references/delivery-report.md)。共用 `report` 命令可汇总表情、mouth 和 outfits，包含请求、逐轮评分、专项检查、失败原因和过程证据，只复制门禁通过的最终 PNG，保留原字节。全部失败时只输出报告，不生成成品图或 preview；不新增生图、不重新评分、不自动验收。需要 0.1.15 或更新助手。
 
 可启用[评审驱动的限次修订](plugins/charakit/references/refinement.md)：每个表情／mouth 状态或衣物／颜色方案最多三轮（首版＋两次修订）。未通过时根据具体评审问题，在上一版完整图上定向改进，同时用原图约束身份、设计和材质；通过即停止，只交付最终通过版本，过程图保留可查看。三轮仍不合格就停止并报告原因，不把最高分失败图当作合格资产。实际生图和视觉评审仍由 Codex 与宿主图像工具执行，本地助手记录预算与执行门禁。宿主原生生图预览可能仍自动出现。
 
@@ -210,7 +212,7 @@ tools/build_plugin.py               插件 ZIP 构建脚本
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.14.zip
+python tools/build_plugin.py --output dist/charakit-0.1.15.zip
 ```
 
 测试使用合成图片，不需要第三方角色美术。CI 在 Linux 和 Windows 上运行。构建脚本不会覆盖已存在的 ZIP。

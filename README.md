@@ -6,7 +6,9 @@
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.14**.
+Development version: **0.1.15**.
+
+Every generation/revision batch ends with [final PNGs, a preview and a saved-review report](plugins/charakit/references/delivery-report.md). The shared `report` command can cover Expressions, mouth states and Outfits together, includes per-round scores and failure findings, and copies only gated final PNGs unchanged. If none pass, it produces only the report. Reporting does not generate, regrade or accept artwork; use helper 0.1.15 or later.
 
 Opt-in [review-driven bounded refinement](plugins/charakit/references/refinement.md) permits three total rounds per expression/mouth-state or garment/color case: the first image plus at most two targeted revisions. Use the previous complete image as the edit target and the immutable original as the design authority. Stop on passage or the limit; deliver only the passed final and retain process images for inspection. Codex still performs host-tool generation and visual review; the helper records budgets and gates. Host-native generation previews may appear automatically.
 
@@ -199,7 +201,7 @@ tools/build_plugin.py               Plugin ZIP builder
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.14.zip
+python tools/build_plugin.py --output dist/charakit-0.1.15.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.
