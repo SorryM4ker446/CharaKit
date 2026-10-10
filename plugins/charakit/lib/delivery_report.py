@@ -15,7 +15,7 @@ ZH = {
     'passed': '通过', 'exhausted': '达到上限，未通过', 'blocked': '记录或文件失效',
     'review': '待评审', 'revise': '待修订', 'failed': '未通过', 'uncertain': '存在不确定项',
     'unrecorded': '未记录', 'pending': '待评审', 'stale': '证据失效',
-    'expression': '表情', 'mouth_state': 'mouth', 'garment_recolor': 'outfits',
+    'expression': '表情', 'mouth_state': 'mouth', 'garment_recolor': 'outfits · 改色', 'garment_replace': 'outfits · 替换',
     'details': '评审与修订记录', 'round': '轮次', 'asset': '版本', 'quality': '质量',
     'target': '目标', 'identity': '身份', 'protection': '保护', 'rendering': '绘制',
     'issues': '未通过项', 'component': '编辑部位', 'request': '请求', 'source': '原图',
@@ -34,6 +34,8 @@ ZH = {
     'summary': '情况：{cases}；通过：{passed}；未交付：{other}；本报告范围内候选图：{images}。',
     'emotion': '情绪', 'face_design': '面部设计', 'nonface_protection': '非面部保护',
     'target_color': '目标颜色', 'garment_invariants': '衣物构造与材质', 'interfaces': '接口与排除区域',
+    'target_garment': '替换款式与材质', 'fit_interfaces': '合身与交界', 'coverage_anatomy': '覆盖范围与人体结构',
+    'edit_definition': '编辑方案', 'replace': '单件替换', 'recolor': '单件改色',
     'face_expression': '面部与表情', 'non_target_protection': '非目标保护',
     'full_image': '全图', 'target_detail': '目标细节', 'protected_details': '保护细节',
     'normal_display': '正常展示', 'background_edges': '背景与边缘', 'inspection': '检查完成情况',
@@ -68,6 +70,9 @@ EN = {
     'summary': 'Cases: {cases}; passed: {passed}; not delivered: {other}; candidates within scope: {images}.',
     'emotion': 'Emotion', 'face_design': 'Facial design', 'nonface_protection': 'Non-face protection',
     'target_color': 'Target color', 'garment_invariants': 'Garment construction/material', 'interfaces': 'Interfaces/exclusions',
+    'garment_replace': 'Outfits · replacement', 'target_garment': 'Replacement design/material',
+    'fit_interfaces': 'Fit/interfaces', 'coverage_anatomy': 'Coverage/anatomy',
+    'edit_definition': 'Edit definition', 'replace': 'Single-garment replacement', 'recolor': 'Single-garment recolor',
     'face_expression': 'Face/expression', 'non_target_protection': 'Non-target protection',
     'full_image': 'Full image', 'target_detail': 'Target detail', 'protected_details': 'Protected details',
     'normal_display': 'Normal display', 'background_edges': 'Background/edges', 'inspection': 'Inspection coverage',
@@ -98,7 +103,8 @@ def link(label: str, path: str | Path) -> str:
 
 def label_for(core, asset: dict, labels: dict, language: str) -> str:
     if 'outfit_id' in asset:
-        return labels.get(asset['outfit_id'], f"{asset['target']} → {asset['color']}")
+        change = asset['replacement'] if asset['edit_type'] == 'replace' else asset['color']
+        return labels.get(asset['outfit_id'], f"{asset['target']} → {change}")
     label = labels.get(asset['expression'], EXPRESSION_ZH[asset['expression']] if language == 'zh-CN' else core.EXPRESSION_PRESETS[asset['expression']]['name'])
     mouth = asset.get('mouth_state', 'default')
     if mouth != 'default':
@@ -232,12 +238,16 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
         domain = last['domain_review'] or {}
         lines += ['### '+md(c['label']), '',t['source']+'：'+link(c['character'],c['source']),
                   '',t['request']+'：'+md(c['history'][0]['request'] or last['request'] or '—'),
-                  '',t['component']+'：'+md(domain.get('component','—')), '',
-                  '| '+' | '.join(t[k] for k in ('round','asset','target','identity','protection','rendering','scores','quality','fidelity'))+' |',
+                  '',t['component']+'：'+md(domain.get('component','—')), '']
+        if c.get('edit'):
+            edit = c['edit']
+            change = edit.get('replacement', edit.get('color', '—'))
+            lines += [t['edit_definition']+'：'+t[edit['edit_type']]+' · '+md(edit['target'])+' → '+md(change), '']
+        lines += ['| '+' | '.join(t[k] for k in ('round','asset','target','identity','protection','rendering','scores','quality','fidelity'))+' |',
                   '|---:|---|---:|---:|---:|---:|---:|---|---|']
         for r in c['history']:
             dims = [str(r['dimensions'].get(k,{}).get('score','—')) for k in ('target','identity','protection','rendering')]
-            fidelity = t['not_applicable'] if c['kind'] != 'garment_recolor' else t.get(r['fidelity_status'],r['fidelity_status'])
+            fidelity = t.get(r['fidelity_status'],r['fidelity_status']) if c['kind'] in ('garment_recolor','garment_replace') else t['not_applicable']
             lines.append('| '+' | '.join([str(r['round']),md(r['asset_id']),*dims,score_text(r,t),t.get(r['quality_status'],r['quality_status']),fidelity])+' |')
         lines += ['', '**'+t['domain']+'**', '', '| '+t['check']+' | '+t['status']+' | '+t['evidence']+' |', '|---|---|---|']
         for key,finding in domain.get('checks',{}).items():
@@ -315,6 +325,7 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                     action='uncertain'
             cases.append({'project':str(root),'character':state['character_key'],'case_id':case_id or asset['id'],'kind':core.quality_domain(state,asset),
                           'label':label_for(core,asset,labels,language),'status':action,'max_rounds':plan['max_rounds'] if plan else None,
+                          'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','edit_brief') if key in asset} if 'outfit_id' in asset else None,
                           'source':str(core.contained(root,state['source'])),'source_sha256':state['source_sha256'],
                           'source_canvas':state['canvas'],'history':records,'final':delivered,'delivery_error':error})
         if state['source_sha256'] not in {s['sha256'] for s in sources}:

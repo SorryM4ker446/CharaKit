@@ -1,6 +1,6 @@
 # Bounded refinement from review findings
 
-Use this workflow when the user requests automatic improvement of failed results or enables a bounded refinement budget. Authorization is per expression/mouth-state combination or garment/color option. Default maximum: **three total image/review rounds**, the first image plus at most two revisions. Stop immediately on passage. Ordinary requests without this mode retain their requested generation count; do not silently add retries.
+Use this workflow when the user requests automatic improvement of failed results or enables a bounded refinement budget. Authorization is per expression/mouth-state combination or garment/color or garment/replacement option. Default maximum: **three total image/review rounds**, the first image plus at most two revisions. Stop immediately on passage. Ordinary requests without this mode retain their requested generation count; do not silently add retries.
 
 The helper tracks rounds and gates; Codex still invokes the host image tool, views the actual comparisons and writes the assessment. It does not run a hidden image model or automatic visual scorer.
 

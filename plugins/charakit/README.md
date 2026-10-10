@@ -1,12 +1,12 @@
 # CharaKit
 
-Version **0.1.15**. A modular Codex plugin for visual novel character artwork.
+Version **0.1.16**. Outfits supports single-garment `recolor` and `replace`; see the [replacement guide](skills/charakit-outfits/references/replacement-guide.md). Actual replacement quality requires visual validation. A modular Codex plugin for visual novel character artwork.
 
 Finish each generation/revision batch with [final images, a preview and a report](references/delivery-report.md). The shared `report` command reads saved reviews from one or more implemented-module projects, copies only gated final PNGs unchanged, builds a final preview and writes Markdown/JSON with scores, findings and evidence links. All-failed runs produce reports only. Reporting never generates, regrades, accepts or selects artwork. Requires helper 0.1.15 or later.
 
 Opt-in [bounded refinement](references/refinement.md) allows three total rounds per expression/mouth-state or garment/color case, using the previous complete image as the edit target and the immutable original as the design authority. Stop on passage or exhaustion, retain process evidence, and use `refine-deliver` for the passed final only. Codex still invokes the host tool and judges real comparisons; the helper tracks rounds and gates, not automatic visual scores. Fresh rubric 1.1 assessments use 80/100 with a 4/5 floor and all existing domain/technical/fidelity vetoes. Historical rubric 1.0 keeps its 85 threshold. Requires helper 0.1.14 or later; native tool previews may still appear automatically.
 
-New `quality` reviews require the active module/state's domain checklist: expression, explicit mouth state or garment recolor. Garments specialize by actual component, material and interfaces. Failed/uncertain items veto delivery regardless of the global score; use helper 0.1.13 or later. Older reviews remain readable without fabricated domain findings.
+New `quality` reviews require the active module/state's domain checklist: expression, explicit mouth state or garment recolor/replacement. Garments specialize by actual component, material and interfaces. Failed/uncertain items veto delivery regardless of the global score; use helper 0.1.13 or later. Older reviews remain readable without fabricated domain findings.
 
 Resolution is temporarily outside visual scoring and preview-delivery rejection. `deliver` returns actual dimensions and canvas-mismatch warnings; decoding, PNG, transparency, fingerprints and quality/fidelity gates remain. Formal acceptance/selection/ZIP export retain exact-canvas checks. Use helper 0.1.12 or later for this exception.
 
@@ -23,10 +23,10 @@ The available **CharaKit Expressions** module preserves the entire face, origina
 | Module | Skill ID | Status |
 | --- | --- | --- |
 | Expressions | `charakit-expressions` | Available |
-| Outfits | `charakit-outfits` | Available: one-garment recoloring |
+| Outfits | `charakit-outfits` | Available: one-garment recoloring/replacement workflows |
 | Poses | `charakit-poses` | Planned |
 
-The plugin ID is `charakit`. Use `$charakit-expressions` for expressions and static mouth states, or `$charakit-outfits` for recoloring one existing garment. Full outfit replacement, accessory additions/removals, and poses remain planned. [modules.json](modules.json) and [ROADMAP.md](ROADMAP.md) define availability and scope.
+The plugin ID is `charakit`. Use `$charakit-expressions` for expressions and static mouth states, or `$charakit-outfits` for recoloring/replacing one existing garment. Full outfit replacement, accessory additions/removals, and poses remain planned. [modules.json](modules.json) and [ROADMAP.md](ROADMAP.md) define availability and scope.
 
 ## Install
 
@@ -86,7 +86,7 @@ Keep trim, buttons, material, folds, lighting, face, expression, mouth state,
 hair, other clothing, and pose. Generate two candidates and compare them.
 ```
 
-Outfits uses its own project, such as `art-output/my-character/outfits/`, with schema 1.2. Each target garment/color option has independent versions, review, and selection. Actual image quality requires visual review. See the [Outfits Skill](skills/charakit-outfits/SKILL.md).
+Outfits uses its own project, such as `art-output/my-character/outfits/`, with schema 1.2 for recolor-only work; the first replacement backs up metadata and upgrades to schema 1.3. Each garment/color or garment/replacement option has independent versions, review, and selection. Actual image quality requires visual review. See the [Outfits Skill](skills/charakit-outfits/SKILL.md).
 
 Use `prepare` before generation to save the allowed boundary, protected regions, and a source-only detail reference. Default to one complete source and a complete domain-specific prompt describing the allowed recolor, invariants, exclusions, preservation, and output. Prioritize quality over prompt length, retaining necessary detail in both the submission and inspection brief. Send the crop only for ambiguous target identification or a requested reference comparison when supported. The local crop is not an edit mask or a final asset; all final edits stay in the host image tool.
 
@@ -133,3 +133,5 @@ Commands: `inspect`, `validate`, `init`, `add`, `status`, `review`, `select`, `p
 Inputs are static PNG/JPEG files up to 50 MiB and 40 million pixels. Final assets must be PNGs matching the source canvas. Transparency checks are basic; artistic fidelity, clean edges, and game-switching stability require visual review. The helper never generates images, repairs faces, composites facial parts, rescales candidates, or changes alpha.
 
 User artwork belongs in a workspace output directory, not inside this plugin. The distribution ZIP includes only the plugin and its supporting resources.
+
+For a single-garment replacement, use `$charakit-outfits` and describe the existing garment and desired design, such as replacing boots with black low shoes while preserving socks, pose and all separate equipment. Follow the [replacement guide](skills/charakit-outfits/references/replacement-guide.md); `prepare` and `add` use `--edit-type replace --replacement` rather than `--color`. Replacement has its own review checklist and shares bounded refinement and final reporting.

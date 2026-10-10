@@ -49,6 +49,7 @@ DOMAIN_CHECKS = {
     "expression": ("emotion", "face_design", "nonface_protection", "rendering"),
     "mouth_state": ("emotion", "mouth_state", "face_design", "nonface_protection", "rendering"),
     "garment_recolor": ("target_color", "garment_invariants", "interfaces", "face_expression", "non_target_protection", "rendering"),
+    "garment_replace": ("target_garment", "fit_interfaces", "coverage_anatomy", "face_expression", "non_target_protection", "rendering"),
 }
 
 
@@ -145,10 +146,10 @@ def read_state(root: Path) -> dict:
 
     try:
         state = json.loads((root / "run.json").read_text(encoding="utf-8"))
-        require(state["schema_version"] in ("1.0", "1.1", "1.2"))
+        require(state["schema_version"] in ("1.0", "1.1", "1.2", "1.3"))
         module = state.get("module", "expressions")
         require(module in ("expressions", "outfits"))
-        require((module == "outfits") == (state["schema_version"] == "1.2"))
+        require((module == "outfits") == (state["schema_version"] in ("1.2", "1.3")))
         require(bool(re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", state["character_key"])))
         require(state["background_mode"] in MODES)
         require(isinstance(state["assets"], list) and isinstance(state["selected"], dict))
@@ -166,16 +167,18 @@ def read_state(root: Path) -> dict:
             if module == "outfits":
                 require("expression" not in asset and "mouth_state" not in asset)
                 require(valid_outfit_id(asset["outfit_id"]))
-                require(asset["edit_type"] == "recolor")
-                require(valid_edit_text(asset["target"], 200) and valid_edit_text(asset["color"], 120))
-                definition = (asset["target"], asset["color"])
+                require(valid_outfit_definition(asset))
+                require(asset["edit_type"] == "recolor" or state["schema_version"] == "1.3")
+                if asset["edit_type"] == "replace":
+                    require("edit_brief" in asset and "prompt_path" in asset and asset.get("quality_required") == QUALITY_VERSION)
+                definition = outfit_definition(asset)
                 require(outfit_targets.setdefault(asset["outfit_id"], definition) == definition)
                 if "edit_brief" in asset:
                     try:
                         validate_edit_brief(root, state, asset["edit_brief"], check_reference=False)
                     except StudioError as exc:
                         raise ValueError("Invalid edit brief.") from exc
-                    require(all(asset["edit_brief"][key] == asset[key] for key in ("outfit_id", "target", "color")))
+                    require(asset["edit_brief"]["outfit_id"] == asset["outfit_id"] and outfit_definition(asset["edit_brief"]) == definition)
                 if "fidelity_review" in asset:
                     review = asset["fidelity_review"]
                     require(isinstance(review, dict))
@@ -248,6 +251,35 @@ def valid_edit_text(value, limit: int) -> bool:
     return isinstance(value, str) and bool(value.strip()) and value == value.strip() and len(value) <= limit and not any(ord(c) < 32 for c in value)
 
 
+def outfit_definition(value: dict) -> tuple:
+    mode = value.get("edit_type", "recolor")
+    return mode, value.get("target"), value.get("replacement" if mode == "replace" else "color")
+
+
+def valid_outfit_definition(value: dict) -> bool:
+    mode, target, change = outfit_definition(value)
+    return (mode in ("recolor", "replace") and valid_edit_text(target, 200)
+            and valid_edit_text(change, 600 if mode == "replace" else 120)
+            and ("color" not in value if mode == "replace" else "replacement" not in value))
+
+
+def outfit_fields(outfit_id: str, target: str, color: str | None,
+                  edit_type: str, replacement: str | None) -> dict:
+    fields = {"outfit_id": outfit_id, "edit_type": edit_type, "target": target}
+    if edit_type == "replace":
+        fields["replacement"] = replacement
+        if color is not None:
+            raise StudioError("INVALID_REPLACEMENT", "Describe replacement color/material inside --replacement; do not use --color.")
+    else:
+        fields["color"] = color
+        if replacement is not None:
+            raise StudioError("INVALID_RECOLOR", "Use --edit-type replace for a new garment design.")
+    if not valid_outfit_definition(fields):
+        raise StudioError("INVALID_REPLACEMENT" if edit_type == "replace" else "INVALID_RECOLOR",
+                          "Specify one existing garment and a valid color or single-garment replacement description.")
+    return fields
+
+
 def require_module(state: dict, module: str) -> None:
     if state.get("module", "expressions") != module:
         raise StudioError("WRONG_MODULE", f"Use a separate {module} project; this project belongs to another module.")
@@ -264,10 +296,11 @@ def valid_source_box(box, canvas: dict) -> bool:
 
 def validate_edit_brief(root: Path, state: dict, brief: dict, check_reference: bool = True) -> None:
     try:
-        valid = (isinstance(brief, dict) and brief["schema_version"] == "1.0"
+        valid = (isinstance(brief, dict) and brief["schema_version"] in ("1.0", "1.1")
+                 and (brief.get("edit_type", "recolor") == "recolor" or brief["schema_version"] == "1.1")
                  and brief["source_sha256"] == state["source_sha256"]
                  and valid_outfit_id(brief["outfit_id"])
-                 and valid_edit_text(brief["target"], 200) and valid_edit_text(brief["color"], 120)
+                 and valid_outfit_definition(brief)
                  and valid_edit_text(brief["boundary"], 1000)
                  and isinstance(brief["protected_regions"], list) and 1 <= len(brief["protected_regions"]) <= 20
                  and all(valid_edit_text(region, 200) for region in brief["protected_regions"])
@@ -283,22 +316,23 @@ def validate_edit_brief(root: Path, state: dict, brief: dict, check_reference: b
         raise StudioError("REFERENCE_CHANGED", "The source detail reference is missing or changed; prepare a new brief.")
 
 
-def prepare_outfit(root: Path, outfit_id: str, target: str, color: str, boundary: str,
-                   protected_regions: list[str], target_box: list[int]) -> dict:
+def prepare_outfit(root: Path, outfit_id: str, target: str, color: str | None, boundary: str,
+                   protected_regions: list[str], target_box: list[int],
+                   edit_type: str = "recolor", replacement: str | None = None) -> dict:
     """Save a scope brief and source-only detail reference; never edits a candidate."""
     state = read_state(root)
     require_module(state, "outfits")
     if not valid_outfit_id(outfit_id):
         raise StudioError("INVALID_OUTFIT_ID", "Use a lowercase filename key.")
-    if not (valid_edit_text(target, 200) and valid_edit_text(color, 120)
-            and valid_edit_text(boundary, 1000) and isinstance(protected_regions, list)
+    fields = outfit_fields(outfit_id, target, color, edit_type, replacement)
+    if not (valid_edit_text(boundary, 1000) and isinstance(protected_regions, list)
             and 1 <= len(protected_regions) <= 20
             and all(valid_edit_text(region, 200) for region in protected_regions)):
         raise StudioError("INVALID_EDIT_BRIEF", "Specify a garment, color, boundary, and protected regions as short text.")
     if not valid_source_box(target_box, state["canvas"]):
         raise StudioError("INVALID_TARGET_BOX", "Target detail box must be inside the source canvas.")
-    if any((a["target"], a["color"]) != (target, color) for a in state["assets"] if a["outfit_id"] == outfit_id):
-        raise StudioError("OUTFIT_DEFINITION_CHANGED", "Use a new outfit ID when changing the garment or requested color.")
+    if any(outfit_definition(a) != outfit_definition(fields) for a in state["assets"] if a["outfit_id"] == outfit_id):
+        raise StudioError("OUTFIT_DEFINITION_CHANGED", "Use a new outfit ID when changing the target, mode or requested result.")
     version = 1
     while True:
         brief_path = root / "briefs" / f"{outfit_id}_v{version:03d}.json"
@@ -312,7 +346,7 @@ def prepare_outfit(root: Path, outfit_id: str, target: str, color: str, boundary
     reference_path.parent.mkdir(parents=True, exist_ok=True)
     with reference_path.open("xb") as stream:
         detail.save(stream, format="PNG")
-    brief = {"schema_version": "1.0", "outfit_id": outfit_id, "target": target, "color": color,
+    brief = {"schema_version": "1.1" if edit_type == "replace" else "1.0", **fields,
              "boundary": boundary, "protected_regions": protected_regions, "target_box": target_box,
              "source_sha256": state["source_sha256"],
              "reference": {"path": reference_path.relative_to(root).as_posix(), "sha256": digest(reference_path)},
@@ -329,7 +363,7 @@ def prepare_outfit(root: Path, outfit_id: str, target: str, color: str, boundary
 def fidelity_status(asset: dict) -> str:
     review = asset.get("fidelity_review")
     if review is None:
-        return "pending" if "edit_brief" in asset or ("outfit_id" in asset and "refinement_case" in asset) else "unrecorded"
+        return "pending" if "edit_brief" in asset or asset.get("edit_type") == "replace" or ("outfit_id" in asset and "refinement_case" in asset) else "unrecorded"
     if "failed" in (review["target_check"], review["protection_check"]):
         return "failed"
     return "passed" if review["target_check"] == review["protection_check"] == "passed" else "uncertain"
@@ -368,7 +402,7 @@ def record_fidelity(root: Path, asset_id: str, target_check: str, protection_che
 
 def quality_domain(state: dict, asset: dict) -> str:
     if state.get("module", "expressions") == "outfits":
-        return "garment_recolor"
+        return "garment_replace" if asset.get("edit_type") == "replace" else "garment_recolor"
     return "mouth_state" if asset.get("mouth_state", "default") != "default" else "expression"
 
 
@@ -672,7 +706,7 @@ def add_refinement(root: Path, case_id: str, image: Path, prompt_file: Path,
     prompt = prompt_file.read_text(encoding="utf-8")
     if not prompt.strip():
         raise StudioError("INVALID_REFINEMENT_PROMPT", "Save the actual targeted revision prompt.")
-    keys = ("outfit_id", "edit_type", "target", "color", "edit_brief") if "outfit_id" in parent else ("expression", "mouth_state")
+    keys = ("outfit_id", "edit_type", "target", "color", "replacement", "edit_brief") if "outfit_id" in parent else ("expression", "mouth_state")
     fields = {key: parent[key] for key in keys if key in parent}
     fields.update(refinement_case=case_id, refinement_round=len(case["asset_ids"]) + 1,
                   refinement_inputs={"source": {"path": state["source"], "sha256": state["source_sha256"]},
@@ -794,23 +828,23 @@ def add_asset(root: Path, image: Path, expression: str, prompt_file: Path | None
     return save_candidate(root, state, image, fields, report, prompt)
 
 
-def add_outfit(root: Path, image: Path, outfit_id: str, target: str, color: str,
-               prompt_file: Path | None = None, brief_file: Path | None = None) -> dict:
+def add_outfit(root: Path, image: Path, outfit_id: str, target: str, color: str | None = None,
+               prompt_file: Path | None = None, brief_file: Path | None = None,
+               edit_type: str | None = None, replacement: str | None = None) -> dict:
     state = read_state(root)
     require_module(state, "outfits")
     if not valid_outfit_id(outfit_id):
         raise StudioError("INVALID_OUTFIT_ID", "Use a lowercase filename key, e.g. coat_navy.")
-    if not isinstance(target, str) or not isinstance(color, str):
-        raise StudioError("INVALID_RECOLOR", "Specify one garment target and its color as text.")
-    target, color = target.strip(), color.strip()
-    if not valid_edit_text(target, 200) or not valid_edit_text(color, 120):
-        raise StudioError("INVALID_RECOLOR", "Specify one garment target and its color as short single-line text.")
     previous = [a for a in state["assets"] if a["outfit_id"] == outfit_id]
-    if any((a["target"], a["color"]) != (target, color) for a in previous):
-        raise StudioError("OUTFIT_DEFINITION_CHANGED", "Use a new outfit ID when changing the garment or requested color.")
+    edit_type = edit_type or (previous[-1]["edit_type"] if previous else "recolor")
+    target = target.strip() if isinstance(target, str) else target
+    color = color.strip() if isinstance(color, str) else color
+    replacement = replacement.strip() if isinstance(replacement, str) else replacement
+    fields = outfit_fields(outfit_id, target, color, edit_type, replacement)
+    if any(outfit_definition(a) != outfit_definition(fields) for a in previous):
+        raise StudioError("OUTFIT_DEFINITION_CHANGED", "Use a new outfit ID when changing the target, mode or requested result.")
     report = validate_image(image, state["canvas"], state["background_mode"])
     prompt = prompt_file.read_text(encoding="utf-8") if prompt_file else None
-    fields = {"outfit_id": outfit_id, "edit_type": "recolor", "target": target, "color": color}
     inherited = next((a["edit_brief"] for a in sorted(previous, key=lambda a: a["version"], reverse=True) if "edit_brief" in a), None)
     if brief_file is not None or inherited is not None:
         try:
@@ -818,9 +852,25 @@ def add_outfit(root: Path, image: Path, outfit_id: str, target: str, color: str,
         except (OSError, ValueError) as exc:
             raise StudioError("INVALID_EDIT_BRIEF", "Cannot read the prepared brief.") from exc
         validate_edit_brief(root, state, brief)
-        if any(brief[key] != fields[key] for key in ("outfit_id", "target", "color")):
-            raise StudioError("INVALID_EDIT_BRIEF", "The brief must match this outfit option, garment, and color.")
+        if brief["outfit_id"] != outfit_id or outfit_definition(brief) != outfit_definition(fields):
+            raise StudioError("INVALID_EDIT_BRIEF", "The brief must match this outfit option, target, mode and requested result.")
         fields["edit_brief"] = brief
+    if edit_type == "replace":
+        if "edit_brief" not in fields:
+            raise StudioError("EDIT_BRIEF_REQUIRED", "Prepare the single-garment replacement boundary and pass --brief-file.")
+        if prompt is None or not prompt.strip():
+            raise StudioError("REPLACEMENT_PROMPT_REQUIRED", "Save the actual single-garment replacement prompt with --prompt-file.")
+        fields["quality_required"] = QUALITY_VERSION
+        if state["schema_version"] == "1.2":
+            backup = root / "run.schema-1.2.backup.json"
+            if backup.exists():
+                if digest(backup) != digest(root / "run.json"):
+                    raise StudioError("MIGRATION_BACKUP_EXISTS", "Existing schema backup differs; preserve it and use a new project.")
+            else:
+                copy_exclusive(root / "run.json", backup)
+            state["schema_version"] = "1.3"
+        state.setdefault("quality_policy", {"version": QUALITY_VERSION,
+                                            "legacy_asset_ids": [a["id"] for a in state["assets"]]})
     return save_candidate(root, state, image, fields, report, prompt)
 
 
@@ -1079,7 +1129,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         if "quality_review" in asset:
             sprites[-1]["quality_review"] = asset["quality_review"]
         if is_outfit:
-            sprites[-1].update({key: asset[key] for key in ("outfit_id", "edit_type", "target", "color")})
+            sprites[-1].update({key: asset[key] for key in ("outfit_id", "edit_type", "target", "color", "replacement") if key in asset})
             if "edit_brief" in asset:
                 sprites[-1]["edit_scope"] = {key: asset["edit_brief"][key] for key in ("boundary", "protected_regions", "target_box")}
             if "fidelity_review" in asset:
@@ -1089,7 +1139,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         if has_mouth_states:
             sprites[-1]["mouth_state"] = asset.get("mouth_state", "default")
         seen.add(slot)
-    manifest = {"schema_version": "1.2" if is_outfit else ("1.1" if has_mouth_states else "1.0"), "character_key": state["character_key"],
+    manifest = {"schema_version": state["schema_version"] if is_outfit else ("1.1" if has_mouth_states else "1.0"), "character_key": state["character_key"],
                 "asset_kind": "full_character_outfit" if is_outfit else "full_character_expression", "background_mode": state["background_mode"],
                 "canvas": state["canvas"], "sprites": sprites}
     payloads["manifest.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
@@ -1164,7 +1214,9 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
         prepare.add_argument("--project", required=True, type=Path)
         prepare.add_argument("--outfit", required=True, dest="outfit_id")
         prepare.add_argument("--target", required=True)
-        prepare.add_argument("--color", required=True)
+        prepare.add_argument("--edit-type", choices=("recolor", "replace"), default="recolor")
+        prepare.add_argument("--color")
+        prepare.add_argument("--replacement", help="Requested single-garment design for replace mode.")
         prepare.add_argument("--boundary", required=True)
         prepare.add_argument("--protect", required=True, action="append", dest="protected_regions")
         prepare.add_argument("--target-box", required=True, nargs=4, type=int)
@@ -1192,8 +1244,10 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
             command.add_argument("--image", required=True, type=Path)
             if module == "outfits":
                 command.add_argument("--outfit", required=True, dest="outfit_id")
-                command.add_argument("--target", required=True, help="One garment to recolor, in the user's language.")
-                command.add_argument("--color", required=True, help="Requested color, in the user's language.")
+                command.add_argument("--target", required=True, help="One existing garment, in the user's language.")
+                command.add_argument("--edit-type", choices=("recolor", "replace"), help="Defaults to recolor for a new option; existing options retain their mode.")
+                command.add_argument("--color", help="Requested color for recolor mode.")
+                command.add_argument("--replacement", help="Requested single-garment design for replace mode.")
                 command.add_argument("--brief-file", type=Path, help="Prepared edit brief to snapshot with this candidate.")
             else:
                 command.add_argument("--expression", choices=EXPRESSIONS, required=True)
@@ -1209,7 +1263,7 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
             command.add_argument("--output", required=name == "preview", type=Path)
             if name == "preview":
                 if module == "outfits":
-                    command.add_argument("--outfit", dest="outfit_id", help="Compare versions of one recolor option.")
+                    command.add_argument("--outfit", dest="outfit_id", help="Compare versions of one garment option.")
                     command.add_argument("--detail-box", type=int, nargs=4, help="Source coordinates of the garment inspection region.")
                 else:
                     command.add_argument("--expression", choices=EXPRESSIONS, help="Show only this expression, retaining all versions and mouth states.")
@@ -1245,7 +1299,7 @@ def main(module: str = "expressions") -> int:
         elif args.command == "init":
             result = init_project(args.project, args.source, args.character, args.background, module)
         elif args.command == "prepare":
-            result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box)
+            result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box, args.edit_type, args.replacement)
         elif args.command == "fidelity":
             result = record_fidelity(args.project, args.asset, args.target_check, args.protection_check, args.note, args.basis)
         elif args.command == "enable-quality":
@@ -1268,7 +1322,7 @@ def main(module: str = "expressions") -> int:
             result = deliver_refinement(args.project, args.case_id)
         elif args.command == "add":
             if module == "outfits":
-                result = add_outfit(args.project, args.image, args.outfit_id, args.target, args.color, args.prompt_file, args.brief_file)
+                result = add_outfit(args.project, args.image, args.outfit_id, args.target, args.color, args.prompt_file, args.brief_file, args.edit_type, args.replacement)
             else:
                 result = add_asset(args.project, args.image, args.expression, args.prompt_file, args.mouth_state)
         elif args.command == "status":

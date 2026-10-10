@@ -13,8 +13,10 @@ def init_project(root, source, character, mode="auto"):
     return _core.init_project(root, source, character, mode, module="outfits")
 
 
-def add_asset(root, image, outfit_id, target, color, prompt_file=None, brief_file=None):
-    return _core.add_outfit(root, image, outfit_id, target, color, prompt_file, brief_file)
+def add_asset(root, image, outfit_id, target, color=None, prompt_file=None, brief_file=None,
+              edit_type=None, replacement=None):
+    return _core.add_outfit(root, image, outfit_id, target, color, prompt_file, brief_file,
+                            edit_type, replacement)
 
 
 def main():

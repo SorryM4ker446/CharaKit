@@ -2,11 +2,11 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**CharaKit** is a modular Codex plugin for visual novel character artwork. **CharaKit Expressions** creates full expression variants; **CharaKit Outfits** recolors a specified existing garment while preserving the character's design.
+**CharaKit** is a modular Codex plugin for visual novel character artwork. **CharaKit Expressions** creates full expression variants; **CharaKit Outfits** recolors or replaces one specified existing garment while preserving character identity and unrelated design.
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.15**.
+Development version: **0.1.16**.
 
 Every generation/revision batch ends with [final PNGs, a preview and a saved-review report](plugins/charakit/references/delivery-report.md). The shared `report` command can cover Expressions, mouth states and Outfits together, includes per-round scores and failure findings, and copies only gated final PNGs unchanged. If none pass, it produces only the report. Reporting does not generate, regrade or accept artwork; use helper 0.1.15 or later.
 
@@ -14,7 +14,7 @@ Opt-in [review-driven bounded refinement](plugins/charakit/references/refinement
 
 Fresh assessments use rubric 1.1: at least **80/100**, every dimension at least **4/5**, and unchanged domain, critical-defect, uncertainty, technical and fidelity vetoes. Minor brushwork variation can pass; pixel equality is not required by default. Historical rubric 1.0 reviews retain their 85 threshold and recorded verdicts. Use helper 0.1.14 or later.
 
-New internal reviews require the checklist for the active module/state, not just a global score: expression, explicit mouth state, or garment recolor. Garment checks specialize by the source's actual component and material/interfaces. Any failed/uncertain item vetoes delivery even at 100/100. Use helper 0.1.13 or later; historical reviews remain readable without invented domain findings.
+New internal reviews require the checklist for the active module/state, not just a global score: expression, explicit mouth state, or garment recolor/replacement. Garment checks specialize by the source's actual component and material/interfaces. Any failed/uncertain item vetoes delivery even at 100/100. Use helper 0.1.13 or later; historical reviews remain readable without invented domain findings.
 
 Resolution is temporarily excluded from visual scoring and preview-delivery rejection. Actual canvas mismatch remains recorded and is returned as a delivery warning; other quality/fidelity/technical gates remain. Formal acceptance and ZIP export still require the source canvas. Use helper 0.1.12 or later for this exception.
 
@@ -31,10 +31,10 @@ Release notes are published with GitHub Releases.
 | Module | Skill ID | Status |
 | --- | --- | --- |
 | CharaKit Expressions | `charakit-expressions` | Available: full expression variants |
-| CharaKit Outfits | `charakit-outfits` | Available: one-garment recoloring; full replacement planned |
+| CharaKit Outfits | `charakit-outfits` | Available: one-garment recoloring/replacement; full outfit replacement planned |
 | CharaKit Poses | `charakit-poses` | Planned: static pose and action edits |
 
-Install the plugin as `charakit`; use `$charakit-expressions` for expressions and static mouth states, or `$charakit-outfits` for garment recoloring. Pose editing remains planned. See the [module definitions](plugins/charakit/modules.json) and [roadmap](plugins/charakit/ROADMAP.md).
+Install the plugin as `charakit`; use `$charakit-expressions` for expressions and static mouth states, or `$charakit-outfits` for garment recoloring/replacement. Pose editing remains planned. See the [module definitions](plugins/charakit/modules.json) and [roadmap](plugins/charakit/ROADMAP.md).
 
 ## Current expression features
 
@@ -59,11 +59,11 @@ face, expression, mouth state, hair, and pose. Generate two candidates
 and compare them, including enlarged face and jacket regions.
 ```
 
-The current mode changes the color of one existing garment. Full outfit replacement, accessory additions/removals, clothing on/off states, and automated outfit/expression combinations remain planned. Actual recolor quality needs review of generated images; workflow tests do not prove visual preservation.
+Outfits supports `recolor` for one existing garment and `replace` for a single garment design; see the [replacement guide](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md). Replacement requires a prepared boundary, actual prompt and its own domain/fidelity review. Workflow support does not establish generated replacement quality. Full outfit replacement, accessory additions/removals, clothing on/off states, and automated outfit/expression combinations remain planned. Actual recolor quality needs review of generated images; workflow tests do not prove visual preservation.
 
-Use a separate outfit project, for example `art-output/my-character/outfits/`, with its own immutable source. The helper records an outfit option ID, target garment, and requested color. Each target/color option has independent versions and selection. Revisions retain the same target/color definition; changing it requires a new ID.
+Use a separate outfit project, for example `art-output/my-character/outfits/`, with its own immutable source. The helper records an option ID, existing target, operation and requested color/replacement. Each definition has independent versions and selection. Revisions retain that definition; changing it requires a new ID.
 
-Outfit projects and manifests use schema 1.2. Existing expression projects remain schema 1.0/1.1 and keep their original helper path, IDs, and export filenames. The complete plugin now includes a shared `lib/studio_core.py`; keep it with both Skills. See the [Outfits Skill](plugins/charakit/skills/charakit-outfits/SKILL.md) for details.
+Recolor-only outfit projects use schema 1.2. The first replacement backs up metadata and upgrades the project to schema 1.3; the export manifest follows the project schema. Use helper 0.1.16 or later for replacement projects. Existing expression projects remain schema 1.0/1.1 and keep their original helper path, IDs, and export filenames. The complete plugin now includes a shared `lib/studio_core.py`; keep it with both Skills. See the [Outfits Skill](plugins/charakit/skills/charakit-outfits/SKILL.md) for details.
 
 Before generation, `prepare` saves an edit boundary, protected-region descriptions, and a source-only detail reference. The default uses one complete source and a complete domain-specific prompt stating the allowed recolor, invariants, exclusions, preservation, and output. Quality takes priority over prompt length; necessary detail is retained in the submission as well as the inspection brief. The crop is submitted only for an ambiguous target or a requested reference comparison when supported. All final artwork changes remain in the host image tool; the crop is not a mask, pixel lock, or final asset.
 
@@ -201,7 +201,7 @@ tools/build_plugin.py               Plugin ZIP builder
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.15.zip
+python tools/build_plugin.py --output dist/charakit-0.1.16.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.

@@ -11,7 +11,7 @@ Read the shared [editing boundaries](../../references/edit-boundaries.md) when d
 
 Support twelve fixed expression presets and independently selectable static mouth states. Read [expression-guidelines.md](references/expression-guidelines.md) to map a request to a preset and shape its prompt; `presets` lists expressions and mouth states. For mouth-open/closed requests or revisions, read [mouth-states.md](references/mouth-states.md). Generate only requested expressions and states. Gaze and emotion-specific closed-eye states remain planned.
 
-Garment recoloring uses the separate [CharaKit Outfits Skill](../charakit-outfits/SKILL.md). Full outfit replacement and pose editing remain planned in [the module roadmap](../../ROADMAP.md). This Skill remains scoped to expressions; keep outfit projects and candidates separate.
+Garment recoloring and single-garment replacement use the separate [CharaKit Outfits Skill](../charakit-outfits/SKILL.md). Full outfit replacement and pose editing remain planned in [the module roadmap](../../ROADMAP.md). This Skill remains scoped to expressions; keep outfit projects and candidates separate.
 
 ## User language
 

@@ -2,13 +2,13 @@
 
 [English](README.md) | **简体中文**
 
-**CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。**CharaKit Expressions** 生成完整表情差分，**CharaKit Outfits** 为指定的一件现有衣物改色。
+**CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。**CharaKit Expressions** 生成完整表情差分，**CharaKit Outfits** 为指定的一件现有衣物改色或替换款式。
 
 两个模块各有独立 Skill，共用本地 Python 文件助手。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与局部对比预览，以及导出选定资源。
 
-开发版本：**0.1.15**。
+开发版本：**0.1.16**。
 
-每次生图／修订结束默认交付[成品 PNG、最终版 preview 与完整报告](plugins/charakit/references/delivery-report.md)。共用 `report` 命令可汇总表情、mouth 和 outfits，包含请求、逐轮评分、专项检查、失败原因和过程证据，只复制门禁通过的最终 PNG，保留原字节。全部失败时只输出报告，不生成成品图或 preview；不新增生图、不重新评分、不自动验收。需要 0.1.15 或更新助手。
+每次生图／修订结束默认交付[成品 PNG、最终版 preview 与完整报告](plugins/charakit/references/delivery-report.md)。共用 `report` 命令可汇总表情、mouth 和 outfits，包含请求、逐轮评分、专项检查、失败原因和过程证据，只复制门禁通过的最终 PNG，保留原字节。全部失败时只输出报告，不生成成品图或 preview；不新增生图、不重新评分、不自动验收。报告功能需要 0.1.15 或更新助手；替换功能需要 0.1.16。
 
 可启用[评审驱动的限次修订](plugins/charakit/references/refinement.md)：每个表情／mouth 状态或衣物／颜色方案最多三轮（首版＋两次修订）。未通过时根据具体评审问题，在上一版完整图上定向改进，同时用原图约束身份、设计和材质；通过即停止，只交付最终通过版本，过程图保留可查看。三轮仍不合格就停止并报告原因，不把最高分失败图当作合格资产。实际生图和视觉评审仍由 Codex 与宿主图像工具执行，本地助手记录预算与执行门禁。宿主原生生图预览可能仍自动出现。
 
@@ -31,10 +31,10 @@
 | 模块 | Skill 标识 | 状态 |
 | --- | --- | --- |
 | CharaKit Expressions | `charakit-expressions` | 已实现：完整表情差分 |
-| CharaKit Outfits | `charakit-outfits` | 已实现：单件衣物改色；整套换装仍在规划中 |
+| CharaKit Outfits | `charakit-outfits` | 已实现：单件衣物改色／替换工作流；整套换装仍在规划中 |
 | CharaKit Poses | `charakit-poses` | 计划中：静态动作与姿势编辑 |
 
-插件安装标识为 `charakit`；表情与静态嘴部状态使用 `$charakit-expressions`，指定衣物改色使用 `$charakit-outfits`。姿势模块仍在规划中，尚不能调用。详见[模块定义](plugins/charakit/modules.json)与[模块规划（英文）](plugins/charakit/ROADMAP.md)。
+插件安装标识为 `charakit`；表情与静态嘴部状态使用 `$charakit-expressions`，指定衣物改色／替换使用 `$charakit-outfits`。姿势模块仍在规划中，尚不能调用。详见[模块定义](plugins/charakit/modules.json)与[模块规划（英文）](plugins/charakit/ROADMAP.md)。
 
 ## 当前表情功能
 
@@ -72,11 +72,11 @@
 同时放大面部与外套区域。
 ```
 
-本阶段仅支持一件现有衣物的颜色变化，整套换装、配饰增减、穿脱状态及自动组合管理仍在规划中。实际生图的改色范围和细节保留需要人工检查，工作流测试通过不等于美术验收。
+支持一件现有衣物的颜色变化，以及独立的 `replace` 单件替换模式，例如长袜换短袜、靴子换低帮鞋。替换需要准备边界说明、保存实际提示词，并检查款式、合身／交界、覆盖／人体结构及保护区域；详见[替换指南](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md)。替换工作流实现不代表真实生图效果已经验收。整套换装、配饰增减、穿脱状态及自动组合管理仍在规划中。实际生图的改色范围和细节保留需要人工检查，工作流测试通过不等于美术验收。
 
-服饰使用独立项目，例如 `art-output/my-character/outfits/`，保留自己的不可变源图。助手记录方案标识、目标衣物与颜色；每个“目标衣物＋颜色”方案独立保留版本和选择。单张修订沿用原目标与颜色，改变定义时另建方案标识。
+服饰使用独立项目，例如 `art-output/my-character/outfits/`，保留自己的不可变源图。助手记录方案标识、目标衣物、操作类型与颜色／替换款式；每个方案独立保留版本和选择。单张修订沿用原方案定义，改变定义时另建方案标识。
 
-服饰项目与导出清单使用 schema 1.2。现有表情项目仍用 1.0／1.1，入口、标识和导出文件名保留。完整插件包含共用的 `lib/studio_core.py`，请与两个 Skill 一起保留。详见[服饰 Skill](plugins/charakit/skills/charakit-outfits/SKILL.md)。
+纯改色服饰项目沿用 schema 1.2；首次加入替换候选前备份原记录并升级到 schema 1.3，导出清单沿用项目版本。替换项目需使用 0.1.16 或更新助手。现有表情项目仍用 1.0／1.1，入口、标识和导出文件名保留。完整插件包含共用的 `lib/studio_core.py`，请与两个 Skill 一起保留。详见[服饰 Skill](plugins/charakit/skills/charakit-outfits/SKILL.md)。
 
 生成前，`prepare` 保存允许改色的边界、保护区域描述和原图局部参考。默认只提交一张完整原图，按部件领域组织完整提示词，说明允许改色、内部不变量、排除项、其余内容保留及输出要求。结果质量优先于提示词长度，必要细节同时保留在提交指令与检查说明中；仅在目标识别含糊或用户请求参考图对照、且工具支持时提交局部参考。最终美术修改仍全部由宿主图像工具完成；局部图不是蒙版、像素锁定或最终资源。
 
@@ -212,7 +212,7 @@ tools/build_plugin.py               插件 ZIP 构建脚本
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.15.zip
+python tools/build_plugin.py --output dist/charakit-0.1.16.zip
 ```
 
 测试使用合成图片，不需要第三方角色美术。CI 在 Linux 和 Windows 上运行。构建脚本不会覆盖已存在的 ZIP。

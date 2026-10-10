@@ -21,7 +21,7 @@ An unmentioned component or property is protected by default. Necessary changes 
 | Expression | Facial movements needed for the requested emotion and intensity; preset-specific effects where requested or defined | Preserve facial identity, feature design and detail, proportions, skin rendering, head/body pose, hair, clothing, and props. Movement of a brow or lip is permitted; redesign of the feature is not. |
 | Mouth state | Lip shape and mouth interior needed for a natural opening or closure | Preserve established emotion, eyes, brows, gaze, facial proportions, and non-mouth components. Use the static mouth-state guide; avoid converting speaking into shouting or surprise. |
 
-Full outfit replacement, additions/removals, and poses remain planned. This table does not make them callable or add arbitrary component-edit support. Future modes must define their own permissions and necessary interface changes before implementation.
+Single-garment replacement uses the [replacement guide](../skills/charakit-outfits/references/replacement-guide.md): allow the requested garment design and only necessary interface/newly visible-area changes; protect body anatomy, face/expression, pose and separate components. Full outfit replacement, independent additions/removals, and poses remain planned. This table does not make them callable or add arbitrary component-edit support. Future modes must define their own permissions and necessary interface changes before implementation.
 
 ## Construct the prompt
 
@@ -33,7 +33,7 @@ Fill the slots with inspected source facts; omit irrelevant exclusions. Domain g
 
 When preserving an attribute, prefer inheritance from the source over an uncertain descriptive label. Do not turn a guessed iris/skin/material color into a generation instruction. Retain the active domain's positive target cues: expression movements and required tears/blush differ from a recolor's color-only permission. Clear organization, consistency with the source, and visual success determine whether a prompt is suitable; brevity does not.
 
-Use the immutable complete source as the primary design authority. In ordinary generation it is also the edit target; explicitly enabled [bounded refinement](refinement.md) uses the previous complete candidate as the edit target and the original as the authoritative baseline. Restore only observed defects without broadening the requested emotion/color or redesigning protected components. Save actual submitted prompts and references. For Outfits, persist scope in `prepare`; for Expressions, retain it in prompt and review notes.
+Use the immutable complete source as the primary design authority. In ordinary generation it is also the edit target; explicitly enabled [bounded refinement](refinement.md) uses the previous complete candidate as the edit target and the original as the authoritative baseline. Restore only observed defects without broadening the requested emotion/color/replacement or redesigning protected components. Save actual submitted prompts and references. For Outfits, persist scope in `prepare`; for Expressions, retain it in prompt and review notes.
 
 ## Inspect the same scope
 

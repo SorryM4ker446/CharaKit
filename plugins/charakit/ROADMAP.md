@@ -1,23 +1,23 @@
 # CharaKit roadmap
 
-CharaKit currently provides expression editing and recoloring of one specified existing garment. Full outfit replacement and pose editing are planned extensions.
+CharaKit currently provides expression editing, recoloring and replacement of one specified existing garment. Full outfit replacement and pose editing are planned extensions.
 
 | Module | Status | Scope |
 | --- | --- | --- |
 | CharaKit Expressions | Available | Twelve fixed expression presets, static mouth-open/closed states, revisions, comparisons, and PNG exports |
-| CharaKit Outfits | Available | One-garment recoloring, edit boundaries, optional auxiliary source references, manual fidelity checks, comparisons, and PNG exports; full replacement planned |
+| CharaKit Outfits | Available | One-garment recoloring/replacement workflows, edit boundaries, mode-specific reviews, comparisons and PNG exports; full outfit replacement planned |
 | CharaKit Poses | Planned | Static pose and action edits |
 
-Expressions and the recolor workflow in Outfits are available. Generated recolor preservation still requires visual validation. Module IDs and availability are listed in [modules.json](modules.json).
+Expressions and the recolor/replacement workflows in Outfits are available. Replacement workflow tests do not establish generated-art quality; real replacement preservation still requires validation. Module IDs and availability are listed in [modules.json](modules.json).
 
 ## Planned direction
 
 All future development follows the shared [quality-first baseline and internal delivery review](references/quality-review.md). Current modules record assistant rubric observations and enforce technical/quality/fidelity gates before delivery. This filters candidates; improved generation fidelity and a lower user revision rate still need validation against real feedback.
 
 1. Improve expression consistency, canvas alignment, and transparent edges for use in games.
-2. Validate expression and static mouth-state quality on actual artwork; add independently selectable gaze states when needed.
+2. Validate expression and static mouth-state quality on actual artwork. Independent gaze states are deferred while Outfits is the current development priority.
 3. Evaluate quality-focused, domain-specific editing instructions using one complete source by default, optional target references, and enlarged checks of target and protected regions on actual artwork before expanding garment edits.
-4. Expand to full outfit replacement.
+4. Validate single-garment replacement on actual artwork (such as stockings to socks and boots to shoes), including necessary coverage changes and protected equipment, before expanding to full outfit replacement.
 5. Introduce simple static pose changes before more complex action poses.
 6. Support requested combinations of outfits, poses, and expressions.
 
