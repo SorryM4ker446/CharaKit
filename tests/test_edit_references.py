@@ -92,7 +92,7 @@ class EditReferenceTests(unittest.TestCase):
         if asset.get('prop_action'): data['domain_review']['prop_action'] = asset['prop_action']
         if fail:
             data['dimensions']['target']['score'] = 3
-            data['criteria'][-1].update(status='failed', score=3, observed='参考属性尚未达成')
+            next(x for x in data['criteria'] if x['component'] in {r['id'] for r in asset['edit_references']}).update(status='failed', score=3, observed='参考属性尚未达成')
         if self.mode != 'expression': self.c.record_fidelity(self.root, asset['id'], 'passed', 'passed', '合成保真依据')
         preview = self.root / 'preview' / (asset['id']+'.png')
         self.c.make_preview(self.root, preview, [asset['id']])
@@ -260,8 +260,8 @@ class EditReferenceTests(unittest.TestCase):
         sheet = self.feedback(asset, 'revise')
         before = (self.root/'run.json').read_bytes()
         plan = self.call('revision_prepare', self.root, sheet['packet'], self.checks(asset))
-        self.assertEqual([x['role'] for x in plan['references']], ['immutable_source','edit_target','edit_reference'])
-        self.assertEqual(plan['references'][1]['sha256'], asset['sha256'])
+        self.assertEqual([x['role'] for x in plan['references']], ['edit_target','immutable_source','edit_reference'])
+        self.assertEqual(plan['references'][0]['sha256'], asset['sha256'])
         revised = self.call('revision_import', self.root, sheet['packet'], self.raw, self.prompt, [Path(p) for p in plan['reference_paths']])['asset']
         self.assertEqual(revised['edit_references'], asset['edit_references'])
         self.assertEqual(revised['parent_asset_id'], asset['id'])
@@ -283,6 +283,32 @@ class EditReferenceTests(unittest.TestCase):
         self.assertEqual(refreshed['edit_references'], page['edit_references'])
         fixture(Path(page['edit_references'][0]['path']), color='#aa3344')
         self.code('STALE_REVIEW_PACKET', self.call, 'human_feedback', self.root, dict(packet=page['packet'], basis='user', candidate='A', decision='accept', note='采用'))
+
+    def test_revision_baseline_and_all_references_survive_redraw_in_every_mode(self):
+        modes = [('expression','default'), ('expression','open'), ('recolor','default'), ('replace','default'),
+                 ('outfit_replace','default'), ('prop_add','default'), ('prop_remove','default'), ('prop_replace','default')]
+        for mode, mouth in modes:
+            with self.subTest(mode=mode, mouth=mouth):
+                self.setup_mode(mode, mouth); parent = self.add(); self.start(parent); self.review(parent)
+                page = self.feedback(parent, 'revise')
+                region = dict(id='focused',box=[8,8,48,70],label='当前修改',reason='具体修订范围')
+                plan = self.call('revision_prepare', self.root, page['packet'], self.checks(parent), inspection=[region])
+                self.assertEqual([r['role'] for r in plan['references']], ['edit_target','immutable_source','edit_reference'])
+                child = self.call('revision_import', self.root, page['packet'], self.raw, self.prompt,
+                                  [Path(p) for p in plan['reference_paths']])['asset']
+                self.key = child['id']; self.review(child, fail=True)
+                attempt = self.call('pool_reserve', self.root, self.key)
+                self.assertEqual(attempt['references'][0]['sha256'], child['sha256'])
+                self.assertEqual(attempt['references'][2:], parent['edit_references'])
+                self.assertEqual(attempt['revision_policy']['baseline_asset'], parent['id'])
+                revised = self.call('pool_import', self.root, self.key, attempt['token'], self.raw, self.prompt,
+                                    [Path(p) for p in attempt['reference_paths']])['asset']
+                self.review(revised)
+                self.compare(revised)
+                review = self.call('review_sheet', self.root, [revised['id']], 'user')
+                self.assertEqual(len(review['candidates']), 2)
+                self.assertEqual(review['inspection']['regions'], [region])
+                self.assertEqual(review['inspection']['comparison_base'], 'parent')
 
     def test_reference_aware_edits_cannot_use_legacy_refinement(self):
         self.setup_mode(); asset = self.add()

@@ -12,6 +12,56 @@ def require(c, condition, message, code="INVALID_CANDIDATE_REVIEW"):
         raise c.StudioError(code, message)
 
 
+CONTINUITY_CHECK = {'id': 'revision_continuity', 'dimension': 'protection',
+                    'component': 'Successful authorized edits', 'property': 'Revision continuity',
+                    'expected': 'Retain established authorized results outside the current correction; do not restore superseded source details.',
+                    'view': 'full_image'}
+SOURCE_RECHECK = {'id': 'source_protection_recheck', 'dimension': 'protection',
+                 'component': 'Original protected remainder', 'property': 'Secondary source preservation review',
+                 'expected': 'Compare still-protected regions with the immutable source; exclude all authorized edits and necessary interfaces. Record visible drift without reverting successful authorized changes.',
+                 'view': 'protected_details'}
+
+
+def revision_checks(language):
+    check, source = copy.deepcopy(CONTINUITY_CHECK), copy.deepcopy(SOURCE_RECHECK)
+    if language.lower().startswith('zh'):
+        check.update(component='已完成的授权修改', property='修订成果保留',
+                     expected='保留当前修订范围之外已完成的成果，不恢复原图中已被替换的特征。')
+        source.update(component='最初原图中的受保护区域', property='原图保护区域二次复查',
+                      expected='与最初原图复查仍受保护的区域，排除全部已授权修改及必要交界；记录可见偏移，不恢复已完成的服装、道具或表情替换。')
+    return [check, source]
+
+
+def revision_policy(state, asset):
+    return state.get('human_revisions', {}).get(asset.get('human_revision'), {}).get('policy')
+
+
+def planned_references(c, root, state, asset, parent=None, policy=None):
+    return c.reference_call('bindings', root, state, asset, parent, bool(policy))
+
+
+def validate_policy(c, state, revision):
+    policy = revision.get('policy')
+    if policy is None:
+        return
+    require(c, isinstance(policy, dict) and set(policy) == {'version', 'baseline_asset', 'restore_checks', 'inspection_regions'}
+            and policy['version'] == '1.0' and policy['baseline_asset'] == revision['parent_asset'],
+            'Invalid revision baseline policy.')
+    checks = {x['id']: x for x in revision['contract']}
+    require(c, isinstance(policy['restore_checks'], list)
+            and all(isinstance(x, str) and x in checks and checks[x]['dimension'] in ('identity', 'protection')
+                    and x not in ('revision_continuity', 'source_protection_recheck') for x in policy['restore_checks'])
+            and len(set(policy['restore_checks'])) == len(policy['restore_checks']),
+            'Source restoration must name explicit identity/protection checks.')
+    continuity = checks.get('revision_continuity', {})
+    require(c, continuity.get('dimension') == 'protection' and continuity.get('view') == 'full_image',
+            'New revisions must inspect preservation of successful edits.')
+    source_check = checks.get('source_protection_recheck', {})
+    require(c, source_check.get('dimension') == 'protection' and source_check.get('view') == 'protected_details',
+            'New revisions must recheck still-protected regions against the original source.')
+    validate_regions(c, policy['inspection_regions'], state['canvas'])
+
+
 def validate_contract(c, contract):
     require(c, isinstance(contract, list) and 5 <= len(contract) <= 30,
             "Define 5–30 source-grounded checks before generation.")
@@ -91,7 +141,10 @@ def validate_state(c, state):
                     parent = by_id.get(attempt.get("parent"))
                     require(c, parent is not None, "A reference-aware redraw needs its recorded parent.")
                     expected = [{"path": state["source"], "sha256": state["source_sha256"], "role": "immutable_source"},
-                                {"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"}] + copy.deepcopy(by_id[key]["edit_references"])
+                                {"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"}]
+                    if revision_policy(state, by_id[key]):
+                        expected.reverse()
+                    expected += copy.deepcopy(by_id[key]["edit_references"])
                 require(c, attempt.get("references") == expected, "Attempt references must preserve paths, roles, hashes and editable scopes.")
                 if attempt["status"] == "imported":
                     member = by_id[attempt["asset_id"]]
@@ -106,8 +159,11 @@ def validate_state(c, state):
                         and attempt.get('blocking_findings') == redraw_findings(parent)
                         and bool(attempt.get('blocking_findings')),
                         "Redraws must retain the assessed parent's failure evidence.")
-                require(c, [r['path'] for r in attempt.get('references', [])] == [state['source'], parent['path']] + [r['path'] for r in by_id[key].get('edit_references', [])],
-                        "Redraws use the immutable source and their recorded parent.")
+                paths = [parent['path'], state['source']] if revision_policy(state, by_id[key]) else [state['source'], parent['path']]
+                require(c, [r['path'] for r in attempt.get('references', [])] == paths + [r['path'] for r in by_id[key].get('edit_references', [])],
+                        "Redraws retain their recorded editing baseline and source context.")
+                if revision_policy(state, by_id[key]):
+                    require(c, attempt.get('revision_policy') == revision_policy(state, by_id[key]), 'Redraws retain the revision policy.')
                 if attempt['status'] == 'imported':
                     require(c, by_id[attempt['asset_id']]['parent_asset_id'] == parent['id'], "Invalid redraw lineage.")
         require(c, not any(a["status"] == "reserved" for a in attempts[:-1]), "Only the latest attempt can be pending.")
@@ -128,11 +184,19 @@ def validate_state(c, state):
                 and revision.get("parent_sha256") == parent["sha256"]
                 and revision.get("status") in ("reserved", "imported", "failed", "cancelled"), "Invalid human revision binding.")
         validate_revision_contract(c, state, parent, revision["contract"])
+        validate_policy(c, state, revision)
         if parent.get("edit_references"):
             expected = [{"path": state["source"], "sha256": state["source_sha256"], "role": "immutable_source"},
-                        {"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"}] + copy.deepcopy(parent["edit_references"])
+                        {"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"}]
+            if revision.get('policy'):
+                expected.reverse()
+            expected += copy.deepcopy(parent["edit_references"])
             require(c, revision.get("pool_version") == "1.1" and revision.get("references") == expected,
                     "Human revision inputs retain source, chosen parent and every scoped reference.")
+        elif revision.get('policy'):
+            expected = [{'path': parent['path'], 'sha256': parent['sha256'], 'role': 'edit_target'},
+                        {'path': state['source'], 'sha256': state['source_sha256'], 'role': 'immutable_source'}]
+            require(c, revision.get('references') == expected, 'Revision references must match the chosen baseline.')
         if revision["status"] == "imported":
             aid = revision.get("asset_id")
             require(c, aid in by_id and by_id[aid].get("human_revision") == key
@@ -144,6 +208,9 @@ def validate_state(c, state):
             require(c, all(by_id[aid].get(field) == parent.get(field) for field in
                           ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references")),
                     "Human revisions retain their chosen parent's edit definition and brief.")
+            if revision.get('policy'):
+                require(c, by_id[aid].get('generation_inputs', {}).get('revision_policy') == revision['policy'],
+                        'Imported revision must retain its baseline policy.')
     for asset in state["assets"]:
         if "human_revision" in asset:
             origin = revisions.get(asset["human_revision"], {}).get("asset_id")
@@ -193,18 +260,41 @@ def revision_plan(c, root, state, key):
             "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent},
             "references": copy.deepcopy(revision["references"]),
             "reference_paths": [str(c.contained(root, item["path"])) for item in revision["references"]],
+            **({'revision_policy': copy.deepcopy(revision['policy']),
+                'edit_target': str(c.contained(root, parent['path'])),
+                'source_context': str(c.contained(root, state['source'])),
+                'instructions': 'Edit the chosen candidate as the primary baseline. Preserve successful edits outside the correction. Recheck still-protected regions against the source and correct documented unauthorized drift or explicitly named restoration checks. Never restore superseded clothing, objects or expression states.'} if revision.get('policy') else {}),
             "asset_id": revision.get("asset_id"), "failure": revision.get("failure"),
             "next_action": {"reserved": "generate_revision", "imported": "review", "failed": "stopped", "cancelled": "stopped"}[revision["status"]]}
 
 
-def revision_prepare(c, root, key, contract, budget=None):
+def revision_prepare(c, root, key, contract, budget=None, restore_checks=None, inspection=None):
     root = root.resolve()
     state = c.read_state(root)
     existing = state.get("human_revisions", {}).get(key)
+    contract = copy.deepcopy(contract)
+    validate_contract(c, contract)
+    if not existing or existing.get('policy'):
+        if not {'revision_continuity', 'source_protection_recheck'} <= {x['id'] for x in contract}:
+            language = 'en'
+            packet = state.get('review_packets', {}).get(key)
+            if packet and packet.get('items'):
+                packet_valid(c, root, state, packet)
+                folder = c.contained(root, next(iter(packet['items'].values()))['copy']).parent
+                language = json.loads((folder/'packet.json').read_text(encoding='utf-8')).get('language', 'en')
+            for check in revision_checks(language):
+                if not any(x['id'] == check['id'] for x in contract):
+                    contract.append(check)
     if existing:
         require(c, existing["contract"] == contract and (budget is None or budget == existing.get("budget", 1)), "Cannot rewrite or reset an existing human revision.")
         if existing["status"] == "reserved":
             revision_origin(c, root, state, key)
+        if existing.get('policy'):
+            require(c, (restore_checks is None or restore_checks == existing['policy']['restore_checks'])
+                    and (inspection is None or inspection == existing['policy']['inspection_regions']),
+                    'Cannot reset the recorded restoration scope or inspection plan.')
+        else:
+            require(c, restore_checks is None and inspection is None, 'Legacy pending revisions retain their original policy.')
         return revision_plan(c, root, state, key)
     parent, feedback = revision_origin(c, root, state, key)
     budget = 3 if budget is None else budget
@@ -212,15 +302,15 @@ def revision_prepare(c, root, key, contract, budget=None):
     validate_revision_contract(c, state, parent, contract)
     require(c, not any(r["status"] == "reserved" and c.asset_slot(c.get_asset(state, r["parent_asset"])) == c.asset_slot(parent)
                       for r in state.get("human_revisions", {}).values()), "Another human revision is pending.", "HUMAN_REVISION_NOT_READY")
-    references = [{"path": path, "sha256": c.digest(c.contained(root, path)), "role": role}
-                  for path, role in ((state["source"], "immutable_source"), (parent["path"], "edit_target"))]
-    if parent.get("edit_references"):
-        references = c.reference_call("bindings", root, state, parent, parent)
+    policy = {'version': '1.0', 'baseline_asset': parent['id'], 'restore_checks': restore_checks if restore_checks is not None else [],
+              'inspection_regions': inspection if inspection is not None else []}
+    validate_policy(c, state, {'policy': policy, 'parent_asset': parent['id'], 'contract': contract})
+    references = planned_references(c, root, state, parent, parent, policy)
     state.setdefault("human_revisions", {})[key] = {
         "packet": key, "parent_asset": parent["id"], "parent_sha256": parent["sha256"],
         "source_sha256": state["source_sha256"], "parent_quality_sha256": c.review_fingerprint(parent["quality_review"]),
         "note": feedback["note"], "contract": copy.deepcopy(contract), "references": references,
-        "status": "reserved", "budget": budget, "pool_version": "1.1", "created_at": c.timestamp()}
+        "status": "reserved", "budget": budget, "pool_version": "1.1", 'policy': policy, "created_at": c.timestamp()}
     c.write_state(root, state)
     return revision_plan(c, root, state, key)
 
@@ -246,6 +336,8 @@ def revision_import(c, root, key, image, prompt, references, failure=None):
     fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent}
     fields.update(human_revision=key, quality_required=c.QUALITY_VERSION,
                   generation_inputs={"strategy": "user_revision", "references": copy.deepcopy(revision["references"]), "packet": key})
+    if revision.get('policy'):
+        fields['generation_inputs']['revision_policy'] = copy.deepcopy(revision['policy'])
     return c.save_candidate(root, state, image, fields, c.validate_image(image, state["canvas"], state["background_mode"]), actual_prompt)
 
 
@@ -366,13 +458,21 @@ def pool_reserve(c, root, key):
                "strategy": {"sample": "source_sample", "repair": "repair_best", "redraw": "review_redraw"}[plan["action"]],
                "parent": plan["repair_parent"], "references": [{"path": p, "sha256": c.digest(c.contained(root, p))} for p in refs]}
     original = c.get_asset(state, key)
+    policy = revision_policy(state, original)
     if original.get("edit_references"):
         parent = c.get_asset(state, plan["repair_parent"]) if plan["repair_parent"] else None
-        attempt["references"] = c.reference_call("bindings", root, state, original, parent)
+        attempt["references"] = planned_references(c, root, state, original, parent, policy)
         refs = [r["path"] for r in attempt["references"]]
+    elif policy:
+        attempt['references'] = planned_references(c, root, state, original, c.get_asset(state, plan['repair_parent']), policy)
+        refs = [r['path'] for r in attempt['references']]
+    if policy:
+        attempt['revision_policy'] = copy.deepcopy(policy)
     if plan["repair_parent"]:
         attempt["repair_plan"] = (pool["comparisons"][-1]["repair_plan"] if plan["action"] == "repair" else
                                   "Correct the attached failed checks; retain the fixed contract and successful edits. The immutable source controls identity, pose and framing; do not copy failed properties from the candidate.")
+        if policy:
+            attempt['repair_plan'] = 'Correct the recorded failures on the named edit target. Retain successful changes relative to the user-chosen baseline. Use source context to repair documented drift in still-protected regions or explicitly named restoration checks; never reintroduce superseded source features.'
         attempt["blocking_findings"] = plan["blocking_findings"][plan["repair_parent"]]
         attempt["review_sha256"] = c.review_fingerprint(c.get_asset(state, plan["repair_parent"])["quality_review"])
     pool["attempts"].append(attempt)
@@ -496,9 +596,26 @@ def user_review_summary(c, root, state, assets, members, pool, items, omissions)
                                               "findings": redraw_findings(a)} for a in assets}}
 
 
-def inspection_regions(c, state, assets, face_box, detail_box):
+def validate_regions(c, regions, canvas):
+    require(c, isinstance(regions, list) and len(regions) <= 4,
+            'Use at most four focused inspection regions, or an empty list for full images only.', 'INVALID_REVIEW_BOX')
+    ids = set()
+    for region in regions:
+        require(c, isinstance(region, dict) and set(region) == {'id', 'box', 'label', 'reason'}
+                and c.valid_outfit_id(region.get('id')) and region['id'] not in ('full', 'source', 'parent')
+                and region['id'] not in ids and c.valid_source_box(region.get('box'), canvas)
+                and c.valid_edit_text(region.get('label'), 100) and c.valid_edit_text(region.get('reason'), 1000),
+                'Each inspection region needs a unique ID, source-coordinate box, localized label and task/risk reason.', 'INVALID_REVIEW_BOX')
+        ids.add(region['id'])
+
+
+def inspection_regions(c, state, assets, face_box, detail_box, requested=None):
     """Inspection boxes locate source pixels; they never align or modify artwork."""
     regions = []
+    if requested is not None:
+        require(c, face_box is None and detail_box is None, 'Use an inspection plan or individual boxes, not both.', 'INVALID_REVIEW_BOX')
+        validate_regions(c, requested, state['canvas'])
+        return copy.deepcopy(requested)
     if detail_box is None:
         boxes = [a.get('edit_brief', {}).get('target_box') for a in assets]
         if boxes and boxes[0] and all(box == boxes[0] for box in boxes):
@@ -537,7 +654,7 @@ def detail_view_paths(folder, inspection):
                      for name in inspection['sizes']} for r in inspection['regions']}
 
 
-def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=None, selection_note=None, face_box=None, detail_box=None):
+def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=None, selection_note=None, face_box=None, detail_box=None, inspection=None):
     root = root.resolve()
     try:
         ui = preview_text(language, translations)
@@ -556,17 +673,21 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
     require(c, all(a.get("edit_references", []) == reference_metadata for a in assets), "Compare candidates with the same scoped references.")
     require(c, all(c.delivery_validation(c.check_asset(root, state, a))["passed"] for a in assets), "Review requires readable, unchanged images.")
     origin = None
-    if purpose == "user" and assets[0].get("human_revision") and len({a.get("human_revision") for a in assets}) == 1:
+    if assets[0].get("human_revision") and len({a.get("human_revision") for a in assets}) == 1:
         origin = state["human_revisions"][assets[0]["human_revision"]]
         parent = c.get_asset(state, origin["parent_asset"])
         parent_path = c.contained(root, parent["path"])
         require(c, parent_path.is_file() and c.digest(parent_path) == origin["parent_sha256"], "Revision parent changed or is missing.", "STALE_REVIEW_PACKET")
         previous = state['review_packets'][origin['packet']].get('inspection', {}).get('regions', [])
-        if face_box is None:
-            face_box = next((r['box'] for r in previous if r['id']=='face'), None)
-        if detail_box is None:
-            detail_box = next((r['box'] for r in previous if r['id']=='target'), None)
-    regions = inspection_regions(c, state, assets, face_box, detail_box)
+        if origin.get('policy'):
+            if inspection is None and face_box is None and detail_box is None:
+                inspection = origin['policy']['inspection_regions']
+        elif inspection is None:
+            if face_box is None:
+                face_box = next((r['box'] for r in previous if r['id']=='face'), None)
+            if detail_box is None:
+                detail_box = next((r['box'] for r in previous if r['id']=='target'), None)
+    regions = inspection_regions(c, state, assets, face_box, detail_box, inspection)
     secrets.SystemRandom().shuffle(assets)
     key = secrets.token_hex(12)
     folder = root / "reviews" / key
@@ -602,6 +723,7 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
     if summary is not None:
         packet["presentation"] = {"summary": summary, "omissions": omissions, "pool": assets[0].get("candidate_pool")}
     inspection, detail_files = inspection_images(c, folder, state['canvas'], regions, list(items), revision)
+    inspection['comparison_base'] = 'parent' if revision else 'source'
     page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision, edit_references, summary, inspection)
     (folder / "index.html").write_text(page, encoding="utf-8")
     # Assistant packets stay blind; user packets expose checks/recommendation separately.
@@ -721,6 +843,9 @@ INTERACTION_LABELS = {
 }
 PREVIEW_EN.update(INTERACTION_LABELS)
 
+BASELINE_LABELS = {'对照基准': 'Comparison baseline', '与修订前同步对照': 'Compare with before revision'}
+PREVIEW_EN.update(BASELINE_LABELS)
+
 REVIEW_SHEET_TEMPLATE = r"""<!doctype html>
 <html lang="__LANGUAGE__">
 <meta charset="utf-8">
@@ -834,7 +959,7 @@ __REVIEW_CONTEXT__
 <div class="viewer-header"><h2 id="viewer-title">__UI_26__</h2><button id="close-viewer" type="button" aria-label="__UI_27__">__UI_28__</button></div>
 <div class="viewer-toolbar">
 <button id="previous" type="button" aria-label="__UI_29__">←</button><label>__UI_31__ <select id="viewer-candidate"></select></label><button id="next" type="button" aria-label="__UI_30__">→</button>
-<label>__INSPECTION_AREA__ <select id="inspection-area"></select></label><label><input id="compare-source" type="checkbox"> __COMPARE_SOURCE__</label>
+<label id="inspection-area-label">__INSPECTION_AREA__ <select id="inspection-area"></select></label><label id="comparison-base-label">__BASELINE_LABEL__ <select id="comparison-base"></select></label><label><input id="compare-source" type="checkbox"> <span id="compare-label">__COMPARE_SOURCE__</span></label>
 <button id="zoom-out" type="button" aria-label="__UI_32__">−</button><input id="zoom" type="range" min="100" max="500" step="25" value="100" aria-label="__UI_33__"><output id="zoom-label" for="zoom">100%</output><button id="zoom-in" type="button" aria-label="__UI_34__">＋</button>
 <button id="fit-window" type="button">__UI_35__</button><button id="viewer-background" type="button" aria-pressed="false">__UI_3__</button>
 </div><p class="hint">__VIEWER_HINT__</p>
@@ -846,22 +971,26 @@ __REVIEW_CONTEXT__
 </dialog>
 <script>
 'use strict';
-const packet=__PACKET__,items=__VIEWER_ITEMS__,ui=__UI_STRINGS__,regions=__INSPECTION_REGIONS__;
-const byId=id=>document.getElementById(id),viewer=byId('viewer'),choice=byId('viewer-candidate'),area=byId('inspection-area'),compare=byId('compare-source');
+const packet=__PACKET__,items=__VIEWER_ITEMS__,ui=__UI_STRINGS__,regions=__INSPECTION_REGIONS__,defaultBaseline=__COMPARISON_BASE__;
+const byId=id=>document.getElementById(id),viewer=byId('viewer'),choice=byId('viewer-candidate'),area=byId('inspection-area'),compare=byId('compare-source'),baseline=byId('comparison-base');
 const panes=[{viewport:byId('viewport'),frame:byId('image-frame'),picture:byId('viewer-image')},{viewport:byId('source-viewport'),frame:byId('source-frame'),picture:byId('source-image')}];
 let current=0,zoom=1,position={x:.5,y:.5},drag=null,loadSerial=0;
 items.forEach((item,index)=>{const option=document.createElement('option');option.value=index;option.textContent=item.label;choice.append(option);});
+items.filter(item=>item.key==='source'||item.key==='parent').forEach(item=>{const option=document.createElement('option');option.value=item.key;option.textContent=item.label;baseline.append(option);});
+baseline.value=defaultBaseline;byId('comparison-base-label').hidden=baseline.options.length<2;compare.checked=defaultBaseline==='parent';
 [{id:'full',label:ui['全图']},...regions].forEach(region=>{const option=document.createElement('option');option.value=region.id;option.textContent=region.label;area.append(option);});
+byId('inspection-area-label').hidden=area.options.length<2;
 function remember(pane=panes[0]){const width=pane.frame.clientWidth||1,height=pane.frame.clientHeight||1;return {x:(pane.viewport.scrollLeft+pane.viewport.clientWidth/2)/width,y:(pane.viewport.scrollTop+pane.viewport.clientHeight/2)/height};}
 function scrollToPosition(pane){pane.viewport.scrollLeft=position.x*pane.frame.clientWidth-pane.viewport.clientWidth/2;pane.viewport.scrollTop=position.y*pane.frame.clientHeight-pane.viewport.clientHeight/2;pane.expected={left:pane.viewport.scrollLeft,top:pane.viewport.scrollTop};}
 function layout(){if(!viewer.open)return;for(const pane of panes){if(!pane.viewport.clientWidth||!pane.picture.naturalWidth||!pane.picture.complete)continue;const fit=Math.min(pane.viewport.clientWidth/pane.picture.naturalWidth,pane.viewport.clientHeight/pane.picture.naturalHeight);const width=pane.picture.naturalWidth*fit*zoom,height=pane.picture.naturalHeight*fit*zoom;pane.picture.style.width=width+'px';pane.picture.style.height=height+'px';pane.frame.style.width=Math.max(pane.viewport.clientWidth,width)+'px';pane.frame.style.height=Math.max(pane.viewport.clientHeight,height)+'px';scrollToPosition(pane);}byId('zoom').value=Math.round(zoom*100);byId('zoom-label').value=Math.round(zoom*100)+'%';}
 function imagePath(item){return (item.views||{})[area.value]||item.src;}
 function show(index,keepPosition=true){if(keepPosition&&panes[0].picture.complete&&panes[0].picture.naturalWidth)position=remember();current=(index+items.length)%items.length;choice.value=current;const item=items[current],serial=++loadSerial;
 for(const option of area.options)option.disabled=option.value!=='full'&&!(item.views||{})[option.value];if(area.selectedOptions[0].disabled)area.value='full';
-compare.disabled=!item.candidate;byId('source-pane').hidden=!compare.checked||compare.disabled;byId('viewer-panels').classList.toggle('comparing',!byId('source-pane').hidden);
+const base=items.find(entry=>entry.key===baseline.value)||items[0];compare.disabled=!item.key||item.key===base.key;byId('source-pane').hidden=!compare.checked||compare.disabled;byId('viewer-panels').classList.toggle('comparing',!byId('source-pane').hidden);
+byId('compare-label').textContent=base.key==='parent'?(ui['与修订前同步对照']||base.label):ui['与原图同步对照'];
 byId('viewer-title').textContent=ui['大图预览']+' · '+item.label;byId('viewer-status').textContent=ui['加载中…'];
-byId('candidate-label').textContent=item.label+(item.size?' · '+item.size.join(' × '):'');byId('source-label').textContent=ui['原图']+(items[0].size?' · '+items[0].size.join(' × '):'');
-for(const [i,pane] of panes.entries()){const entry=i===0?item:items[0];pane.picture.alt=entry.label;pane.picture.onload=()=>{if(serial!==loadSerial)return;layout();byId('viewer-status').textContent=item.label+' · '+ui[area.value==='face'?'整脸':area.value==='target'?'目标部位':'全图']+(area.value!=='full'?' · '+ui['局部使用相同原图坐标；尺寸不同时仅按比例映射，不校正位置或修复画布。']:'');};pane.picture.onerror=()=>{if(serial===loadSerial)byId('viewer-status').textContent=ui['图片加载失败，请关闭后重试。'];};pane.picture.src=imagePath(entry);}
+byId('candidate-label').textContent=item.label+(item.size?' · '+item.size.join(' × '):'');byId('source-label').textContent=base.label+(base.size?' · '+base.size.join(' × '):'');
+for(const [i,pane] of panes.entries()){const entry=i===0?item:base;pane.picture.alt=entry.label;pane.picture.onload=()=>{if(serial!==loadSerial)return;layout();byId('viewer-status').textContent=item.label+' · '+area.selectedOptions[0].textContent+(area.value!=='full'?' · '+ui['局部使用相同原图坐标；尺寸不同时仅按比例映射，不校正位置或修复画布。']:'');};pane.picture.onerror=()=>{if(serial===loadSerial)byId('viewer-status').textContent=ui['图片加载失败，请关闭后重试。'];};pane.picture.src=imagePath(entry);}
 byId('viewer-accept').disabled=byId('viewer-revise').disabled=!item.candidate;}
 function openViewer(index,scope='full'){position={x:.5,y:.5};zoom=1;area.value=scope;viewer.showModal();document.body.classList.add('viewer-open');show(index,false);}
 function setZoom(value){position=remember();zoom=Math.min(5,Math.max(1,value));layout();}
@@ -871,7 +1000,7 @@ document.querySelectorAll('[data-viewer-index]').forEach(button=>button.onclick=
 byId('close-viewer').onclick=()=>viewer.close();viewer.addEventListener('close',()=>{document.body.classList.remove('viewer-open');drag=null;for(const pane of panes)pane.viewport.classList.remove('dragging');});
 viewer.addEventListener('click',event=>{if(event.target!==viewer)return;const rect=viewer.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)viewer.close();});
 byId('previous').onclick=()=>show(current-1);byId('next').onclick=()=>show(current+1);choice.onchange=()=>show(Number(choice.value));
-area.onchange=()=>{position={x:.5,y:.5};zoom=1;show(current,false);};compare.onchange=()=>show(current);
+area.onchange=()=>{position={x:.5,y:.5};zoom=1;show(current,false);};compare.onchange=()=>show(current);baseline.onchange=()=>show(current);
 byId('zoom-in').onclick=()=>setZoom(zoom+.25);byId('zoom-out').onclick=()=>setZoom(zoom-.25);byId('zoom').oninput=event=>setZoom(Number(event.target.value)/100);
 byId('fit-window').onclick=()=>{zoom=1;position={x:.5,y:.5};layout();};
 viewer.addEventListener('keydown',event=>{if(event.target.matches('input,select,textarea'))return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();show(current+(event.key==='ArrowLeft'?-1:1));}});
@@ -900,7 +1029,7 @@ def preview_text(language="zh-CN", translations=None, allow_legacy=False):
         revision_keys = {'修订前', '本次修改'}
         accepted = [keys]
         if allow_legacy:
-            for feature_keys in (revision_keys, reference_keys, set(SUMMARY_LABELS), set(INTERACTION_LABELS)):
+            for feature_keys in (revision_keys, reference_keys, set(SUMMARY_LABELS), set(INTERACTION_LABELS), set(BASELINE_LABELS)):
                 accepted += [option - feature_keys for option in list(accepted)]
         if not isinstance(translations, dict) or set(translations) not in accepted or not all(isinstance(v, str) and v.strip() and len(v) <= 2000 for v in translations.values()):
             raise ValueError('Supply a complete text mapping for the preview language.')
@@ -958,6 +1087,7 @@ def render_sheet(key, labels, request, contract, purpose, language="zh-CN", tran
     modern = set(INTERACTION_LABELS) <= set(ui)
     inspection = inspection or {'regions': [], 'sizes': {}}
     regions = inspection['regions'] if modern else []
+    region_label = lambda region: region.get('label') or ui['整脸' if region['id']=='face' else '目标部位']
     items = [{"label": ui['原图'], "src": "source.png", 'key': 'source'}]
     if revision:
         items.append({"label": ui['修订前'], "src": revision['source'], 'key': 'parent'})
@@ -983,7 +1113,7 @@ def render_sheet(key, labels, request, contract, purpose, language="zh-CN", tran
     if regions:
         detail_cards = '<section><details id="detail-comparisons"><summary>'+html.escape(ui['局部对照'])+'</summary><p class="hint">'+html.escape(ui['局部使用相同原图坐标；尺寸不同时仅按比例映射，不校正位置或修复画布。'])+'</p>'
         for region in regions:
-            detail_cards += '<h3>'+html.escape(ui['整脸' if region['id']=='face' else '目标部位'])+'</h3><div class="grid detail-grid">'+''.join(card(index, item, region) for index, item in enumerate(items) if region['id'] in item.get('views', {}))+'</div>'
+            detail_cards += '<h3>'+html.escape(region_label(region))+'</h3><div class="grid detail-grid">'+''.join(card(index, item, region) for index, item in enumerate(items) if region['id'] in item.get('views', {}))+'</div>'
         detail_cards += '</details></section>'
     values = {
         '__REQUEST__': html.escape(str(request)), '__CARDS__': cards,
@@ -996,7 +1126,9 @@ def render_sheet(key, labels, request, contract, purpose, language="zh-CN", tran
     if modern:
         values.update({
             '__DETAIL_CARDS__': detail_cards,
-            '__INSPECTION_REGIONS__': script_json([{'id': r['id'], 'label': ui['整脸' if r['id']=='face' else '目标部位']} for r in regions]),
+            '__INSPECTION_REGIONS__': script_json([{'id': r['id'], 'label': region_label(r)} for r in regions]),
+            '__COMPARISON_BASE__': script_json(inspection.get('comparison_base', 'parent' if revision else 'source')),
+            '__BASELINE_LABEL__': html.escape(ui.get('对照基准', ui['查看'])),
             **{token: html.escape(ui[text]) for token, text in {
                 '__EXTRA_RATINGS__': '补充评价（可选）', '__COPY_FEEDBACK__': '复制评审意见', '__COPY_OUTPUT__': '待交回的评审意见',
                 '__INSPECTION_AREA__': '查看范围', '__COMPARE_SOURCE__': '与原图同步对照', '__SOURCE_LABEL__': '原图', '__SOURCE_VIEWPORT__': '原图',
@@ -1180,12 +1312,15 @@ def add_commands(c, commands):
             p.add_argument("--selection-note", help="Only for the user's explicit request to show a subset; otherwise show the entire batch.")
             p.add_argument('--face-box', type=int, nargs=4, help='Whole-face inspection in source-canvas coordinates.')
             p.add_argument('--detail-box', type=int, nargs=4, help='Target inspection in source coordinates; defaults to the prepared target box.')
+            p.add_argument('--inspection-file', type=Path, help='Task-based localized inspection regions; [] keeps only the full image.')
         if name == "refresh-review-sheet":
             p.add_argument("--packet", required=True)
         if name == "revision-prepare":
             p.add_argument("--packet", required=True)
             p.add_argument("--contract-file", type=Path, required=True)
             p.add_argument("--budget", type=int, choices=(1, 2, 3), default=None)
+            p.add_argument('--restore-check', action='append', help='Explicit identity/protection check to restore from the source.')
+            p.add_argument('--inspection-file', type=Path, help='Focused regions for this correction; do not inherit every previous region.')
         if name in ("revision-import", "revision-fail"):
             p.add_argument("--revision", required=True)
         if name == "revision-import":
@@ -1216,11 +1351,11 @@ def dispatch(c, args):
     if args.command == "pool-compare":
         return compare(c, root, args.case_id, read(args.feedback_file))
     if args.command == "review-sheet":
-        return review_sheet(c, root, args.asset, args.purpose, args.language, read(args.ui_file) if args.ui_file else None, args.selection_note, args.face_box, args.detail_box)
+        return review_sheet(c, root, args.asset, args.purpose, args.language, read(args.ui_file) if args.ui_file else None, args.selection_note, args.face_box, args.detail_box, read(args.inspection_file) if args.inspection_file else None)
     if args.command == "refresh-review-sheet":
         return refresh_review_sheet(c, root, args.packet)
     if args.command == "revision-prepare":
-        return revision_prepare(c, root, args.packet, read(args.contract_file), args.budget)
+        return revision_prepare(c, root, args.packet, read(args.contract_file), args.budget, args.restore_check, read(args.inspection_file) if args.inspection_file else None)
     if args.command == "revision-import":
         return revision_import(c, root, args.revision, args.image, args.prompt_file, args.reference)
     if args.command == "revision-fail":

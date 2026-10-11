@@ -106,10 +106,12 @@ def load(c, root, state, manifest, asset):
     return copy.deepcopy(records)
 
 
-def bindings(c, root, state, asset, parent=None):
+def bindings(c, root, state, asset, parent=None, parent_first=False):
     refs = [{"path": state["source"], "sha256": state["source_sha256"], "role": "immutable_source"}]
     if parent is not None:
         refs.append({"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"})
+        if parent_first:
+            refs.reverse()
     records = asset.get("edit_references", [])
     check_files(c, root, records)
     return refs + copy.deepcopy(records)
@@ -135,5 +137,8 @@ def validate_asset(c, root, state, asset):
     if parent:
         require(c, parent.get("edit_references") == asset["edit_references"], "Revisions retain reference scope and notes.")
         expected.append({"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"})
+    policy = state.get('human_revisions', {}).get(asset.get('human_revision'), {}).get('policy')
+    if parent and policy:
+        expected.reverse()
     expected += asset["edit_references"]
     require(c, inputs.get("references") == expected, "Reference paths, order, roles, hashes or scopes differ from the recorded edit.")

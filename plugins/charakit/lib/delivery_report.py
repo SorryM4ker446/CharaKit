@@ -332,7 +332,8 @@ def write_detail_preview(core, case, region, output, t, background):
     """Display the accepted version and source at the recorded source coordinates."""
     sheet = Image.new('RGB', (720, 340), '#ffffff')
     draw = ImageDraw.Draw(sheet)
-    for index, (label, path) in enumerate(((t['source'], case['source']), (case['label'], case['final']['original_image']))):
+    baseline = (t['revision_parent'], case['revision_parent_image']) if case.get('inspection_base') == 'parent' else (t['source'], case['source'])
+    for index, (label, path) in enumerate((baseline, (case['label'], case['final']['original_image']))):
         with Image.open(path) as opened:
             image = opened.convert('RGBA')
         box = tuple(round(v*image.size[i%2]/case['source_canvas']['width' if i%2==0 else 'height']) for i,v in enumerate(region['box']))
@@ -363,7 +364,7 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
         lines += ['', '## '+t['detail_preview'], '']
         for case in data['cases']:
             for detail in case.get('detail_previews', []):
-                label = case['label']+' · '+t['face_region' if detail['id']=='face' else 'target_region']
+                label = case['label']+' · '+(detail.get('label') or t['face_region' if detail['id']=='face' else 'target_region'])
                 lines += ['!'+link(label, output/detail['path']), '']
     for c in data['cases']:
         if not c['final']:
@@ -545,13 +546,14 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
             accepted_packet = state.get('review_packets', {}).get(asset.get('human_feedback', {}).get('packet'), {}) if delivered else {}
             detail_regions = accepted_packet.get('inspection', {}).get('regions', [])
             # Legacy reports may use an explicitly requested face box or saved outfit target.
-            if delivered and not detail_regions:
+            if delivered and not detail_regions and 'inspection' not in accepted_packet:
                 detail_regions = ([{'id': 'face', 'box': face_box}] if face_box else [])
                 target_box = asset.get('edit_brief', {}).get('target_box')
                 if target_box:
                     detail_regions += [{'id': 'target', 'box': target_box}]
             cases.append({'project':str(root),'character':state['character_key'],'case_id':pool_id or case_id or asset['id'],'kind':core.quality_domain(state,asset),
                           'inspection_regions': copy.deepcopy(detail_regions),
+                          'inspection_base': accepted_packet.get('inspection', {}).get('comparison_base', 'source'),
                           'requested_revision':requested_revision,
                           'human_revision':state.get('human_revisions',{}).get(asset.get('human_revision')),
                           'revision_parent_image':str(core.contained(root,core.get_asset(state,state['human_revisions'][asset['human_revision']]['parent_asset'])['path'])) if asset.get('human_revision') else None,

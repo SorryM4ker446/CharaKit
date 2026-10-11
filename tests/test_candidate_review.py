@@ -48,7 +48,7 @@ class CandidateReviewTests(unittest.TestCase):
             fn(*args, **kwargs)
         self.assertEqual(exc.exception.code, expected)
 
-    def review(self, asset, passed=False, dim='protection'):
+    def review(self, asset, passed=False, dim='protection', check_id=None):
         sheet = self.call('review_sheet', self.root, [asset['id']], 'assistant')
         state = studio.read_state(self.root)
         asset = studio.get_asset(state, asset['id'])
@@ -57,7 +57,8 @@ class CandidateReviewTests(unittest.TestCase):
         for item in data['criteria']:
             item.update(observed='Synthetic inspected finding.', status='passed', score=5)
         if not passed:
-            next(x for x in data['criteria'] if x['dimension'] == dim).update(status='failed', score=3)
+            failed = next(x for x in data['criteria'] if x['id'] == check_id) if check_id else next(x for x in data['criteria'] if x['dimension'] == dim)
+            failed.update(status='failed', score=3)
             data['dimensions'][dim]['score'] = 3
             data['domain_review']['checks']['nonface_protection'].update(status='failed', evidence='Synthetic structural deviation.')
         comparison = self.root / 'preview' / (asset['id'] + '.png')
@@ -193,7 +194,8 @@ class CandidateReviewTests(unittest.TestCase):
         before = studio.read_state(self.root)
         original = {a['path']: (self.root / a['path']).read_bytes() for a in before['assets']}
         self.assertEqual(plan['parent_asset'], self.key)
-        self.assertEqual(Path(plan['reference_paths'][1]), (self.root / self.first['path']).resolve())
+        self.assertEqual(Path(plan['reference_paths'][0]), (self.root / self.first['path']).resolve())
+        self.assertEqual(plan['references'][0]['role'], 'edit_target')
         child = self.import_correction(plan)
         after = studio.read_state(self.root)
         self.assertEqual(child['parent_asset_id'], self.key)
@@ -224,7 +226,9 @@ class CandidateReviewTests(unittest.TestCase):
         self.review(child, True)
         state = studio.read_state(self.root)
         self.assertEqual(state['candidate_pools'][self.key]['contract'], contract())
-        self.assertEqual(state['candidate_pools'][child['id']]['contract'], revised)
+        self.assertEqual(state['candidate_pools'][child['id']]['contract'], plan['contract'])
+        self.assertEqual(plan['contract'][:-2], revised)
+        self.assertEqual([x['id'] for x in plan['contract'][-2:]], ['revision_continuity','source_protection_recheck'])
 
     def test_revision_requires_actual_feedback_and_rejects_superseded_choice(self):
         self.review(self.first, True)
@@ -701,7 +705,7 @@ class CandidateReviewTests(unittest.TestCase):
             self.assertIn(detail['path'], Path(report['report']).read_text(encoding='utf-8'))
         self.assertEqual(studio.digest(Path(report['images'][0])), self.first['sha256'])
 
-    def test_revision_inherits_review_regions_and_keeps_parent_nonselectable(self):
+    def test_revision_drops_unrelated_prior_regions_and_keeps_parent_nonselectable(self):
         self.review(self.first, True)
         page = self.call('review_sheet', self.root, [self.key], 'user', face_box=[16,20,48,44])
         self.call('human_feedback', self.root, dict(packet=page['packet'],basis='user',candidate='A',decision='revise',note='Actual fixture correction'))
@@ -710,9 +714,10 @@ class CandidateReviewTests(unittest.TestCase):
         self.review(child, True)
         new = self.call('review_sheet', self.root, [child['id']], 'user')
         public = json.loads(Path(new['public_packet']).read_text(encoding='utf-8'))
-        self.assertEqual(public['inspection']['regions'], [{'id':'face','box':[16,20,48,44]}])
+        self.assertEqual(public['inspection']['regions'], [])
+        self.assertEqual(public['inspection']['comparison_base'], 'parent')
         self.assertEqual(set(public['candidates']), {'A'})
-        self.assertTrue((Path(new['page']).parent/'face-parent.png').is_file())
+        self.assertFalse((Path(new['page']).parent/'face-parent.png').exists())
 
     def test_changed_decision_gets_new_packet_and_preserves_history(self):
         self.review(self.first, True)
@@ -722,6 +727,106 @@ class CandidateReviewTests(unittest.TestCase):
         self.assertEqual(result['next_action'], 'export')
         asset = studio.read_state(self.root)['assets'][0]
         self.assertEqual([x['decision'] for x in asset['human_feedback_history']], ['reject', 'accept'])
+
+    def test_revision_redraw_retains_chosen_baseline_and_continuity_gate(self):
+        self.review(self.first, True)
+        plan = self.correction(self.key)
+        child = self.import_correction(plan)
+        self.review(child, False)
+        attempt = self.call('pool_reserve', self.root, child['id'])
+        self.assertEqual(attempt['references'][0]['path'], child['path'])
+        self.assertEqual(attempt['references'][1]['path'], 'source.png')
+        self.assertEqual(attempt['revision_policy']['baseline_asset'], self.key)
+        result = self.call('pool_import', self.root, child['id'], attempt['token'], self.image, self.prompt,
+                           [Path(p) for p in attempt['reference_paths']])['asset']
+        self.assertEqual(result['parent_asset_id'], child['id'])
+        self.assertEqual(result['generation_inputs']['revision_policy'], plan['revision_policy'])
+        self.assertIn('revision_continuity', [x['id'] for x in studio.read_state(self.root)['candidate_pools'][child['id']]['contract']])
+
+    def test_revision_preservation_checks_each_veto_high_total(self):
+        self.review(self.first, True)
+        for check_id in ('revision_continuity', 'source_protection_recheck'):
+            with self.subTest(check=check_id):
+                plan = self.correction(self.key, 'Adjust only the target.')
+                child = self.import_correction(plan)
+                self.review(child, False, check_id=check_id)
+                saved = studio.get_asset(studio.read_state(self.root), child['id'])
+                self.assertEqual(saved['quality_review']['result']['total'], 90)
+                self.assertEqual(self.call('pool_status', self.root, child['id'])['action'], 'redraw')
+                self.code('INTERNAL_REVIEW_INCOMPLETE', self.call, 'review_sheet', self.root, [child['id']], 'user')
+                # Close only this synthetic batch to exercise the other independent veto.
+                state = studio.read_state(self.root); state['candidate_pools'][child['id']]['stopped'] = True
+                studio.write_state(self.root, state)
+
+    def test_focused_revision_regions_apply_to_assistant_human_and_final_report(self):
+        self.review(self.first, True)
+        _, feedback = self.feedback(self.key, 'revise', 'Adjust only the requested detail.')
+        region = {'id':'edited_detail','box':[8,8,48,70], 'label':'修改部位', 'reason':'本次修改范围'}
+        plan = self.call('revision_prepare', self.root, feedback['packet'], contract(), inspection=[region])
+        child = self.import_correction(plan)
+        internal = self.call('review_sheet', self.root, [child['id']], 'assistant')
+        self.assertEqual(internal['inspection']['regions'], [region])
+        self.assertEqual(internal['inspection']['comparison_base'], 'parent')
+        self.assertTrue(Path(internal['revision_parent']).is_file())
+        self.review(child, True)
+        page = self.call('review_sheet', self.root, [child['id']], 'user')
+        self.assertEqual(page['inspection']['regions'], [region])
+        self.assertTrue(Path(page['detail_views']['edited_detail']['parent']).is_file())
+        self.call('human_feedback', self.root, dict(packet=page['packet'], basis='user',candidate='A',decision='accept',note='Actual fixture acceptance'))
+        report = studio.generate_report([self.root], self.root/'focused-final', ids=[child['id']], stage='final')
+        case = json.loads(Path(report['manifest']).read_text(encoding='utf-8'))['cases'][0]
+        self.assertEqual(case['inspection_base'], 'parent')
+        self.assertEqual(case['detail_previews'][0]['label'], '修改部位')
+        self.assertEqual(len(report['images']), 1)
+
+    def test_full_only_review_stays_full_only_in_final_report(self):
+        self.review(self.first, True)
+        page = self.call('review_sheet', self.root, [self.key], 'user', inspection=[])
+        self.assertEqual(page['detail_views'], {})
+        self.call('human_feedback', self.root, dict(packet=page['packet'],basis='user',candidate='A',decision='accept',note='Actual fixture acceptance'))
+        report = studio.generate_report([self.root], self.root/'full-only', face_box=[16,20,48,44], stage='final')
+        self.assertEqual(report['detail_previews'], [])
+
+    def test_invalid_inspection_or_restore_scope_does_not_reserve_a_revision(self):
+        self.review(self.first, True)
+        _, feedback = self.feedback(self.key, 'revise', 'Adjust only the target.')
+        before = (self.root/'run.json').read_bytes()
+        for checks in (['target'], ['identity','identity'], [{}], ['missing']):
+            self.code('INVALID_CANDIDATE_REVIEW', self.call, 'revision_prepare', self.root, feedback['packet'], contract(), restore_checks=checks)
+            self.assertEqual((self.root/'run.json').read_bytes(), before)
+        self.code('INVALID_REVIEW_BOX', self.call, 'revision_prepare', self.root, feedback['packet'], contract(), inspection=[{'id':'bad','box':[0,0,10000,10000],'label':'部位','reason':'修改'}])
+        self.assertEqual((self.root/'run.json').read_bytes(), before)
+        plan = self.call('revision_prepare', self.root, feedback['packet'], contract(), restore_checks=['identity'])
+        self.assertEqual(plan['revision_policy']['restore_checks'], ['identity'])
+        self.code('INVALID_CANDIDATE_REVIEW', self.call, 'revision_prepare', self.root, feedback['packet'], contract(), restore_checks=[])
+
+    def test_legacy_reserved_revision_keeps_reference_order_budget_and_regions(self):
+        self.review(self.first, True)
+        page = self.call('review_sheet', self.root, [self.key], 'user', face_box=[16,20,48,44])
+        self.call('human_feedback', self.root, dict(packet=page['packet'],basis='user',candidate='A',decision='revise',note='Actual legacy fixture correction'))
+        plan = self.call('revision_prepare', self.root, page['packet'], contract(), budget=1)
+        state = studio.read_state(self.root)
+        old = state['human_revisions'][page['packet']]
+        old.pop('policy'); old['contract'] = contract(); old['references'].reverse()
+        studio.write_state(self.root, state)
+        plan = self.call('revision_prepare', self.root, page['packet'], contract())
+        self.assertEqual(plan['budget'], 1)
+        self.assertEqual(plan['references'][0]['role'], 'immutable_source')
+        self.assertNotIn('revision_policy', plan)
+        child = self.import_correction(plan)
+        self.review(child, True)
+        new = self.call('review_sheet', self.root, [child['id']], 'user')
+        self.assertEqual(new['inspection']['regions'], [{'id':'face','box':[16,20,48,44]}])
+
+    def test_duplicate_or_unsafe_region_ids_do_not_write_review_files(self):
+        self.review(self.first, True)
+        before = (self.root/'run.json').read_bytes()
+        folders = set((self.root/'reviews').iterdir())
+        region = {'id':'detail','box':[8,8,48,70],'label':'部位','reason':'本次修改'}
+        for requested in ([region,region], [{**region,'id':'../bad'}], [{**region,'id':'full'}]):
+            self.code('INVALID_REVIEW_BOX', self.call, 'review_sheet', self.root, [self.key], 'user', inspection=requested)
+            self.assertEqual((self.root/'run.json').read_bytes(), before)
+            self.assertEqual(set((self.root/'reviews').iterdir()), folders)
 
 
 if __name__ == '__main__':

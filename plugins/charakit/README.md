@@ -2,7 +2,7 @@
 
 **Edit visual novel character illustrations in Codex.** This plugin provides expression variants, clothing edits, and accessory / prop edits with versioned candidates, human review, and selected PNG exports.
 
-Development version **0.1.27** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
+Development version **0.1.28** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
 
 Codex generates artwork through its available image editing tool. The bundled Python helper preserves raw files and manages comparisons, review records, revisions, and packaging.
 
@@ -56,7 +56,7 @@ Responses and preview UI follow your current or preferred language. Machine-read
 - Each requested result gets up to **three attempts**, including the initial image, unless you set a smaller limit. Internal failures trigger redraws within that allowance; full passage stops generation early.
 - Internal passage requires **80/100 or higher**, all five dimensions at least **4/5**, and all applicable domain, fidelity, and file checks. Scores are Codex's visual observations, not automated image measurements.
 - After passage or exhaustion, the local HTML review page shows every readable candidate in the batch. Full images, optional face / target comparisons, and synchronized source viewing support inspection. Recommendations do not preselect a candidate.
-- Reply “Use A”, “Revise B: …”, or “Reject all” in chat, or copy feedback from the page. Failed candidates can receive comments and revision requests. Specific corrections retain the chosen parent and original feedback in a new bounded batch.
+- Reply “Use A”, “Revise B: …”, or “Reject all” in chat, or copy feedback from the page. Corrections edit the chosen version, preserve successful changes and recheck still-protected regions against the original. Revision previews default to before/after comparison with task-based local views and a switchable source baseline. Failed candidates remain open to feedback and revision.
 - Actual human feedback is required for the final review report. Only accepted, eligible candidates become final full PNGs, a comparison preview, and a requested ZIP. Final reports also include recorded face / target inspection images separately from the full artwork. Earlier reports are internal drafts.
 
 Positive feedback cannot bypass failed delivery checks. If every attempt fails, the workflow explains the remaining issues and retains the candidates for human review rather than exporting them as finished art.

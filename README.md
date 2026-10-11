@@ -2,7 +2,7 @@
 
 **A Codex plugin for editing visual novel character illustrations.** Create expression variants, change clothing, and edit accessories or props through a workflow that keeps the source, candidates, review findings, and your chosen version together.
 
-**English** | [简体中文](README.zh-CN.md) · Development version **0.1.27**
+**English** | [简体中文](README.zh-CN.md) · Development version **0.1.28**
 
 Attach an illustration, describe the change, review the results, and choose what to keep. CharaKit uses the image editing tool available in Codex; its local Python helper manages files, comparisons, review records, and exports.
 
@@ -91,7 +91,7 @@ Responses and preview labels follow your language. Outputs default to `art-outpu
 1. **Define the edit.** Codex inspects the source and records the requested change, allowed boundaries, protected details, and reference roles.
 2. **Generate and inspect.** Each requested result has up to three image-tool attempts by default, including the first. Failed checks trigger a targeted redraw within that budget; a full pass stops generation early. Explicit smaller limits are honored.
 3. **Review the candidates.** After a full pass or budget exhaustion, the local HTML page shows every readable candidate in that batch alongside the source. Full images remain visible, optional face / target details expand for closer inspection, and the large viewer supports synchronized source comparison. Recommendations remain separate from your choice.
-4. **Choose or revise.** Reply in chat with “Use A”, “Revise B: …”, or “Reject all”. You can also copy feedback from the page. Failed candidates remain available for comments and revision requests. A specific correction starts a new bounded batch linked to your chosen candidate and original feedback.
+4. **Choose or revise.** Reply in chat with “Use A”, “Revise B: …”, or “Reject all”. You can also copy feedback from the page. A correction edits your chosen version in a new bounded batch, retains successful changes and rechecks still-protected regions against the original. Revision previews compare before/after by default, with task-based detail views and an optional original-source baseline. Failed candidates remain available for comments and revisions.
 5. **Receive the result.** Actual human feedback precedes the final review report. Only accepted candidates that pass every delivery check become final full PNGs, with a comparison preview, report, and ZIP when requested. Recorded face / target regions also appear as separate inspection images in the final report.
 
 Internal review uses five dimensions: requested result, character identity, non-target preservation, structure / interfaces, and visual finish. Passage requires **at least 80/100**, **every dimension at least 4/5**, and all applicable domain, fidelity, and file checks. A high total or user preference cannot override a blocking check. If the attempt budget runs out, Codex explains the remaining issues before human review.

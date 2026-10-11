@@ -1,5 +1,7 @@
 # Quality-first development and internal delivery review
 
+New human revisions additionally enforce the shared [baseline and secondary source-review rules](candidate-review.md#revision-baselines-and-task-based-inspection). Inspect successful authorized changes against the user-chosen baseline and still-protected regions against the immutable source; exclude superseded source clothing/objects and authorized expression movement. `revision_continuity` and `source_protection_recheck` are explicit evidence-backed protection criteria, not new weighted dimensions or automatic similarity scores. Failed/uncertain findings trigger bounded redraw and cannot be averaged away. Relevant detail views are task-based; reducing the human menu does not waive internal protection inspection. This applies to every current and future module.
+
 Helper 0.1.23 defaults new pools to three total attempts per result. Correct recorded internal failures before human review, even when the total is ≥80; require all five dimensions ≥4/5 and all domain/fidelity checks passed. Stop on full passage or recorded exhaustion; honor explicit smaller limits and preserve legacy pools. See [the current review/redraw procedure](candidate-review.md).
 
 Use this shared baseline for every implemented editing module and future development. Quality means achieving the request while preserving the source within the operation's allowed changes. Prompt length, recognizability alone, a successful recolor, and passing file tests are insufficient acceptance criteria.
