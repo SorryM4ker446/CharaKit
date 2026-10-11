@@ -17,6 +17,8 @@ Garment recoloring and single-garment replacement use the separate [CharaKit Out
 
 For every new request, follow [candidate selection and human review](../../references/candidate-review.md). Define source-grounded checks before generation, start a candidate pool before scoring, and use rubric 1.2 with five evidence-linked dimensions. Honor the authorized count: one image means budget 1; explicitly enabled automatic improvement allows at most three attempts, with independent source sampling and at most one evidence-based repair. Show an anonymous review page and inline candidates, collect actual user feedback, and only then deliver/package accepted eligible artwork. Chat replies are sufficient; do not demand a second approval or a feedback file. This workflow replaces sequential refinement for new work; old tracked cases retain [their original workflow](../../references/refinement.md).
 
+For a specific correction after human review, follow the [linked human-revision procedure](../../references/candidate-review.md#continue-a-specific-human-correction). Use `revision-prepare` and `revision-import` to retain the actual chosen parent, original comment and protection checks. One correction gets one image and fresh internal/human review; show the returned before/after comparison. Do not substitute the latest candidate or inherit acceptance.
+
 ## User language
 
 - Respond in the language of the user's current request, or their explicitly preferred language. Follow a later language change without asking again.

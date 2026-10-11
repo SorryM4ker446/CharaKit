@@ -2,7 +2,9 @@
 
 New requests use [candidate selection and human review](references/candidate-review.md): authorized independent source sampling, at most one repair of a preferred candidate, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sequential refinement descriptions below apply only to existing `refinements` records. Historical scores remain unchanged; generation-quality gains are not yet established.
 
-Version **0.1.19**. Outfits supports single-garment `recolor` and `replace`; see the [replacement guide](skills/charakit-outfits/references/replacement-guide.md). Actual replacement quality requires visual validation. A modular Codex plugin for visual novel character artwork.
+Version **0.1.20**. Outfits supports single-garment `recolor` and `replace`; see the [replacement guide](skills/charakit-outfits/references/replacement-guide.md). Actual replacement quality requires visual validation. A modular Codex plugin for visual novel character artwork.
+
+Specific human corrections use the [linked revision procedure](references/candidate-review.md#continue-a-specific-human-correction): preserve the user's chosen parent and original comment, reserve one revision, inherit protection checks, and review the new image afresh. The user preview adds before/after context; final reports and export manifests retain revision provenance. This phase focuses on this plugin's own review/revision behavior, without direct-dialogue comparison or a task-recovery feature.
 
 Review previews use a separate zoom/pan dialog with language-matched UI. Reports before human feedback are internal drafts; final review reports require actual feedback and include user decisions and Codex disposition. Rejected or revision-requested candidates remain records, not deliverables. No HTML source file is added to the plugin; runtime pages stay with artwork outputs.
 

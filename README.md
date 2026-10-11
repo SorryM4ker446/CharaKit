@@ -8,7 +8,9 @@ New requests use [candidate selection and human review](plugins/charakit/referen
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.19**.
+Development version: **0.1.20**.
+
+Specific human corrections now continue from the user-chosen candidate through `revision-prepare` and `revision-import`. The helper preserves the original comment, protection checks and parent link, reserves one revision, and requires fresh internal/human review. The review page adds a before-revision reference; reports and exports retain that lineage. See the [human-revision procedure](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction).
 
 Review pages now use a separate zoom/pan viewer and match the user's language. Before actual human feedback, reports are labeled internal drafts with no final assets; `report --stage final` requires feedback for every requested pool. The final report includes the user's selected candidate, comments and Codex disposition, including revision and rejection outcomes.
 
@@ -205,7 +207,7 @@ tools/build_plugin.py               Plugin ZIP builder
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.19.zip
+python tools/build_plugin.py --output dist/charakit-0.1.20.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.

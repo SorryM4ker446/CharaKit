@@ -11,6 +11,7 @@ import zipfile
 
 from test_studio import studio, SCRIPT, fixture
 from test_outfits import outfits
+from test_outfits import builder, REPO
 from test_quality import assessment
 
 
@@ -45,8 +46,10 @@ class CandidateReviewTests(unittest.TestCase):
 
     def review(self, asset, passed=False, dim='protection'):
         sheet = self.call('review_sheet', self.root, [asset['id']], 'assistant')
-        data = assessment(scores=dict.fromkeys(studio.QUALITY_WEIGHTS_V12, 5))
-        data.update(rubric_version='1.2', criteria=contract(), normal_display_height=420, blind_packet=sheet['packet'])
+        state = studio.read_state(self.root)
+        asset = studio.get_asset(state, asset['id'])
+        data = assessment(scores=dict.fromkeys(studio.QUALITY_WEIGHTS_V12, 5), domain=studio.quality_domain(state, asset))
+        data.update(rubric_version='1.2', criteria=copy.deepcopy(state['candidate_pools'][asset['candidate_pool']]['contract']), normal_display_height=420, blind_packet=sheet['packet'])
         for item in data['criteria']:
             item.update(observed='Synthetic inspected finding.', status='passed', score=5)
         if not passed:
@@ -167,6 +170,237 @@ class CandidateReviewTests(unittest.TestCase):
         revision = studio.add_asset(self.root, self.image, 'happy', self.prompt)['asset']
         self.call('pool_start', self.root, revision['id'], contract(), 1)
         self.assertEqual(studio.read_state(self.root)['candidate_pools'][self.key]['budget'], 3)
+
+    def correction(self, aid, note='Make the intended expression softer.', checks=None):
+        _, feedback = self.feedback(aid, 'revise', note)
+        return self.call('revision_prepare', self.root, feedback['packet'], checks or contract())
+
+    def import_correction(self, plan):
+        return self.call('revision_import', self.root, plan['revision'], self.image, self.prompt,
+                         [Path(p) for p in plan['reference_paths']])['asset']
+
+    def test_human_revision_uses_chosen_earlier_candidate_and_preserves_old_pool(self):
+        self.review(self.first)
+        second = self.next()
+        self.review(second)
+        plan = self.correction(self.key, 'Keep A; soften only the mouth corners.')
+        before = studio.read_state(self.root)
+        original = {a['path']: (self.root / a['path']).read_bytes() for a in before['assets']}
+        self.assertEqual(plan['parent_asset'], self.key)
+        self.assertEqual(Path(plan['reference_paths'][1]), (self.root / self.first['path']).resolve())
+        child = self.import_correction(plan)
+        after = studio.read_state(self.root)
+        self.assertEqual(child['parent_asset_id'], self.key)
+        self.assertNotEqual(child['parent_asset_id'], second['id'])
+        self.assertEqual(before['assets'], after['assets'][:-1])
+        self.assertEqual(before['candidate_pools'][self.key], after['candidate_pools'][self.key])
+        self.assertEqual(after['candidate_pools'][child['id']]['budget'], 1)
+        self.assertEqual(child['generation_inputs']['strategy'], 'user_revision')
+        for path, raw in original.items():
+            self.assertEqual((self.root / path).read_bytes(), raw)
+        self.assertEqual((self.root / child['path']).read_bytes(), self.image.read_bytes())
+        for field in ('quality_review', 'human_feedback', 'fidelity_review'):
+            self.assertNotIn(field, child)
+
+    def test_revision_contract_updates_target_without_weakening_protection(self):
+        self.review(self.first, True)
+        _, feedback = self.feedback(self.key, 'revise', 'Reduce the smile intensity.')
+        revised = contract()
+        revised[0]['expected'] = 'A softer smile preserving the requested emotion.'
+        before = (self.root / 'run.json').read_bytes()
+        for dimension in ('identity', 'protection', 'integration', 'rendering'):
+            invalid = copy.deepcopy(revised)
+            next(x for x in invalid if x['dimension'] == dimension)['expected'] = 'Anything is acceptable.'
+            self.code('INVALID_CANDIDATE_REVIEW', self.call, 'revision_prepare', self.root, feedback['packet'], invalid)
+            self.assertEqual((self.root / 'run.json').read_bytes(), before)
+        plan = self.call('revision_prepare', self.root, feedback['packet'], revised)
+        child = self.import_correction(plan)
+        self.review(child, True)
+        state = studio.read_state(self.root)
+        self.assertEqual(state['candidate_pools'][self.key]['contract'], contract())
+        self.assertEqual(state['candidate_pools'][child['id']]['contract'], revised)
+
+    def test_revision_requires_actual_feedback_and_rejects_superseded_choice(self):
+        self.review(self.first, True)
+        sheet = self.call('review_sheet', self.root, [self.key], 'user')
+        before = (self.root / 'run.json').read_bytes()
+        self.code('HUMAN_REVISION_REQUIRED', self.call, 'revision_prepare', self.root, sheet['packet'], contract())
+        self.assertEqual((self.root / 'run.json').read_bytes(), before)
+        plan = self.correction(self.key)
+        self.feedback(self.key, 'reject', 'Cancel this correction.')
+        before = (self.root / 'run.json').read_bytes()
+        self.code('HUMAN_REVISION_NOT_READY', self.import_correction, plan)
+        self.assertEqual((self.root / 'run.json').read_bytes(), before)
+        cancelled = self.call('revision_prepare', self.root, plan['revision'], contract())
+        self.assertEqual(cancelled['next_action'], 'stopped')
+        self.assertEqual(cancelled['status'], 'cancelled')
+        replacement = self.correction(self.key, 'Use this new, specific correction instead.')
+        self.assertNotEqual(replacement['revision'], plan['revision'])
+        self.assertEqual(replacement['next_action'], 'generate_revision')
+
+    def test_revision_references_and_consumed_budget_cannot_be_bypassed(self):
+        self.review(self.first)
+        plan = self.correction(self.key)
+        before = (self.root / 'run.json').read_bytes()
+        self.code('INVALID_REVISION_REFERENCES', self.call, 'revision_import', self.root, plan['revision'], self.image, self.prompt,
+                  [Path(p) for p in reversed(plan['reference_paths'])])
+        self.code('HUMAN_REVISION_NOT_READY', studio.add_asset, self.root, self.image, 'happy', self.prompt)
+        self.assertEqual((self.root / 'run.json').read_bytes(), before)
+        self.assertEqual(self.call('revision_prepare', self.root, plan['revision'], contract()), plan)
+        child = self.import_correction(plan)
+        before = (self.root / 'run.json').read_bytes()
+        self.code('HUMAN_REVISION_NOT_READY', self.import_correction, plan)
+        self.assertEqual((self.root / 'run.json').read_bytes(), before)
+        self.assertEqual(self.call('revision_prepare', self.root, plan['revision'], contract())['asset_id'], child['id'])
+        self.code('POOL_NOT_READY', self.call, 'pool_reserve', self.root, child['id'])
+
+    def test_failed_revision_call_stays_spent_without_extra_candidate(self):
+        self.review(self.first)
+        plan = self.correction(self.key)
+        result = self.call('revision_import', self.root, plan['revision'], None, None, None, 'Image tool failed.')
+        self.assertEqual(result['next_action'], 'stopped')
+        self.assertEqual(len(studio.read_state(self.root)['assets']), 1)
+        self.code('HUMAN_REVISION_NOT_READY', self.import_correction, plan)
+        self.assertEqual(self.call('revision_prepare', self.root, plan['revision'], contract())['status'], 'failed')
+        report = studio.generate_report([self.root], Path(self.temp.name) / 'failed-revision', stage='final')
+        data = json.loads(Path(report['manifest']).read_text(encoding='utf-8'))
+        self.assertEqual(data['cases'][0]['status'], 'revision_failed')
+        self.assertEqual(data['cases'][0]['requested_revision']['failure'], 'Image tool failed.')
+        self.assertIn('Image tool failed.', Path(report['report']).read_text(encoding='utf-8'))
+        self.assertEqual(report['images'], [])
+
+    def test_revision_parent_changes_block_import(self):
+        self.review(self.first)
+        plan = self.correction(self.key)
+        fixture(self.root / self.first['path'], color='#334422')
+        before = (self.root / 'run.json').read_bytes()
+        self.code('STALE_REVIEW_PACKET', self.import_correction, plan)
+        self.code('STALE_REVIEW_PACKET', self.call, 'revision_prepare', self.root, plan['revision'], contract())
+        self.assertEqual((self.root / 'run.json').read_bytes(), before)
+
+    def test_missing_revision_parent_blocks_import_without_another_candidate(self):
+        self.review(self.first)
+        plan = self.correction(self.key)
+        (self.root / self.first['path']).unlink()
+        before = (self.root / 'run.json').read_bytes()
+        self.code('STALE_REVIEW_PACKET', self.import_correction, plan)
+        self.assertEqual((self.root / 'run.json').read_bytes(), before)
+
+    def test_refresh_legacy_custom_locale_without_revision_labels(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+        spec = spec_from_file_location('preview_legacy', SCRIPT.parents[3] / 'lib/candidate_review.py')
+        renderer = module_from_spec(spec); spec.loader.exec_module(renderer)
+        self.review(self.first, True)
+        labels = dict(renderer.PREVIEW_EN)
+        labels['原图'] = 'Custom source label'
+        sheet = self.call('review_sheet', self.root, [self.key], 'user', language='ja', translations=labels)
+        public_path = Path(sheet['public_packet'])
+        public = json.loads(public_path.read_text(encoding='utf-8'))
+        for key in ('修订前', '本次修改'):
+            del public['ui_labels'][key]
+        public_path.write_text(json.dumps(public, ensure_ascii=False), encoding='utf-8')
+        state = studio.read_state(self.root)
+        for artifact in state['review_packets'][sheet['packet']]['artifacts']:
+            if artifact['path'].endswith('/packet.json'):
+                artifact['sha256'] = studio.digest(public_path)
+        studio.write_state(self.root, state)
+        refreshed = self.call('refresh_review_sheet', self.root, sheet['packet'])
+        page = Path(refreshed['page']).read_text(encoding='utf-8')
+        self.assertIn('lang="ja"', page)
+        self.assertIn('Custom source label', page)
+
+    def test_revision_rechecks_reviews_and_exports_with_feedback_lineage(self):
+        self.review(self.first, True)
+        plan = self.correction(self.key, 'Only soften the smile; preserve the rest.')
+        child = self.import_correction(plan)
+        self.assertEqual(self.call('pool_status', self.root, child['id'])['action'], 'review')
+        self.code('HUMAN_REVIEW_REQUIRED', studio.generate_report, [self.root], Path(self.temp.name) / 'premature', stage='final')
+        self.review(child, True)
+        self.assertEqual(self.call('pool_status', self.root, child['id'])['action'], 'human_review')
+        self.code('HUMAN_REVIEW_REQUIRED', studio.delivery_assets, self.root, [child['id']])
+        sheet = self.call('review_sheet', self.root, [child['id']], 'user', language='en')
+        public = json.loads(Path(sheet['public_packet']).read_text(encoding='utf-8'))
+        page = Path(sheet['page']).read_text(encoding='utf-8')
+        self.assertIn('Before revision', page)
+        self.assertIn(plan['note'], page)
+        self.assertEqual((Path(sheet['page']).parent / public['revision']['source']).read_bytes(), (self.root / self.first['path']).read_bytes())
+        refreshed = self.call('refresh_review_sheet', self.root, sheet['packet'])
+        self.assertIn('Before revision', Path(refreshed['page']).read_text(encoding='utf-8'))
+        self.call('human_feedback', self.root, {'packet': sheet['packet'], 'basis': 'user', 'candidate': 'A', 'decision': 'accept', 'note': 'Use this correction.'})
+        result = studio.generate_report([self.root], Path(self.temp.name) / 'revision-final', stage='final', language='en')
+        report = json.loads(Path(result['manifest']).read_text(encoding='utf-8'))
+        self.assertEqual(report['cases'][0]['human_revision']['parent_asset'], self.key)
+        self.assertIn(plan['note'], Path(result['report']).read_text(encoding='utf-8'))
+        exported = studio.export_pack(self.root)
+        record = exported['manifest']['sprites'][0]
+        self.assertEqual(record['asset_id'], child['id'])
+        self.assertEqual(record['human_revision']['note'], plan['note'])
+        with zipfile.ZipFile(exported['export']) as archive:
+            self.assertEqual(archive.read(record['path']), self.image.read_bytes())
+
+    def test_revision_can_be_revised_again_only_from_new_actual_feedback(self):
+        self.review(self.first, True)
+        first_plan = self.correction(self.key)
+        child = self.import_correction(first_plan)
+        self.review(child, True)
+        next_plan = self.correction(child['id'], 'Adjust the mouth corners once more.')
+        grandchild = self.import_correction(next_plan)
+        self.assertEqual(grandchild['parent_asset_id'], child['id'])
+        self.assertEqual(studio.read_state(self.root)['human_revisions'][first_plan['revision']]['asset_id'], child['id'])
+
+    def test_revision_preserves_outfit_brief_and_mouth_state(self):
+        folder = Path(self.temp.name)
+        for mode in ('mouth', 'recolor', 'replace'):
+            with self.subTest(mode=mode):
+                self.root = folder / mode
+                if mode == 'mouth':
+                    studio.init_project(self.root, self.source, 'test_character')
+                    parent = studio.add_asset(self.root, self.image, 'happy', self.prompt, mouth_state='open')['asset']
+                else:
+                    outfits.init_project(self.root, self.source, 'test_character')
+                    change = {'edit_type': 'replace', 'replacement': 'Synthetic short jacket'} if mode == 'replace' else {}
+                    color = None if mode == 'replace' else 'blue'
+                    brief = outfits.prepare_outfit(self.root, 'coat', 'jacket fabric', color, 'Synthetic target boundary', ['Synthetic protected remainder'], [8, 8, 50, 70], **change)
+                    parent = outfits.add_asset(self.root, self.image, 'coat', 'jacket fabric', color, self.prompt, Path(brief['brief_file']), **change)['asset']
+                self.call('pool_start', self.root, parent['id'], contract(), 1)
+                if mode != 'mouth':
+                    outfits.record_fidelity(self.root, parent['id'], 'passed', 'passed', 'Synthetic fidelity fixture.', basis='assistant')
+                self.review(parent, True)
+                plan = self.correction(parent['id'], 'Adjust only the requested target detail.')
+                child = self.import_correction(plan)
+                for field in ('expression', 'mouth_state', 'outfit_id', 'edit_type', 'target', 'color', 'replacement', 'edit_brief'):
+                    self.assertEqual(child.get(field), parent.get(field))
+                self.assertNotIn('fidelity_review', child)
+                self.assertEqual(studio.fidelity_status(child), 'pending' if mode != 'mouth' else 'unrecorded')
+                self.review(child, True)
+                if mode != 'mouth':
+                    self.assertEqual(self.call('pool_status', self.root, child['id'])['action'], 'review')
+                    outfits.record_fidelity(self.root, child['id'], 'passed', 'passed', 'Fresh synthetic fidelity fixture.', basis='assistant')
+                self.assertEqual(self.call('pool_status', self.root, child['id'])['action'], 'human_review')
+
+    def test_packaged_revision_cli_uses_unicode_feedback_outside_repository(self):
+        self.review(self.first, True)
+        _, feedback = self.feedback(self.key, 'revise', '只调整嘴角，保留其他细节。')
+        folder = Path(self.temp.name)
+        package = folder / 'plugin.zip'
+        builder.build(REPO, package)
+        installed = folder / 'installed plugin'
+        with zipfile.ZipFile(package) as archive:
+            archive.extractall(installed)
+        entrypoint = installed / 'skills/charakit-expressions/scripts/studio.py'
+        checks = folder / '修改要求.json'
+        checks.write_text(json.dumps(contract(), ensure_ascii=False), encoding='utf-8')
+        def cli(*args):
+            result = subprocess.run([sys.executable, str(entrypoint), *map(str, args)], cwd=folder,
+                                    capture_output=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return json.loads(result.stdout)
+        plan = cli('revision-prepare', '--project', self.root, '--packet', feedback['packet'], '--contract-file', checks)
+        self.assertEqual(plan['note'], feedback['note'])
+        result = cli('revision-import', '--project', self.root, '--revision', plan['revision'], '--image', self.image,
+                     '--prompt-file', self.prompt, '--reference', plan['reference_paths'][0], '--reference', plan['reference_paths'][1])
+        self.assertEqual(result['asset']['parent_asset_id'], self.key)
+        self.assertEqual(cli('pool-status', '--project', self.root, '--case', result['asset']['id'])['action'], 'review')
 
     def test_duplicate_assessments_are_rejected_and_cli_has_workflow(self):
         self.review(self.first, True)

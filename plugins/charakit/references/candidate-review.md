@@ -1,4 +1,4 @@
-# Candidate selection and human review (helper 0.1.19)
+# Candidate selection and human review (helper 0.1.20)
 
 Review pages show a responsive overview and a separate large-image dialog. Open any source/candidate, zoom or fit to the window, drag/scroll details, switch candidates while preserving position, change the backdrop, and close with Esc. Opening the viewer preserves the decision and written feedback. A local page does not submit feedback automatically.
 
@@ -56,9 +56,30 @@ When the user replies, map their actual choice to the same packet and call `huma
 
 The helper binds feedback to image/source hashes and the reviewed assessment. It retains positive feedback even if quality/fidelity/canvas checks block export. Valid acceptance selects that exact candidate; then continue the already requested report/packaging work without asking the user to approve it a second time. If packaging was not requested, deliver the accepted PNG/report without inventing a ZIP requirement. Rejection and requested changes do not select or export. They close this batch without deleting any candidate.
 
-For a specific user-requested correction, preserve the old pool and start a fresh explicit one-candidate revision request (budget 1 unless the user grants more). Inspect the selected reference and preserve its successful requested change in the new brief; no hidden reset of the old automatic budget. A vague dislike calls for clarification of the desired change, not speculative extra generation. A new packet can record a changed user decision; earlier feedback remains in history.
+For a specific user-requested correction, use the linked human-revision commands below instead of importing an unrelated candidate with `add`. A vague dislike calls for clarification of the desired change, not speculative extra generation. A new packet can record a changed user decision; earlier feedback remains in history.
 
 After feedback, tell the user what they chose, what Codex's current checks say, and the resulting action: exported, revision requested, stopped, or blocked with concrete reasons. This is the human-to-Codex handoff. `report`, `deliver`, `review accepted`, `select`, and `export` cannot bypass required pool feedback. Reports before acceptance contain findings only, with no final PNG package.
+
+## Continue a specific human correction
+
+`human-feedback` with `decision: revise` returns the selected asset, original comment and review packet. Use that binding even when the user chose an earlier candidate. An explicit, actionable correction authorizes one new image; recording feedback itself does not invoke the image tool. Clarify an unspecified dislike before preparing a revision. Do not ask the user to repeat an already clear correction or choice.
+
+1. Inspect the chosen candidate and its existing pool contract/Outfits brief. Derive the revised contract from the original and the actual comment: retain all original IDs, components, properties, inspection views and non-target expectations. Target expectations may change for the correction; add focused checks when needed. Keep this within the existing expression/mouth state or garment option and its edit boundary. A different expression/state, garment, color or replacement design needs a separate request/option, not silently altered metadata. Never relax protected-region checks to accommodate a defect.
+2. Run `revision-prepare --packet <feedback-packet> --contract-file <revised-contract.json>`. It saves the original user words and immutable source/chosen-candidate fingerprints, reserves exactly one revision, and returns both reference paths and inherited edit fields. Repeating it returns the same request; it does not reset the allowance. Inspect its `next_action`; generate only for `generate_revision`, and execute the image call once.
+3. Use the returned references in order: immutable original for identity/protected details, then the **user-chosen candidate as the edit target**. Describe the specific correction and preserve its successful requested change within the original bounds. Save the actual submitted prompt in the user's language. These are reference instructions, not masks or pixel locks. Do not use the newest, highest-scoring or original-costume image as a substitute for the selected edit target.
+4. Run `revision-import` with the revision ID, raw output, actual prompt and both reference paths. The helper inherits the selected version's expression/mouth state or garment definition/brief, binds `parent_asset_id` to that version, and starts a new **budget-1** pool with the revised contract. It retains old images, feedback, reviews, pools and selections for other slots. No old quality/fidelity score or user acceptance carries over. If the image call fails, use `revision-fail --note`; the attempt stays spent. A local import error is resolved using the already generated output, not another image call.
+5. Make an assistant packet and perform fresh rubric 1.2 checks and applicable Outfits fidelity checks. Then create the new user packet with `review-sheet --asset <new-id> --purpose user --language <user-language>`. It includes original, **before revision**, the new anonymous candidate and the original correction comment; returned `revision_parent`/`revision_note` support inline comparison. The old version is a reference, not a selectable new candidate. Fresh actual acceptance is required before delivery. A further specific correction uses this new packet and starts another linked request; failure alone grants no additional image.
+
+Final reports and export manifests preserve the parent version and original correction request alongside the new assessment and decision. A newer actual decision on the same parent cancels a pending correction and keeps its history; re-preparing a cancelled request cannot generate. Do not describe the user request as fulfilled merely because import succeeded. If generation or inspection fails, retain the request and findings and explain the concrete outcome.
+
+```text
+python <skill>/scripts/studio.py revision-prepare --project <project> --packet <actual-revise-packet> --contract-file <revised-contract.json>
+# Execute the image tool once using the two returned reference_paths, then:
+python <skill>/scripts/studio.py revision-import --project <project> --revision <returned-revision> --image <raw.png> --prompt-file <submitted.txt> --reference <immutable-source.png> --reference <user-chosen.png>
+# If the image call failed instead:
+python <skill>/scripts/studio.py revision-fail --project <project> --revision <returned-revision> --note <actual-tool-failure>
+# Import creates the new pool; do not call add or pool-start for it. Review and obtain actual user feedback anew.
+```
 
 ## Calibration without rewriting history
 

@@ -62,7 +62,8 @@ def validate_state(c, state):
         seen = set()
         for n, attempt in enumerate(attempts, 1):
             require(c, attempt["number"] == n and attempt["status"] in ("reserved", "imported", "failed")
-                    and attempt["strategy"] == ("source_sample" if n <= 2 else "repair_best"), "Invalid attempt order.")
+                    and attempt["strategy"] == ("user_revision" if pool.get("human_revision") else
+                                                ("source_sample" if n <= 2 else "repair_best")), "Invalid attempt order.")
             if attempt["status"] == "imported":
                 aid = attempt["asset_id"]
                 require(c, aid in by_id and aid not in seen and by_id[aid].get("candidate_pool") == key
@@ -73,6 +74,126 @@ def validate_state(c, state):
         if "candidate_pool" in asset:
             require(c, asset["candidate_pool"] in pools and any(a.get("asset_id") == asset["id"]
                     for a in pools[asset["candidate_pool"]]["attempts"]), "Orphan pool candidate.")
+    revisions = state.get("human_revisions", {})
+    require(c, isinstance(revisions, dict), "Invalid human revisions.")
+    for key, revision in revisions.items():
+        packet = state.get("review_packets", {}).get(key, {})
+        feedback = packet.get("feedback", {}).get("input", {})
+        parent = by_id.get(revision.get("parent_asset"))
+        require(c, parent is not None and revision.get("packet") == key and feedback.get("decision") == "revise"
+                and feedback.get("basis") == "user" and feedback.get("note") == revision.get("note")
+                and packet.get("items", {}).get(feedback.get("candidate"), {}).get("asset_id") == parent["id"]
+                and revision.get("source_sha256") == state["source_sha256"]
+                and revision.get("parent_sha256") == parent["sha256"]
+                and revision.get("status") in ("reserved", "imported", "failed", "cancelled"), "Invalid human revision binding.")
+        validate_revision_contract(c, state, parent, revision["contract"])
+        if revision["status"] == "imported":
+            aid = revision.get("asset_id")
+            require(c, aid in by_id and by_id[aid].get("human_revision") == key
+                    and by_id[aid].get("parent_asset_id") == parent["id"]
+                    and c.asset_slot(by_id[aid]) == c.asset_slot(parent)
+                    and aid in pools and pools[aid].get("human_revision") == key
+                    and pools[aid]["budget"] == 1 and pools[aid]["contract"] == revision["contract"],
+                    "Invalid imported human revision.")
+            require(c, all(by_id[aid].get(field) == parent.get(field) for field in
+                          ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "edit_brief")),
+                    "Human revisions retain their chosen parent's edit definition and brief.")
+    for asset in state["assets"]:
+        if "human_revision" in asset:
+            require(c, revisions.get(asset["human_revision"], {}).get("asset_id") == asset["id"], "Orphan human revision.")
+    for key, pool in pools.items():
+        if "human_revision" in pool:
+            require(c, revisions.get(pool["human_revision"], {}).get("asset_id") == key, "Orphan revision pool.")
+
+
+def validate_revision_contract(c, state, parent, contract):
+    validate_contract(c, contract)
+    fields = {"id", "component", "property", "expected", "dimension", "view"}
+    require(c, all(set(item) == fields for item in contract), "Revision contracts contain definitions only.")
+    original = state["candidate_pools"][parent["candidate_pool"]]["contract"]
+    current = {item["id"]: item for item in contract}
+    for item in original:
+        replacement = current.get(item["id"], {})
+        fixed = fields - {"expected"} if item["dimension"] == "target" else fields
+        require(c, all(replacement.get(k) == item[k] for k in fixed),
+                "Keep original protection checks; only target expectations may change. Add focused checks for the actual correction.")
+
+
+def revision_origin(c, root, state, key):
+    packet = state.get("review_packets", {}).get(key)
+    feedback = (packet or {}).get("feedback", {}).get("input", {})
+    require(c, packet is not None and packet["purpose"] == "user" and feedback.get("decision") == "revise"
+            and feedback.get("basis") == "user", "Record actual, specific revision feedback first.", "HUMAN_REVISION_REQUIRED")
+    packet_valid(c, root, state, packet)
+    parent = c.get_asset(state, packet["items"][feedback["candidate"]]["asset_id"])
+    require(c, parent.get("human_feedback", {}).get("packet") == key
+            and parent["human_feedback"]["decision"] == "revise", "A newer user decision supersedes this revision.", "HUMAN_REVISION_SUPERSEDED")
+    require(c, parent.get("candidate_pool") in state.get("candidate_pools", {})
+            and state["candidate_pools"][parent["candidate_pool"]].get("stopped"), "Close the original batch first.")
+    require(c, not any(p["slot"] == c.asset_slot(parent) and not p.get("stopped")
+                      for p in state.get("candidate_pools", {}).values()), "Another batch for this request is active.", "HUMAN_REVISION_NOT_READY")
+    require(c, c.quality_status(root, state, parent) != "stale", "Parent inspection evidence changed.", "STALE_REVIEW_PACKET")
+    return parent, feedback
+
+
+def revision_plan(c, root, state, key):
+    revision = state["human_revisions"][key]
+    parent = c.get_asset(state, revision["parent_asset"])
+    return {"revision": key, "status": revision["status"], "budget": 1,
+            "parent_asset": parent["id"], "note": revision["note"], "contract": revision["contract"],
+            "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "edit_brief") if k in parent},
+            "references": copy.deepcopy(revision["references"]),
+            "reference_paths": [str(c.contained(root, item["path"])) for item in revision["references"]],
+            "asset_id": revision.get("asset_id"), "failure": revision.get("failure"),
+            "next_action": {"reserved": "generate_revision", "imported": "review", "failed": "stopped", "cancelled": "stopped"}[revision["status"]]}
+
+
+def revision_prepare(c, root, key, contract):
+    root = root.resolve()
+    state = c.read_state(root)
+    existing = state.get("human_revisions", {}).get(key)
+    if existing:
+        require(c, existing["contract"] == contract, "Cannot rewrite or reset an existing human revision.")
+        if existing["status"] == "reserved":
+            revision_origin(c, root, state, key)
+        return revision_plan(c, root, state, key)
+    parent, feedback = revision_origin(c, root, state, key)
+    validate_revision_contract(c, state, parent, contract)
+    require(c, not any(r["status"] == "reserved" and c.asset_slot(c.get_asset(state, r["parent_asset"])) == c.asset_slot(parent)
+                      for r in state.get("human_revisions", {}).values()), "Another human revision is pending.", "HUMAN_REVISION_NOT_READY")
+    references = [{"path": path, "sha256": c.digest(c.contained(root, path)), "role": role}
+                  for path, role in ((state["source"], "immutable_source"), (parent["path"], "edit_target"))]
+    state.setdefault("human_revisions", {})[key] = {
+        "packet": key, "parent_asset": parent["id"], "parent_sha256": parent["sha256"],
+        "source_sha256": state["source_sha256"], "parent_quality_sha256": c.review_fingerprint(parent["quality_review"]),
+        "note": feedback["note"], "contract": copy.deepcopy(contract), "references": references,
+        "status": "reserved", "created_at": c.timestamp()}
+    c.write_state(root, state)
+    return revision_plan(c, root, state, key)
+
+
+def revision_import(c, root, key, image, prompt, references, failure=None):
+    root = root.resolve()
+    state = c.read_state(root)
+    revision = state.get("human_revisions", {}).get(key)
+    require(c, revision is not None and revision["status"] == "reserved", "This revision is not pending; do not generate again.", "HUMAN_REVISION_NOT_READY")
+    parent, _ = revision_origin(c, root, state, key)
+    require(c, c.review_fingerprint(parent["quality_review"]) == revision["parent_quality_sha256"]
+            and all(c.digest(c.contained(root, r["path"])) == r["sha256"] for r in revision["references"]),
+            "Revision references or parent assessment changed.", "STALE_REVIEW_PACKET")
+    if failure is not None:
+        require(c, c.valid_edit_text(failure, 2000), "Record the failed image-tool call.")
+        revision.update(status="failed", failure=failure)
+        c.write_state(root, state)
+        return revision_plan(c, root, state, key)
+    require(c, [p.resolve() for p in references] == [c.contained(root, r["path"]) for r in revision["references"]],
+            "Use the immutable source first and the user-chosen edit target second.", "INVALID_REVISION_REFERENCES")
+    actual_prompt = prompt.read_text(encoding="utf-8")
+    require(c, bool(actual_prompt.strip()), "Save the actual targeted revision prompt.")
+    fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "edit_brief") if k in parent}
+    fields.update(human_revision=key, quality_required=c.QUALITY_VERSION,
+                  generation_inputs={"strategy": "user_revision", "references": copy.deepcopy(revision["references"]), "packet": key})
+    return c.save_candidate(root, state, image, fields, c.validate_image(image, state["canvas"], state["background_mode"]), actual_prompt)
 
 
 def pool_start(c, root, aid, contract, budget=3):
@@ -85,6 +206,8 @@ def pool_start(c, root, aid, contract, budget=3):
     if existing:
         require(c, existing["budget"] == budget and existing["contract"] == contract, "Cannot reset budget or rewrite contract.")
         return pool_status(c, root, aid)
+    require(c, not any(r["status"] == "reserved" and c.asset_slot(c.get_asset(state, r["parent_asset"])) == c.asset_slot(asset)
+                      for r in state.get("human_revisions", {}).values()), "Use the pending human revision, not another pool.", "HUMAN_REVISION_NOT_READY")
     require(c, "refinement_case" not in asset and "quality_review" not in asset
             and asset["art_review_status"] == "unreviewed" and "candidate_pool" not in asset,
             "Start before assessing a fresh candidate; do not migrate old verdicts or reset spent budgets.")
@@ -198,10 +321,19 @@ def packet_valid(c, root, state, packet):
         require(c, path.is_file() and c.digest(path) == item["sha256"], "Review page or reference changed.", "STALE_REVIEW_PACKET")
     for label, binding in packet["items"].items():
         asset = c.get_asset(state, binding["asset_id"])
-        require(c, c.digest(c.contained(root, asset["path"])) == binding["sha256"] == asset["sha256"]
-                and c.digest(c.contained(root, binding["copy"])) == binding["sha256"], "Review candidate changed.", "STALE_REVIEW_PACKET")
+        original = c.contained(root, asset["path"])
+        snapshot = c.contained(root, binding["copy"])
+        require(c, original.is_file() and snapshot.is_file() and c.digest(original) == binding["sha256"] == asset["sha256"]
+                and c.digest(snapshot) == binding["sha256"], "Review candidate changed or is missing.", "STALE_REVIEW_PACKET")
         if packet["purpose"] == "user":
             require(c, c.review_fingerprint(asset.get("quality_review", {})) == binding["quality_sha256"], "Assessment changed after user packet creation.", "STALE_REVIEW_PACKET")
+    if packet.get("revision_parent"):
+        binding = packet["revision_parent"]
+        parent = c.get_asset(state, binding["asset_id"])
+        original = c.contained(root, parent["path"])
+        snapshot = c.contained(root, binding["copy"])
+        require(c, original.is_file() and snapshot.is_file() and c.digest(original) == parent["sha256"] == binding["sha256"]
+                and c.digest(snapshot) == binding["sha256"], "Revision comparison parent changed or is missing.", "STALE_REVIEW_PACKET")
 
 
 def check_pool_assessment(c, root, state, asset, assessment):
@@ -215,6 +347,7 @@ def check_pool_assessment(c, root, state, asset, assessment):
 
 
 def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=None):
+    root = root.resolve()
     try:
         ui = preview_text(language, translations)
     except ValueError as exc:
@@ -226,6 +359,12 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
     require(c, all(c.delivery_validation(c.check_asset(root, state, a))["passed"] for a in assets), "Review requires readable, unchanged images.")
     if purpose == "user":
         require(c, all("quality_review" in a and c.quality_status(root, state, a) != "stale" for a in assets), "Complete internal assessment before human review.")
+    origin = None
+    if purpose == "user" and len(assets) == 1 and assets[0].get("human_revision"):
+        origin = state["human_revisions"][assets[0]["human_revision"]]
+        parent = c.get_asset(state, origin["parent_asset"])
+        parent_path = c.contained(root, parent["path"])
+        require(c, parent_path.is_file() and c.digest(parent_path) == origin["parent_sha256"], "Revision parent changed or is missing.", "STALE_REVIEW_PACKET")
     secrets.SystemRandom().shuffle(assets)
     key = secrets.token_hex(12)
     folder = root / "reviews" / key
@@ -241,15 +380,26 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
     state.setdefault("review_packets", {})[key] = packet
     contract = state.get("candidate_pools", {}).get(assets[0].get("candidate_pool"), {}).get("contract", [])
     request = assets[0].get("quality_review", {}).get("request") or assets[0].get("replacement") or assets[0].get("color") or assets[0].get("expression", "")
-    page = render_sheet(key, list(items), request, contract, purpose, language, ui)
+    revision = None
+    if origin:
+        c.copy_exclusive(parent_path, folder / "parent.png")
+        packet["revision_parent"] = {"asset_id": parent["id"], "sha256": parent["sha256"],
+                                     "copy": (folder / "parent.png").relative_to(root).as_posix()}
+        revision = {"source": "parent.png", "note": origin["note"]}
+    page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision)
     (folder / "index.html").write_text(page, encoding="utf-8")
     # Public packet contains no mapping, version, generation prompt, prior score or status.
     public = {"packet": key, "purpose": purpose, "request": request, "contract": contract, "language": language, "ui_labels": ui,
               "source": "source.png", "candidates": {label: f"{label}.png" for label in items}}
+    if revision:
+        public["revision"] = revision
     (folder / "packet.json").write_text(json.dumps(public, ensure_ascii=False, indent=2), encoding="utf-8")
     packet["artifacts"] = [{"path": p.relative_to(root).as_posix(), "sha256": c.digest(p)} for p in (folder / "source.png", folder / "index.html", folder / "packet.json")]
+    if revision:
+        packet["artifacts"].append({"path": packet["revision_parent"]["copy"], "sha256": origin["parent_sha256"]})
     c.write_state(root, state)
     return {"packet": key, "page": str((folder / "index.html").resolve()), "public_packet": str((folder / "packet.json").resolve()),
+            **({"revision_parent": str((folder / "parent.png").resolve()), "revision_note": origin["note"]} if origin else {}),
             "source": str((folder / "source.png").resolve()), "candidates": {label: str((folder / f"{label}.png").resolve()) for label in items}}
 
 
@@ -308,6 +458,9 @@ PREVIEW_EN = {'CharaKit 评图': 'CharaKit image review',
  '请选择决定和候选；需要修改时请说明问题。': 'Choose a decision and candidate. Describe the issue when requesting changes.',
  '反馈已下载。将文件交给 Codex 后才会处理，不会在此页面自动打包。': 'Feedback downloaded. Give it to Codex for processing; this page does not '
                                         'package images automatically.'}
+
+# Append labels to preserve the existing template's numbered UI tokens.
+PREVIEW_EN.update({'修订前': 'Before revision', '本次修改': 'Requested correction'})
 
 REVIEW_SHEET_TEMPLATE = r"""<!doctype html>
 <html lang="__LANGUAGE__">
@@ -381,12 +534,14 @@ byId('download').onclick=()=>{const value=id=>byId(id).value;const decision=valu
 """
 
 
-def preview_text(language="zh-CN", translations=None):
+def preview_text(language="zh-CN", translations=None, allow_legacy=False):
     import re
     if not isinstance(language, str) or not re.fullmatch(r'[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*', language):
         raise ValueError('Use a language tag such as zh-CN, en or ja.')
     if translations is not None:
-        if not isinstance(translations, dict) or set(translations) != set(PREVIEW_EN) or not all(isinstance(v, str) and v.strip() and len(v) <= 2000 for v in translations.values()):
+        keys = set(PREVIEW_EN)
+        accepted = (keys, keys - {'修订前', '本次修改'}) if allow_legacy else (keys,)
+        if not isinstance(translations, dict) or set(translations) not in accepted or not all(isinstance(v, str) and v.strip() and len(v) <= 2000 for v in translations.values()):
             raise ValueError('Supply a complete text mapping for the preview language.')
         return dict(translations)
     if language.lower().startswith('zh'):
@@ -400,9 +555,13 @@ def script_json(value):
     return json.dumps(value, ensure_ascii=False).replace('<', r'\u003c').replace('>', r'\u003e').replace('&', r'\u0026')
 
 
-def render_sheet(key, labels, request, contract, purpose, language="zh-CN", translations=None):
-    ui = preview_text(language, translations)
-    items = [{"label": ui['原图'], "src": "source.png"}] + [{"label": label, "src": f"{label}.png"} for label in labels]
+def render_sheet(key, labels, request, contract, purpose, language="zh-CN", translations=None, revision=None):
+    ui = preview_text(language, translations, allow_legacy=revision is None)
+    items = [{"label": ui['原图'], "src": "source.png"}]
+    if revision:
+        items.append({"label": ui['修订前'], "src": revision['source']})
+        request = f"{request} · {ui['本次修改']}: {revision['note']}"
+    items += [{"label": label, "src": f"{label}.png"} for label in labels]
     cards = ''.join(f'<figure><figcaption>{html.escape(item["label"])}</figcaption><button class="image-button" type="button" data-viewer-index="{index}" aria-label="{html.escape(ui["放大查看"])} {html.escape(item["label"])}"><img src="{item["src"]}" alt="{html.escape(item["label"])}"></button></figure>' for index, item in enumerate(items))
     values = {
         '__REQUEST__': html.escape(str(request)), '__CARDS__': cards,
@@ -411,7 +570,7 @@ def render_sheet(key, labels, request, contract, purpose, language="zh-CN", tran
         '__PACKET__': script_json(key), '__VIEWER_ITEMS__': script_json(items),
         '__LANGUAGE__': html.escape(language), '__UI_STRINGS__': script_json(ui),
     }
-    values.update({f'__UI_{index}__': html.escape(ui[label]) for index, label in enumerate(PREVIEW_EN)})
+    values.update({f'__UI_{index}__': html.escape(ui[label]) for index, label in enumerate(PREVIEW_EN) if label in ui})
     # Substitute once: user prose that resembles a token remains literal text.
     import re
     return re.sub('|'.join(map(re.escape, values)), lambda match: values[match.group()], REVIEW_SHEET_TEMPLATE)
@@ -430,16 +589,21 @@ def refresh_review_sheet(c, root, key):
     folder = c.contained(root, first['copy']).parent
     public_path = folder / 'packet.json'
     public = json.loads(public_path.read_text(encoding='utf-8'))
+    language = public.get('language', 'zh-CN')
+    page_ui = public.get('ui_labels')
+    if page_ui and language.lower().split('-')[0] in ('zh', 'en'):
+        page_ui = {**preview_text(language), **page_ui}
     number = 2
     while (folder / f'index-{number:03d}.html').exists():
         number += 1
     page = folder / f'index-{number:03d}.html'
     with page.open('x', encoding='utf-8') as stream:
-        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', public.get('language','zh-CN'), public.get('ui_labels')))
+        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', language, page_ui, public.get('revision')))
     packet.setdefault('artifacts', []).append({'path': page.relative_to(root).as_posix(), 'sha256': c.digest(page)})
     packet['latest_page'] = page.relative_to(root).as_posix()
     c.write_state(root, state)
     return {'packet': key, 'page': str(page.resolve()), 'public_packet': str(public_path.resolve()),
+            **({'revision_parent': str((folder / 'parent.png').resolve()), 'revision_note': public['revision']['note']} if public.get('revision') else {}),
             'source': str((folder / 'source.png').resolve()),
             'candidates': {label: str(c.contained(root, item['copy']).resolve()) for label, item in packet['items'].items()}}
 
@@ -487,6 +651,9 @@ def human_feedback(c, root, data):
     target_ids = [chosen["asset_id"]] if chosen else [v["asset_id"] for v in packet["items"].values()]
     for aid in target_ids:
         asset = c.get_asset(state, aid)
+        for revision in state.get("human_revisions", {}).values():
+            if revision["status"] == "reserved" and revision["parent_asset"] == aid and revision["packet"] != data["packet"]:
+                revision.update(status="cancelled", cancelled_by=data["packet"], cancelled_at=c.timestamp())
         record = {"basis": "user", "decision": data["decision"], "note": data["note"], "facets": data.get("facets", {}),
                   "packet": data["packet"], "asset_sha256": asset["sha256"], "source_sha256": state["source_sha256"],
                   "quality_sha256": c.review_fingerprint(asset.get("quality_review", {})), "recorded_at": c.timestamp()}
@@ -500,6 +667,9 @@ def human_feedback(c, root, data):
             state["candidate_pools"][asset["candidate_pool"]]["stopped"] = True
     # Save positive opinions even when technical/visual gates prevent acceptance.
     result = {"decision": data["decision"], "asset_ids": target_ids, "next_action": "revision_request" if data["decision"] == "revise" else "stopped"}
+    if data["decision"] == "revise":
+        result["revision"] = {"packet": data["packet"], "parent_asset": chosen["asset_id"],
+                              "note": data["note"], "budget": 1, "prepare_command": "revision-prepare"}
     if chosen and data["decision"] == "accept":
         asset = c.get_asset(state, chosen["asset_id"])
         # A new explicit decision may supersede rejection, without rewriting its history.
@@ -537,7 +707,7 @@ def require_user_feedback(c, root, state, asset):
 
 
 def add_commands(c, commands):
-    for name in ("pool-start", "pool-status", "pool-reserve", "pool-import", "pool-fail", "pool-compare", "review-sheet", "refresh-review-sheet", "human-feedback"):
+    for name in ("pool-start", "pool-status", "pool-reserve", "pool-import", "pool-fail", "pool-compare", "review-sheet", "refresh-review-sheet", "human-feedback", "revision-prepare", "revision-import", "revision-fail"):
         p = commands.add_parser(name)
         p.add_argument("--project", type=Path, required=True)
         if name == "pool-start":
@@ -563,6 +733,17 @@ def add_commands(c, commands):
             p.add_argument("--ui-file", type=Path, help="Complete UTF-8 mapping of preview UI text to the user's language.")
         if name == "refresh-review-sheet":
             p.add_argument("--packet", required=True)
+        if name == "revision-prepare":
+            p.add_argument("--packet", required=True)
+            p.add_argument("--contract-file", type=Path, required=True)
+        if name in ("revision-import", "revision-fail"):
+            p.add_argument("--revision", required=True)
+        if name == "revision-import":
+            p.add_argument("--image", type=Path, required=True)
+            p.add_argument("--prompt-file", type=Path, required=True)
+            p.add_argument("--reference", type=Path, action="append", required=True)
+        if name == "revision-fail":
+            p.add_argument("--note", required=True)
 
 
 def dispatch(c, args):
@@ -588,4 +769,10 @@ def dispatch(c, args):
         return review_sheet(c, root, args.asset, args.purpose, args.language, read(args.ui_file) if args.ui_file else None)
     if args.command == "refresh-review-sheet":
         return refresh_review_sheet(c, root, args.packet)
+    if args.command == "revision-prepare":
+        return revision_prepare(c, root, args.packet, read(args.contract_file))
+    if args.command == "revision-import":
+        return revision_import(c, root, args.revision, args.image, args.prompt_file, args.reference)
+    if args.command == "revision-fail":
+        return revision_import(c, root, args.revision, None, None, None, args.note)
     return human_feedback(c, root, read(args.feedback_file))

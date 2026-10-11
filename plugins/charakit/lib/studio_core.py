@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -969,6 +970,9 @@ def save_candidate(root: Path, state: dict, image: Path, fields: dict, report: d
     slot = asset_slot(fields)
     if any(p["slot"] == slot and not p.get("stopped") for p in state.get("candidate_pools", {}).values()) and "candidate_pool" not in fields:
         raise StudioError("POOL_IMPORT_REQUIRED", "Use pool-import for this tracked request; do not bypass its attempt budget.")
+    if "human_revision" not in fields and any(r["status"] == "reserved" and asset_slot(get_asset(state, r["parent_asset"])) == slot
+                                             for r in state.get("human_revisions", {}).values()):
+        raise StudioError("HUMAN_REVISION_NOT_READY", "Use revision-import for the pending human correction.")
     previous = [a for a in state["assets"] if asset_slot(a) == slot]
     version = max((a["version"] for a in previous), default=0) + 1
     while (root / "candidates" / f"{slot}_v{version:03d}.png").exists() or (root / "candidates" / f"{slot}_v{version:03d}.prompt.txt").exists():
@@ -985,6 +989,15 @@ def save_candidate(root: Path, state: dict, image: Path, fields: dict, report: d
         "art_review_status": "unreviewed", "validation": report,
         "model": "unknown", "created_at": timestamp(),
     }
+    if "human_revision" in fields:
+        key = fields["human_revision"]
+        revision = state["human_revisions"][key]
+        asset.update(candidate_pool=asset_id, parent_asset_id=revision["parent_asset"])
+        state.setdefault("candidate_pools", {})[asset_id] = {
+            "version": "1.0", "slot": slot, "budget": 1, "contract": copy.deepcopy(revision["contract"]),
+            "attempts": [{"number": 1, "status": "imported", "strategy": "user_revision", "asset_id": asset_id}],
+            "comparisons": [], "human_revision": key, "created_at": timestamp()}
+        revision.update(status="imported", asset_id=asset_id)
     if "candidate_pool" in fields:
         asset["parent_asset_id"] = fields.get("repair_parent")
         state["candidate_pools"][fields["candidate_pool"]]["attempts"][-1].update(status="imported", asset_id=asset_id)
@@ -1228,6 +1241,9 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
             sprites[-1]["quality_review"] = asset["quality_review"]
         if "human_feedback" in asset:
             sprites[-1]["human_feedback"] = asset["human_feedback"]
+        if "human_revision" in asset:
+            sprites[-1]["parent_asset_id"] = asset["parent_asset_id"]
+            sprites[-1]["human_revision"] = state["human_revisions"][asset["human_revision"]]
         if is_outfit:
             sprites[-1].update({key: asset[key] for key in ("outfit_id", "edit_type", "target", "color", "replacement") if key in asset})
             if "edit_brief" in asset:
@@ -1398,7 +1414,7 @@ def main(module: str = "expressions") -> int:
             stream.reconfigure(encoding="utf-8")
     args = parser(module).parse_args()
     try:
-        if args.command.startswith("pool-") or args.command in ("review-sheet", "refresh-review-sheet", "human-feedback"):
+        if args.command.startswith(("pool-", "revision-")) or args.command in ("review-sheet", "refresh-review-sheet", "human-feedback"):
             require_module(read_state(args.project), module)
             result = workflow_call("dispatch", args)
             print(json.dumps(result, ensure_ascii=False, indent=2))

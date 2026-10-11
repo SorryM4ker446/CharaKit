@@ -10,7 +10,9 @@
 
 两个模块各有独立 Skill，共用本地 Python 文件助手。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与局部对比预览，以及导出选定资源。
 
-开发版本：**0.1.19**。
+开发版本：**0.1.20**。
+
+人工提出具体修改意见后，使用 `revision-prepare` 和 `revision-import` 接续用户选中的候选。助手保留原话、保护约束和前后版本关系，单独记录一次修订，新图重新进行内部检查和人工评审。评图页增加“修订前”对照，报告与导出清单保留修订来源。详见[人工意见到修订流程](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction)。
 
 评图页使用独立大图窗口，支持缩放、拖动与切换候选，界面语言匹配用户。人工评图前的报告明确标为内部检查草稿，不含成品；`report --stage final` 要求本次所有候选池已记录实际人工意见。最终报告汇总用户选中的候选、意见和 Codex 处理结果，修改或拒绝也有完整记录。
 
@@ -218,7 +220,7 @@ tools/build_plugin.py               插件 ZIP 构建脚本
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.19.zip
+python tools/build_plugin.py --output dist/charakit-0.1.20.zip
 ```
 
 测试使用合成图片，不需要第三方角色美术。CI 在 Linux 和 Windows 上运行。构建脚本不会覆盖已存在的 ZIP。

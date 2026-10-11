@@ -30,7 +30,9 @@ Reports are immutable snapshots in new directories. Project metadata, candidate 
 
 ## Candidate pools in 0.1.18
 
-### Report timing in 0.1.19
+### Report timing in 0.1.19 and later
+
+Helper 0.1.20 also records a human revision's parent version and original correction request in the report and export manifest. The corrected candidate has a new assessment and actual acceptance; parent scores/acceptance are not reused. Revision review pages show original, before revision and the new candidate. Historical reports remain snapshots.
 
 Before human feedback, `report --stage auto` (the default) creates an explicitly labeled **internal inspection draft**, with `stage: draft`, pending case IDs, no final PNGs and no final preview. It is not the final review report. After all requested pool cases have actual feedback, the same command produces a final review report. Use `report --stage final` for the final workflow step: missing actual human feedback fails with `HUMAN_REVIEW_REQUIRED` and creates no output directory.
 

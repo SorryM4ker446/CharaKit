@@ -4,6 +4,8 @@ New requests use [candidate selection and human review](references/candidate-rev
 
 CharaKit currently provides expression editing, recoloring and replacement of one specified existing garment. Full outfit replacement and pose editing are planned extensions.
 
+The current development focus is the human-feedback-to-revision flow within those implemented modes. Helper 0.1.20 links a specific correction to the user-chosen candidate, preserves prior constraints and history, and requires fresh internal/human review before delivery. Task recovery and comparisons against direct image-tool conversation are outside this phase; product acceptance concerns this plugin's own behavior and actual user feedback.
+
 | Module | Status | Scope |
 | --- | --- | --- |
 | CharaKit Expressions | Available | Twelve fixed expression presets, static mouth-open/closed states, revisions, comparisons, and PNG exports |

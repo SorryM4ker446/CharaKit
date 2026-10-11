@@ -10,6 +10,10 @@ from PIL import Image, ImageDraw
 
 
 ZH = {
+    'user_revision': '按人工意见修订', 'revision_parent': '修订所依据版本', 'revision_note': '原始修改意见',
+    'revision_attempt': '人工修订执行状态', 'revision_failed': '本次人工修订生成失败',
+    'next_revision_failed': '保留失败原因；本次额度已用，新的生成需要具体的新修订请求。',
+    'reserved': '已记录一次修订，待执行', 'imported': '修订图已保存，需重新评审', 'cancelled': '已被新的人工决定取消',
     'draft_title': '内部检查草稿', 'final_title': '最终评审报告',
     'draft_note': '尚有情况未完成人工评图。这是内部检查记录，不是最终评审报告，不含成品或打包输出。',
     'final_note': '本次候选池已记录实际人工意见；以下汇总人工选择、内部检查和 Codex 处理结果。',
@@ -59,6 +63,10 @@ ZH = {
     'strategy': '生成策略', 'initial': '首版', 'continue_previous': '修订上一版', 'source_rebase': '从原图重做目标衣物',
 }
 EN = {
+    'user_revision': 'Revise from human feedback', 'revision_parent': 'Revision parent', 'revision_note': 'Original correction request',
+    'revision_attempt': 'Human revision execution', 'revision_failed': 'Human revision generation failed',
+    'next_revision_failed': 'Retain the failure; the attempt is spent. Another image requires a specific new revision request.',
+    'reserved': 'One revision recorded; awaiting execution', 'imported': 'Revision saved; fresh review required', 'cancelled': 'Cancelled by a newer human decision',
     'draft_title': 'Internal inspection draft', 'final_title': 'Final review report',
     'draft_note': 'Some cases await actual human feedback. This internal inspection draft is not a final report and contains no final assets or package.',
     'final_note': 'Actual human decisions have been recorded for the candidate pools. This report combines their feedback, internal findings and Codex disposition.',
@@ -161,6 +169,7 @@ def round_record(core, root: Path, state: dict, asset: dict, number: int) -> dic
         'sha256': asset['sha256'], 'quality_status': quality,
         'model': asset.get('model', 'unknown'), 'origin': asset.get('origin'),
         'parent_asset_id': asset.get('parent_asset_id'), 'refinement_inputs': asset.get('refinement_inputs'),
+        'human_revision': state.get('human_revisions', {}).get(asset.get('human_revision')),
         'recorded_score': review.get('result', {}).get('total'),
         'gate_summary': {
             'threshold': review.get('result', {}).get('threshold'),
@@ -299,7 +308,7 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             lines += ['- '+md(issue) for issue in issues]
             if not issues and c.get('delivery_error'):
                 lines.append('- '+md(c['delivery_error']['code']))
-            next_step = ('按实际人工意见处理修订请求；本报告不自动新增生成次数。' if data['language']=='zh-CN' else 'Handle the actual revision request; this report does not authorize additional generation.') if (c.get('human_result') or {}).get('next_action')=='revision_request' else t.get('next_'+c['status'],t['next_failed'])
+            next_step = ('按实际人工意见处理修订请求；本报告不自动新增生成次数。' if data['language']=='zh-CN' else 'Handle the actual revision request; this report does not authorize additional generation.') if (c.get('human_result') or {}).get('next_action')=='revision_request' and c['status']!='revision_failed' else t.get('next_'+c['status'],t['next_failed'])
             lines += ['',t['next']+'：'+next_step]
     lines += ['', '## '+t['details'], '']
     for c in data['cases']:
@@ -312,6 +321,15 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             edit = c['edit']
             change = edit.get('replacement', edit.get('color', '—'))
             lines += [t['edit_definition']+'：'+t[edit['edit_type']]+' · '+md(edit['target'])+' → '+md(change), '']
+        if c.get('human_revision'):
+            revision = c['human_revision']
+            lines += [t['revision_parent']+'：'+link(revision['parent_asset'],c['revision_parent_image']),
+                      '',t['revision_note']+'：'+md(revision['note']), '']
+        if c.get('requested_revision'):
+            requested = c['requested_revision']
+            lines += [t['revision_attempt']+'：'+(t['revision_failed'] if requested['status']=='failed' else t.get(requested['status'],requested['status'])), '']
+            if requested.get('failure'):
+                lines += ['- '+md(requested['failure']), '']
         if c.get('candidate_pool'):
             feedback = c.get('human_feedback')
             lines += [t['human']+'：'+(md(t.get(feedback['decision'],feedback['decision'])+' · '+feedback['note']) if feedback else t['human_review']), '']
@@ -433,7 +451,13 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                     action='revise'
                 elif human_result['next_action']=='blocked':
                     action='failed'
+            requested_revision = state.get('human_revisions',{}).get((feedback or {}).get('packet'))
+            if requested_revision and requested_revision['status']=='failed' and not delivered:
+                action='revision_failed'
             cases.append({'project':str(root),'character':state['character_key'],'case_id':pool_id or case_id or asset['id'],'kind':core.quality_domain(state,asset),
+                          'requested_revision':requested_revision,
+                          'human_revision':state.get('human_revisions',{}).get(asset.get('human_revision')),
+                          'revision_parent_image':str(core.contained(root,core.get_asset(state,asset['parent_asset_id'])['path'])) if asset.get('human_revision') else None,
                           'human_feedback':feedback or asset.get('human_feedback'), 'human_result':human_result,
                           'assessed_asset_id':asset['id'], 'candidate_pool':state.get('candidate_pools',{}).get(pool_id),
                           'label':label_for(core,asset,labels,language),'status':action,'max_rounds':plan['max_rounds'] if plan else None,
