@@ -1,5 +1,7 @@
 # CharaKit roadmap
 
+0.1.26: all current and future modules use complete-batch human presentation by default. Show every readable candidate, including failed earlier rounds; keep the recommendation and internal findings separate from selection. Explicit user restrictions and unavailable files have visible omission reasons. Human feedback can target any displayed version for a concrete correction, while delivery gates, fixed budgets and independent module state remain intact. Refreshing historical packets preserves their original candidate aliases; new packets apply the new default.
+
 0.1.25: [scoped edit references](references/edit-references.md) apply to Expressions, explicit mouth states, all Outfits modes and every future editing module. Immutable snapshots, recorded editable scopes, per-reference target checks and actual input bindings persist through internal redraws, human revisions, review pages and delivery. New modules must define their reference scopes and pass the same budget/integrity/review gates; this does not automatically link modules or implement planned Poses.
 
 0.1.23: new requests and human-correction batches default to at most three image-tool attempts. Internal failures trigger evidence-directed redraws; full passage or exhaustion precedes human review. Explicit smaller limits, old pools, historical assessments, module independence and final delivery gates remain intact. Workflow validation does not establish lower user revision rates.

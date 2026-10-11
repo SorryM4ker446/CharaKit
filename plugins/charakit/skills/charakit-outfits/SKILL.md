@@ -5,6 +5,8 @@ description: Recolor or replace garments, replace a complete outfit, or add, rem
 
 # CharaKit Outfits
 
+Human review defaults to all readable candidates in the current batch, including failures and earlier rounds. Recommendations stay separate and never preselect the user's decision. Failed versions can receive actual feedback and specific revision requests; final delivery still requires all gates. Do not restrict the view without an explicit user request and a recorded omission reason.
+
 For optional garment, outfit or object reference images in any mode, follow the shared [scoped edit references](../../references/edit-references.md). Snapshot and bind their actual inputs, include a target check for every reference, and retain them in every internal redraw and human revision. This rule also governs future editing modules.
 
 Create complete character images with one garment recolored (`recolor`), one garment replaced (`replace`), a coherent ensemble replaced (`outfit_replace`), or one explicitly scoped accessory/prop added, removed or replaced (`prop_edit`). Full outfits use an explicit clothing inventory; props use an explicit `prop_action`. Unlisted components stay protected. All modes preserve facial design, expression, mouth state, hair design, body/arm pose, proportions and composition, allowing only the operation's necessary interfaces and occlusion changes.

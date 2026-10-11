@@ -82,7 +82,9 @@ class CandidateReviewTests(unittest.TestCase):
 
     def feedback(self, aid, decision='accept', note='Actual user fixture response.'):
         sheet = self.call('review_sheet', self.root, [aid], 'user')
-        data = {'packet': sheet['packet'], 'basis': 'user', 'candidate': 'A', 'decision': decision, 'note': note}
+        packet = studio.read_state(self.root)['review_packets'][sheet['packet']]
+        alias = next(k for k,v in packet['items'].items() if v['asset_id']==aid)
+        data = {'packet': sheet['packet'], 'basis': 'user', 'candidate': alias, 'decision': decision, 'note': note}
         return self.call('human_feedback', self.root, data), data
 
     def test_independent_second_and_repair_selected_first_with_fixed_budget(self):

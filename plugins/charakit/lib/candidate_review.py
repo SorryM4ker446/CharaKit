@@ -440,7 +440,63 @@ def check_pool_assessment(c, root, state, asset, assessment):
     packet_valid(c, root, state, packet)
 
 
-def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=None):
+def user_review_candidates(c, root, state, requested, selection_note):
+    """Select the whole batch by default; record every explicit or file-based omission."""
+    require(c, selection_note is None or c.valid_edit_text(selection_note, 1000), "Record the user's actual request for a restricted view.")
+    keys = {a.get("candidate_pool") for a in requested}
+    require(c, len(keys) == 1, "A user review must cover one batch, not different revision requests.")
+    key = next(iter(keys))
+    pool = state.get("candidate_pools", {}).get(key)
+    members = pool_assets(c, state, pool) if pool else requested
+    visible, omissions = [], []
+    requested_ids = {a["id"] for a in requested}
+    for asset in members:
+        report = c.delivery_validation(c.check_asset(root, state, asset))
+        if not report["passed"]:
+            # Reference changes affect the entire edit contract and cannot be omitted.
+            require(c, set(report["errors"]) <= {"FILE_NOT_FOUND", "INVALID_IMAGE", "IMAGE_TOO_LARGE", "ASSET_CHANGED", "OUTPUT_NOT_PNG", "EMPTY_IMAGE"},
+                    "Resolve changed reference inputs or other edit constraints before human review.")
+            omissions.append({"asset_id": asset["id"], "reason": "unavailable_file", "errors": report["errors"]})
+        elif selection_note and asset["id"] not in requested_ids:
+            omissions.append({"asset_id": asset["id"], "reason": "user_requested_subset", "note": selection_note})
+        else:
+            visible.append(asset)
+    require(c, bool(visible), "No unchanged, readable candidates can be shown.")
+    require(c, all("quality_review" in a and c.quality_status(root, state, a) != "stale" for a in visible),
+            "Complete internal assessment before human review.")
+    if pool and pool.get("version") == "1.1":
+        action = pool_status(c, root, key)["action"]
+        finished = action in ("human_review", "exhausted", "export", "stopped")
+        if action == "blocked" and any(x["reason"] == "unavailable_file" for x in omissions):
+            # Permit inspection of the remaining intact images only after the batch ended.
+            finished = (pool["attempts"][-1]["status"] != "reserved"
+                        and all("quality_review" in a and c.fidelity_status(a) != "pending" for a in members)
+                        and (len(pool["attempts"]) >= pool["budget"] or any(eligible(c, root, state, a) for a in visible)))
+        require(c, finished, "Finish internal review and redraw within the fixed budget before human review.", "INTERNAL_REVIEW_INCOMPLETE")
+    return visible, members, pool, omissions
+
+
+def user_review_summary(c, root, state, assets, members, pool, items, omissions):
+    aliases = {v["asset_id"]: label for label, v in items.items()}
+    ranking = next((x for x in reversed((pool or {}).get("comparisons", []))
+                    if x["asset_ids"] == [a["id"] for a in members]), None)
+    preferred = ranking.get("preferred") if ranking else None
+    recommendation = None
+    if preferred in aliases:
+        recommendation = {"candidate": aliases[preferred], "basis": "recorded_comparison", "evidence": ranking["evidence"]}
+    elif not ranking:
+        passed = next((a for a in assets if eligible(c, root, state, a)), None)
+        if passed:
+            recommendation = {"candidate": aliases[passed["id"]], "basis": "internal_pass", "evidence": ""}
+    return {"generated": len(members), "displayed": len(assets),
+            "omissions": [{k: v for k, v in x.items() if k != "asset_id"} for x in omissions],
+            "failed_calls": [{"number": x["number"], "failure": x["failure"]} for x in (pool or {}).get("attempts", []) if x["status"] == "failed"],
+            "recommendation": recommendation,
+            "candidates": {aliases[a["id"]]: {"status": "passed" if c.quality_status(root, state, a) == "passed" and c.fidelity_status(a) not in ("pending", "failed", "uncertain") else "failed",
+                                              "findings": redraw_findings(a)} for a in assets}}
+
+
+def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=None, selection_note=None):
     root = root.resolve()
     try:
         ui = preview_text(language, translations)
@@ -450,16 +506,14 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
     require(c, 1 <= len(ids) <= 3 and len(set(ids)) == len(ids), "Review one to three distinct candidates from one request.")
     assets = [c.get_asset(state, i) for i in ids]
     require(c, len({c.asset_slot(a) for a in assets}) == 1, "Compare the same request only.")
+    members, pool, omissions = assets, None, []
+    if purpose == "user":
+        assets, members, pool, omissions = user_review_candidates(c, root, state, assets, selection_note)
+    else:
+        require(c, selection_note is None, "Assistant inspection packets cannot restrict human presentation.")
     reference_metadata = assets[0].get("edit_references", [])
     require(c, all(a.get("edit_references", []) == reference_metadata for a in assets), "Compare candidates with the same scoped references.")
     require(c, all(c.delivery_validation(c.check_asset(root, state, a))["passed"] for a in assets), "Review requires readable, unchanged images.")
-    if purpose == "user":
-        require(c, all("quality_review" in a and c.quality_status(root, state, a) != "stale" for a in assets), "Complete internal assessment before human review.")
-        for asset in assets:
-            pool = state.get("candidate_pools", {}).get(asset.get("candidate_pool"), {})
-            if pool.get("version") == "1.1":
-                require(c, pool_status(c, root, asset["candidate_pool"])["action"] in ("human_review", "exhausted", "export", "stopped"),
-                        "Finish internal review and redraw within the fixed budget before human review.", "INTERNAL_REVIEW_INCOMPLETE")
     origin = None
     if purpose == "user" and assets[0].get("human_revision") and len({a.get("human_revision") for a in assets}) == 1:
         origin = state["human_revisions"][assets[0]["human_revision"]]
@@ -497,15 +551,20 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
         edit_references.append({**ref, "path": filename})
     if edit_references:
         packet["edit_references"] = copy.deepcopy(reference_metadata)
-    page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision, edit_references)
+    summary = user_review_summary(c, root, state, assets, members, pool, items, omissions) if purpose == "user" else None
+    if summary is not None:
+        packet["presentation"] = {"summary": summary, "omissions": omissions, "pool": assets[0].get("candidate_pool")}
+    page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision, edit_references, summary)
     (folder / "index.html").write_text(page, encoding="utf-8")
-    # Public packet contains no mapping, version, generation prompt, prior score or status.
+    # Assistant packets stay blind; user packets expose checks/recommendation separately.
     public = {"packet": key, "purpose": purpose, "request": request, "contract": contract, "language": language, "ui_labels": ui,
               "source": "source.png", "candidates": {label: f"{label}.png" for label in items}}
     if revision:
         public["revision"] = revision
     if edit_references:
         public["edit_references"] = edit_references
+    if summary is not None:
+        public["review_summary"] = summary
     (folder / "packet.json").write_text(json.dumps(public, ensure_ascii=False, indent=2), encoding="utf-8")
     packet["artifacts"] = [{"path": p.relative_to(root).as_posix(), "sha256": c.digest(p)} for p in (folder / "source.png", folder / "index.html", folder / "packet.json")]
     if revision:
@@ -513,6 +572,7 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
     packet["artifacts"] += [{"path": (folder / ref["path"]).relative_to(root).as_posix(), "sha256": ref["sha256"]} for ref in edit_references]
     c.write_state(root, state)
     return {"packet": key, "page": str((folder / "index.html").resolve()), "public_packet": str((folder / "packet.json").resolve()),
+            **({"review_summary": summary} if summary is not None else {}),
             **({"edit_references": [{**r, "path": str((folder / r["path"]).resolve())} for r in edit_references]} if edit_references else {}),
             **({"revision_parent": str((folder / "parent.png").resolve()), "revision_note": origin["note"]} if origin else {}),
             "source": str((folder / "source.png").resolve()), "candidates": {label: str((folder / f"{label}.png").resolve()) for label in items}}
@@ -578,6 +638,23 @@ PREVIEW_EN = {'CharaKit 评图': 'CharaKit image review',
 PREVIEW_EN.update({'修订前': 'Before revision', '本次修改': 'Requested correction',
                   '参考图': 'Edit reference', '仅参考指定修改内容': 'Use only for the specified edit'})
 
+SUMMARY_LABELS = {
+    '推荐与内部检查': 'Recommendation and internal checks',
+    '推荐版本': 'Recommended candidate',
+    '尚未记录推荐': 'No recommendation recorded',
+    '通过全部内部检查': 'Passed all internal checks',
+    '内部检查未通过': 'Internal checks failed',
+    '已生成候选': 'Generated candidates',
+    '已展示候选': 'Displayed candidates',
+    '未展示原因': 'Reasons for omitted candidates',
+    '根据用户要求仅展示指定版本': 'Only the versions explicitly requested by the user are shown',
+    '文件损坏、缺失或变更': 'Image file is invalid, missing or changed',
+    '生成调用失败，未产生候选图': 'Image call failed; no candidate was produced',
+    'A／B／C 是匿名编号，不代表生成顺序。': 'A/B/C are anonymous labels, not generation order.',
+    '你可以评价或要求修订任何展示的候选，包括内部未通过的版本。推荐不代替你的决定；最终交付仍需通过全部门槛。': 'You can evaluate or request changes to any displayed candidate, including failed versions. A recommendation does not replace your decision; delivery still requires every gate to pass.',
+}
+PREVIEW_EN.update(SUMMARY_LABELS)
+
 REVIEW_SHEET_TEMPLATE = r"""<!doctype html>
 <html lang="__LANGUAGE__">
 <meta charset="utf-8">
@@ -598,6 +675,7 @@ dialog{width:min(1400px,96vw);height:94dvh;max-width:none;max-height:94dvh;paddi
 <p>__UI_2__</p>
 <button id="background" type="button" aria-pressed="false">__UI_3__</button><button id="open-viewer" type="button">__UI_4__</button>
 <div class="grid">__CARDS__</div>
+__REVIEW_CONTEXT__
 <section><details><summary>__UI_5__</summary><ul>__CHECKS__</ul></details>
 <h2>__UI_6__</h2><p>__UI_7__</p>
 <label>__UI_8__ <select id="decision"><option value="">__UI_9__</option><option value="accept">__UI_10__</option><option value="revise">__UI_11__</option><option value="reject">__UI_12__</option></select></label>
@@ -658,7 +736,10 @@ def preview_text(language="zh-CN", translations=None, allow_legacy=False):
         keys = set(PREVIEW_EN)
         reference_keys = {'参考图', '仅参考指定修改内容'}
         revision_keys = {'修订前', '本次修改'}
-        accepted = (keys, keys - revision_keys, keys - reference_keys, keys - reference_keys - revision_keys) if allow_legacy else (keys,)
+        accepted = [keys]
+        if allow_legacy:
+            for feature_keys in (revision_keys, reference_keys, set(SUMMARY_LABELS)):
+                accepted += [option - feature_keys for option in list(accepted)]
         if not isinstance(translations, dict) or set(translations) not in accepted or not all(isinstance(v, str) and v.strip() and len(v) <= 2000 for v in translations.values()):
             raise ValueError('Supply a complete text mapping for the preview language.')
         return dict(translations)
@@ -673,10 +754,45 @@ def script_json(value):
     return json.dumps(value, ensure_ascii=False).replace('<', r'\u003c').replace('>', r'\u003e').replace('&', r'\u0026')
 
 
-def render_sheet(key, labels, request, contract, purpose, language="zh-CN", translations=None, revision=None, edit_references=None):
-    ui = preview_text(language, translations, allow_legacy=not edit_references)
+def render_review_summary(summary, ui):
+    def escaped(value):
+        return html.escape(str(value))
+    lines = ['<section id="review-context"><p>'+escaped(ui['A／B／C 是匿名编号，不代表生成顺序。'])+'</p>',
+             '<p>'+escaped(ui['已生成候选'])+': '+str(summary['generated'])+' · '+escaped(ui['已展示候选'])+': '+str(summary['displayed'])+'</p>',
+             '<p>'+escaped(ui['你可以评价或要求修订任何展示的候选，包括内部未通过的版本。推荐不代替你的决定；最终交付仍需通过全部门槛。'])+'</p>',
+             '<details><summary>'+escaped(ui['推荐与内部检查'])+'</summary>']
+    recommended = summary.get('recommendation')
+    if recommended:
+        evidence = recommended['evidence'] if recommended['basis']=='recorded_comparison' else ui['通过全部内部检查']
+        lines.append('<p>'+escaped(ui['推荐版本'])+': '+escaped(recommended['candidate'])+' · '+escaped(evidence)+'</p>')
+    else:
+        lines.append('<p>'+escaped(ui['尚未记录推荐'])+'</p>')
+    for label, result in summary['candidates'].items():
+        lines.append('<p>'+escaped(label)+' · '+escaped(ui['通过全部内部检查'] if result['status']=='passed' else ui['内部检查未通过'])+'</p><ul>')
+        for finding in result['findings']:
+            lines.append('<li>'+escaped(finding.get('observed',finding.get('evidence',finding['id'])))+'</li>')
+        lines.append('</ul>')
+    lines.append('</details>')
+    if summary['omissions']:
+        lines.append('<p>'+escaped(ui['未展示原因'])+'</p><ul>')
+        for omission in summary['omissions']:
+            reason = ui['文件损坏、缺失或变更'] if omission['reason']=='unavailable_file' else ui['根据用户要求仅展示指定版本']+' · '+omission['note']
+            lines.append('<li>'+escaped(reason)+'</li>')
+        lines.append('</ul>')
+    for call in summary['failed_calls']:
+        lines.append('<p>'+escaped(ui['生成调用失败，未产生候选图'])+' · '+escaped(call['failure'])+'</p>')
+    lines.append('</section>')
+    return ''.join(lines)
+
+
+def render_sheet(key, labels, request, contract, purpose, language="zh-CN", translations=None, revision=None, edit_references=None, review_summary=None):
+    ui = preview_text(language, translations, allow_legacy=True)
     if revision and not {'修订前', '本次修改'} <= set(ui):
         raise ValueError('Supply revision comparison labels for this page.')
+    if edit_references and not {'参考图', '仅参考指定修改内容'} <= set(ui):
+        raise ValueError('Supply scoped reference labels for this page.')
+    if review_summary is not None and not set(SUMMARY_LABELS) <= set(ui):
+        raise ValueError('Supply human review summary labels for this page.')
     items = [{"label": ui['原图'], "src": "source.png"}]
     if revision:
         items.append({"label": ui['修订前'], "src": revision['source']})
@@ -690,6 +806,7 @@ def render_sheet(key, labels, request, contract, purpose, language="zh-CN", tran
         '__OPTIONS__': ''.join(f'<option value="{label}">{label}</option>' for label in labels),
         '__PACKET__': script_json(key), '__VIEWER_ITEMS__': script_json(items),
         '__LANGUAGE__': html.escape(language), '__UI_STRINGS__': script_json(ui),
+        '__REVIEW_CONTEXT__': render_review_summary(review_summary, ui) if review_summary is not None else '',
     }
     if edit_references:
         values['__CHECKS__'] += ''.join('<li>'+html.escape(ui['仅参考指定修改内容']+' · '+ref['id']+' · '+', '.join(ref['scope'])+'：'+ref['notes'])+'</li>' for ref in edit_references)
@@ -721,11 +838,12 @@ def refresh_review_sheet(c, root, key):
         number += 1
     page = folder / f'index-{number:03d}.html'
     with page.open('x', encoding='utf-8') as stream:
-        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', language, page_ui, public.get('revision'), public.get('edit_references')))
+        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', language, page_ui, public.get('revision'), public.get('edit_references'), public.get('review_summary')))
     packet.setdefault('artifacts', []).append({'path': page.relative_to(root).as_posix(), 'sha256': c.digest(page)})
     packet['latest_page'] = page.relative_to(root).as_posix()
     c.write_state(root, state)
     return {'packet': key, 'page': str(page.resolve()), 'public_packet': str(public_path.resolve()),
+            **({'review_summary': public['review_summary']} if public.get('review_summary') is not None else {}),
             **({'edit_references': [{**r, 'path': str((folder / r['path']).resolve())} for r in public['edit_references']]} if public.get('edit_references') else {}),
             **({'revision_parent': str((folder / 'parent.png').resolve()), 'revision_note': public['revision']['note']} if public.get('revision') else {}),
             'source': str((folder / 'source.png').resolve()),
@@ -773,6 +891,12 @@ def human_feedback(c, root, data):
         return packet["feedback"]["result"]
     chosen = packet["items"].get(data.get("candidate")) if data["decision"] != "reject" else None
     target_ids = [chosen["asset_id"]] if chosen else [v["asset_id"] for v in packet["items"].values()]
+    if chosen:
+        chosen_asset = c.get_asset(state, chosen["asset_id"])
+        slot = c.asset_slot(chosen_asset)
+        selected = next((a for a in state["assets"] if a["id"] == state["selected"].get(slot)), None)
+        if selected and selected.get("candidate_pool") == chosen_asset.get("candidate_pool"):
+            del state["selected"][slot]
     for aid in target_ids:
         asset = c.get_asset(state, aid)
         for revision in state.get("human_revisions", {}).values():
@@ -857,6 +981,7 @@ def add_commands(c, commands):
             p.add_argument("--purpose", choices=("assistant", "user"), default="user")
             p.add_argument("--language", default="zh-CN", help="Match the user's language; built-in zh-CN/en, or supply --ui-file for another language.")
             p.add_argument("--ui-file", type=Path, help="Complete UTF-8 mapping of preview UI text to the user's language.")
+            p.add_argument("--selection-note", help="Only for the user's explicit request to show a subset; otherwise show the entire batch.")
         if name == "refresh-review-sheet":
             p.add_argument("--packet", required=True)
         if name == "revision-prepare":
@@ -893,7 +1018,7 @@ def dispatch(c, args):
     if args.command == "pool-compare":
         return compare(c, root, args.case_id, read(args.feedback_file))
     if args.command == "review-sheet":
-        return review_sheet(c, root, args.asset, args.purpose, args.language, read(args.ui_file) if args.ui_file else None)
+        return review_sheet(c, root, args.asset, args.purpose, args.language, read(args.ui_file) if args.ui_file else None, args.selection_note)
     if args.command == "refresh-review-sheet":
         return refresh_review_sheet(c, root, args.packet)
     if args.command == "revision-prepare":

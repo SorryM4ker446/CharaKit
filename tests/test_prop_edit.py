@@ -79,7 +79,9 @@ class PropEditTests(unittest.TestCase):
 
     def feedback(self, asset, decision='accept'):
         page = self.call('review_sheet', self.root, [asset['id']], 'user')
-        result = self.call('human_feedback', self.root, dict(packet=page['packet'],basis='user',candidate='A',
+        packet = outfits.read_state(self.root)['review_packets'][page['packet']]
+        alias = next(k for k,v in packet['items'].items() if v['asset_id']==asset['id'])
+        result = self.call('human_feedback', self.root, dict(packet=page['packet'],basis='user',candidate=alias,
                           decision=decision,note='修订物件接触位置' if decision=='revise' else '采用这个版本'))
         return page, result
 

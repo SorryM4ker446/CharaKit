@@ -108,7 +108,9 @@ class EditReferenceTests(unittest.TestCase):
 
     def feedback(self, asset, decision='accept'):
         sheet = self.call('review_sheet', self.root, [asset['id']], 'user')
-        self.call('human_feedback', self.root, dict(packet=sheet['packet'], basis='user', candidate='A', decision=decision, note='调整目标细节' if decision == 'revise' else '采用'))
+        packet = self.c.read_state(self.root)['review_packets'][sheet['packet']]
+        alias = next(k for k,v in packet['items'].items() if v['asset_id']==asset['id'])
+        self.call('human_feedback', self.root, dict(packet=sheet['packet'], basis='user', candidate=alias, decision=decision, note='调整目标细节' if decision == 'revise' else '采用'))
         return sheet
 
     def test_all_current_modes_preserve_references_through_review_and_zip(self):
