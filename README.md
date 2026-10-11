@@ -1,237 +1,135 @@
 # CharaKit
 
-New requests use [candidate selection and human review](plugins/charakit/references/candidate-review.md): default three-attempt internal review/redraw batches per requested result. Total ≥80, every dimension ≥4/5, all domain checks and applicable fidelity/file evidence must pass; otherwise correct recorded failures within the budget. Stop on full passage or exhaustion before anonymous human review. Honor explicit smaller attempt limits. Actual acceptance precedes final PNG/report and requested ZIP delivery. Saved 1.0 pools and legacy refinements keep their existing budgets and verdicts; reduced user revisions remain to be validated.
+**A Codex plugin for editing visual novel character illustrations.** Create expression variants, change clothing, and edit accessories or props through a workflow that keeps the source, candidates, review findings, and your chosen version together.
 
-**English** | [简体中文](README.zh-CN.md)
+**English** | [简体中文](README.zh-CN.md) · Development version **0.1.27**
 
-**CharaKit** is a modular Codex plugin for visual novel character artwork. **CharaKit Expressions** creates full expression variants; **CharaKit Outfits** edits garments, replaces complete outfits, and adds/removes/replaces accessories or props while preserving character identity and unrelated design.
+Attach an illustration, describe the change, review the results, and choose what to keep. CharaKit uses the image editing tool available in Codex; its local Python helper manages files, comparisons, review records, and exports.
 
-Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
+## Features
 
-Development version: **0.1.27**.
-
-Human review combines full illustrations with optional face/target details, synchronized source comparison and copyable feedback. Final reports retain accepted detail comparisons separately from complete PNGs.
-
-Human review pages show every readable candidate in the current batch by default, with recommendations separate from selection. Failed candidates can receive feedback and revision requests; final delivery still requires every gate.
-
-Optional [scoped reference images](plugins/charakit/references/edit-references.md) work across Expressions and all Outfits modes, with immutable snapshots, per-reference review checks and retention through redraws and human revisions. The same contract governs future modules; they remain independent.
-
-Specific human corrections now continue from the user-chosen candidate through `revision-prepare` and `revision-import`. The helper preserves the original comment, protection checks and parent link, reserves a default three-attempt correction batch, and requires fresh internal/human review. The review page adds a before-revision reference; reports and exports retain that lineage. See the [human-revision procedure](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction).
-
-Review pages now use a separate zoom/pan viewer and match the user's language. Before actual human feedback, reports are labeled internal drafts with no final assets; `report --stage final` requires feedback for every requested pool. The final report includes the user's selected candidate, comments and Codex disposition, including revision and rejection outcomes.
-
-Every generation/revision batch ends with [final PNGs, a preview and a saved-review report](plugins/charakit/references/delivery-report.md). The shared `report` command can cover Expressions, mouth states and Outfits together, includes per-round scores and failure findings, and copies only gated final PNGs unchanged. If none pass, it produces only the report. Reporting does not generate, regrade or accept artwork; use helper 0.1.15 or later.
-
-Opt-in [review-driven bounded refinement](plugins/charakit/references/refinement.md) permits three total rounds per expression/mouth-state or garment option. Version 0.1.18 adds compact repair findings and explicit reference roles. New Outfits cases can reapply the garment edit to the original in round three when protection checks persist without score improvement and the target passes; the previous candidate then supplies only the successful design/color. Otherwise continue the previous image. Legacy histories and budgets remain intact. Reports show blocking reasons beside totals: 80 points still requires all dimension/domain gates. Codex performs generation and visual review; actual improvement awaits art testing. No mask, regional editing or MCP integration is added. Native tool previews may appear automatically.
-
-Fresh assessments use rubric 1.1: at least **80/100**, every dimension at least **4/5**, and unchanged domain, critical-defect, uncertainty, technical and fidelity vetoes. Minor brushwork variation can pass; pixel equality is not required by default. Historical rubric 1.0 reviews retain their 85 threshold and recorded verdicts. Use helper 0.1.14 or later.
-
-New internal reviews require the checklist for the active module/state, not just a global score: expression, explicit mouth state, or garment recolor/replacement. Garment checks specialize by the source's actual component and material/interfaces. Any failed/uncertain item vetoes delivery even at 100/100. Use helper 0.1.13 or later; historical reviews remain readable without invented domain findings.
-
-Resolution is temporarily excluded from visual scoring and preview-delivery rejection. Actual canvas mismatch remains recorded and is returned as a delivery warning; other quality/fidelity/technical gates remain. Formal acceptance and ZIP export still require the source canvas. Use helper 0.1.12 or later for this exception.
-
-Quality-first development and delivery follow the shared [internal review policy](plugins/charakit/references/quality-review.md). New candidates need evidence-backed dimension scores, all active domain checks, and applicable technical/fidelity passage. These are assistant visual judgments, not an objective automated similarity model. Internal passage remains separate from user acceptance. Legacy files are preserved; enable quality before new work in old projects.
-
-All available modules use shared [editing boundaries](plugins/charakit/references/edit-boundaries.md): identify the target, allowed property, target invariants, and protected interfaces/remainder. Unrequested components and properties stay protected. Prompts and inspections derive from the request, domain, and actual source; a past test character does not define the template. Outfits provides [garment-specific rules](plugins/charakit/skills/charakit-outfits/references/garment-domains.md); Expressions specializes allowed facial movement and mouth state without authorizing other edits.
-
-Artwork quality takes priority over prompt length. Retain the source's actual appearance, including each eye's original color distribution and design, without assigning guessed colors. Expression prompts include the coordinated movements and visible effects needed to distinguish emotions; generation and inspection check these separately from file validity.
-
-Release notes are published with GitHub Releases.
-
-## Modules
-
-| Module | Skill ID | Status |
+| Module | Supported edits | Skill |
 | --- | --- | --- |
-| CharaKit Expressions | `charakit-expressions` | Available: full expression variants |
-| CharaKit Outfits | `charakit-outfits` | Available: single-garment editing and full-outfit base replacement workflows |
-| CharaKit Poses | `charakit-poses` | Planned: static pose and action edits |
+| Expressions | Twelve expression presets and static mouth-open / mouth-closed variants | `$charakit-expressions` |
+| Outfits | Garment recoloring, single-garment replacement, full-outfit replacement, and accessory / prop editing | `$charakit-outfits` |
 
-Install the plugin as `charakit`; use `$charakit-expressions` for expressions and static mouth states, or `$charakit-outfits` for garment recoloring/replacement. Pose editing remains planned. See the [module definitions](plugins/charakit/modules.json) and [roadmap](plugins/charakit/ROADMAP.md).
+Outfits has four edit types:
 
-## Current expression features
+| Type | Purpose | Example |
+| --- | --- | --- |
+| `recolor` | Change a garment's color while retaining its design | Make the skirt white |
+| `replace` | Replace one garment | Replace a long coat with a short jacket |
+| `outfit_replace` | Replace an explicitly defined clothing ensemble | Change into a Japanese school uniform, including socks and shoes |
+| `prop_edit` | Add, remove, or replace a scoped accessory or prop | Add glasses or remove a weapon |
 
-- Support twelve fixed presets: neutral, happy, sad, angry, surprised, eyes closed, shy, confused, wry smile, worried, confident, and crying.
-- Preserve the entire face, original art style, character design, pose, and visual harmony.
-- Revise a single expression while keeping other candidates and history.
-- Keep static mouth-open and mouth-closed versions independently versioned, selected, and exported.
-- Compare full illustrations and enlarged face regions on light, dark, or checker backgrounds.
-- Check exact canvas dimensions, actual PNG content, transparency, and file fingerprints.
-- Export accepted, technically valid PNGs with a manifest and ZIP.
-
-List expression IDs, mouth states, and starting directions with the helper's `presets` command. Generated results still require visual review. See the [expression guide](plugins/charakit/skills/charakit-expressions/references/expression-guidelines.md) for emotion directions and the [mouth-state guide](plugins/charakit/skills/charakit-expressions/references/mouth-states.md) for static dialogue states. Each expression/state pair keeps its own versions and selection. Gaze states remain planned.
-
-Every variant is a complete image. There is no facial-part extraction, face compositing, database, external image API, ComfyUI integration, MCP service, or dedicated application.
-
-## Garment recoloring
-
-```text
-Use $charakit-outfits to make only this character's jacket fabric navy blue.
-Preserve the trim, buttons, fabric texture, folds, lighting, tie, skirt,
-face, expression, mouth state, hair, and pose. Generate two candidates
-and compare them, including enlarged face and jacket regions.
-```
-
-Outfits supports `recolor` for one garment, `replace` for one garment design and `outfit_replace` for an explicit clothing ensemble; see the [replacement guide](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md). Replacement requires a prepared boundary, actual prompt and its own domain/fidelity review. Workflow support does not establish generated replacement quality. Accessories/props use the separate `prop_edit` type described below. Clothing on/off states remain unimplemented; Expressions stays independent and can manually use an output PNG as its source. Actual recolor quality needs review of generated images; workflow tests do not prove visual preservation.
-
-Use a separate outfit project, for example `art-output/my-character/outfits/`, with its own immutable source. The helper records an option ID, existing target, operation and requested color/replacement. Each definition has independent versions and selection. Revisions retain that definition; changing it requires a new ID.
-
-Recolor-only outfit projects use schema 1.2. The first replacement backs up metadata and upgrades the project to schema 1.3; the export manifest follows the project schema. Use helper 0.1.16 or later for replacement projects. Existing expression projects remain schema 1.0/1.1 and keep their original helper path, IDs, and export filenames. The complete plugin now includes a shared `lib/studio_core.py`; keep it with both Skills. See the [Outfits Skill](plugins/charakit/skills/charakit-outfits/SKILL.md) for details.
-
-Before generation, `prepare` saves an edit boundary, protected-region descriptions, and a source-only detail reference. The default uses one complete source and a complete domain-specific prompt stating the allowed recolor, invariants, exclusions, preservation, and output. Quality takes priority over prompt length; necessary detail is retained in the submission as well as the inspection brief. The crop is submitted only for an ambiguous target or a requested reference comparison when supported. All final artwork changes remain in the host image tool; the crop is not a mask, pixel lock, or final asset.
-
-Compare the full image, face, garment, and relevant non-target details such as weapons, hair outlines, hands, and neighboring equipment. Additional `preview --detail-box` calls with distinct output paths can enlarge these regions. Non-target repainting remains a known limitation; simplifying the prompt/reference workflow has not been shown to resolve it.
-
-After inspecting the result, `fidelity` records target recoloring and protected-region preservation separately as passed, failed, or uncertain, with the observation source and a factual note. It does not grant user acceptance. Brief-linked candidates require both checks passed as well as technical validity and user acceptance before selection/export. Old records remain unchanged and do not acquire inferred checks; use helper 0.1.7 or later for the new gates, which older helpers do not enforce.
-
-```shell
-python plugins/charakit/skills/charakit-outfits/scripts/studio.py init --project art-output/my-character/outfits --source character.png --character my-character
-python plugins/charakit/skills/charakit-outfits/scripts/studio.py prepare --project art-output/my-character/outfits --outfit coat_navy --target "jacket fabric" --color "navy blue" --boundary "Main fabric only; exclude lining, trim and buttons" --protect "Entire face, expression, hair and pose" --protect "Other clothing and accessories" --target-box 80 250 280 500
-python plugins/charakit/skills/charakit-outfits/scripts/studio.py add --project art-output/my-character/outfits --outfit coat_navy --target "jacket fabric" --color "navy blue" --image generated-coat-navy.png --prompt-file prompt.txt --brief-file art-output/my-character/outfits/briefs/coat_navy_v001.json
-python plugins/charakit/skills/charakit-outfits/scripts/studio.py preview --project art-output/my-character/outfits --outfit coat_navy --output art-output/my-character/outfits/preview/coat-navy-v001.png --face-box 100 100 200 200 --detail-box 80 250 280 500
-python plugins/charakit/skills/charakit-outfits/scripts/studio.py fidelity --project art-output/my-character/outfits --asset coat_navy_v001 --target-check passed --protection-check uncertain --note "Target color is visible; inspect face and neighboring trim before passing protection"
-```
-
-Replace paths and preview coordinates with those of the actual artwork. Review, selection, and export use the same command names as Expressions. Outfit PNGs export to `sprites/<character>/outfits/<outfit-id>.png` and retain the candidate's original bytes. Technical failures remain excluded from formal exports.
-
-The fidelity command above illustrates an uncertain observation, not an automatically passed result. Record only findings visible in the actual comparisons. Revisions inherit an existing edit brief but start without fidelity observations; prepare a new brief if its boundaries need clarification.
-
-## Requirements
-
-- A Codex host with plugin/Skill support and an available image editing tool.
-- Python 3.11+ and Pillow for the local helper.
-
-Installing the plugin does not supply a missing image tool or select a model. Use the current host-provided tool; record the model as unknown when the tool does not report one.
+Both modules support scoped reference images, bounded redraws, human feedback, and revisions of a chosen candidate. Expressions and Outfits use independent projects; you can manually use an exported outfit image as the source for new expressions. Pose editing is [planned](plugins/charakit/ROADMAP.md).
 
 ## Install
 
-For a local clone, run from the repository root:
+Requirements: a Codex host with plugin support and an available image editing tool, plus **Python 3.11+** and **Pillow** for the local helper.
+
+Clone the repository and run:
 
 ```shell
+git clone https://github.com/SorryM4ker446/CharaKit.git
+cd CharaKit
+python -m pip install -r plugins/charakit/requirements.txt
 codex plugin marketplace add .
 codex plugin add charakit@charakit
 ```
 
-After publishing to GitHub, users can install from the repository. Replace `YOUR_GITHUB_OWNER/CharaKit` with the actual repository:
+If you already have a local checkout, start from that directory and skip the clone. Make sure Codex uses the Python environment where Pillow is installed, then open a new chat to load the Skills.
+
+You can also register the Git marketplace directly:
 
 ```shell
-codex plugin marketplace add YOUR_GITHUB_OWNER/CharaKit --ref main
+codex plugin marketplace add SorryM4ker446/CharaKit --ref main
 codex plugin add charakit@charakit
 ```
 
-The marketplace and plugin both use the identifier `charakit`. The install selector `charakit@charakit` means plugin `charakit` from marketplace `charakit`, for both local and Git sources. Refresh or restart Codex and open a new chat after installation.
-
-Install the helper dependency in the desired Python environment:
-
-```shell
-python -m pip install -r plugins/charakit/requirements.txt
-```
+For this route, install the helper dependency from the installed plugin's `requirements.txt`. Keep the complete plugin directory together. The selector `charakit@charakit` means plugin `charakit` from marketplace `charakit`; see the [official plugin packaging guide](https://developers.openai.com/plugins/build/plugins) for marketplace setup.
 
 ## Use
 
-Attach a source illustration in Codex, then ask:
+Attach the source illustration in a Codex chat, then invoke a Skill with the change you want. You do not need to run the helper commands yourself.
+
+### Expressions
 
 ```text
-Use $charakit-expressions to generate happy, sad, angry,
-surprised, and eyes-closed versions of this character.
-Preserve the entire face, original style, design, and visual harmony.
-```
-
-Ask for a specific intensity, revise one version, or select images for export.
-
-For example, request only shy, confused, and crying versions, then revise the crying version to use fewer tears. The other expression versions and selections are retained.
-
-Use the same Skill for static dialogue states:
-
-```text
-Use $charakit-expressions to create happy and worried versions,
+Use $charakit-expressions to create happy and worried versions of this character,
 each with mouth closed and naturally open for speaking.
-Generate two candidates per state and compare each pair in preview.
+Preserve the character's facial design, hair, clothing, pose, and original style.
 ```
 
-Omitting a mouth state keeps it unspecified (`default`); it does not label the image as closed-mouth. Both explicit states can be selected and exported together. These are static images, without lip synchronization or animation frames. Old projects remain readable; the first explicit-state import backs up metadata and upgrades the project to schema 1.1. Use version 0.1.5 or later for upgraded projects.
+The twelve presets are neutral, happy, sad, angry, surprised, eyes closed, shy, confused, wry smile, worried, confident, and crying. Mouth states are separate static images; an omitted state is unspecified rather than automatically closed.
 
-**The plugin responds in your language.** Progress updates, visible expression names, generation prompts, quality explanations, limitations, and delivery notes follow your current request or explicitly preferred language. CLI arguments, JSON keys, filenames, and status/error codes remain stable English identifiers. Preview labels can be localized through `--labels-file`.
-
-Outputs default to `art-output/<character-key>/`. User artwork and experiment records are ignored by Git and excluded from distribution packages.
-
-## Local helper example
-
-Run from the repository root. Replace image paths and the face coordinates for your artwork:
-
-```shell
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py presets
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py init --project art-output/my-character --source character.png --character my-character
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression angry --image generated-angry.png --prompt-file prompt.txt
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression happy --mouth-state closed --image happy-closed.png
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py add --project art-output/my-character --expression happy --mouth-state open --image happy-open.png
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-v001.png --face-box 100 100 200 200 --background light
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py preview --project art-output/my-character --output art-output/my-character/preview/comparison-dark-v001.png --face-box 100 100 200 200 --background dark
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py quality --project art-output/my-character --asset angry_v001 --assessment-file assessment.json --comparison art-output/my-character/preview/comparison-v001.png --comparison art-output/my-character/preview/comparison-dark-v001.png
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py deliver --project art-output/my-character --asset angry_v001
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py review --project art-output/my-character --asset angry_v001 --status accepted --note "User selected this version."
-python plugins/charakit/skills/charakit-expressions/scripts/studio.py export --project art-output/my-character
-```
-
-A failing `add` returns exit code 2 with a structured report and retains the candidate. Prepare `assessment.json` from actual inspected findings using the [quality rubric](plugins/charakit/references/quality-review.md); it is not a default passing template. A technical pass does not imply art approval. Formal export requires technical validity, applicable quality/fidelity gates and actual user acceptance.
-
-If a user likes an image that fails technical checks, preserve their feedback separately. The helper does not set the `accepted` status until those checks pass.
-
-## Repository layout
+### Clothing
 
 ```text
-README.md                           English overview and instructions
-README.zh-CN.md                     Simplified Chinese overview and instructions
-.agents/plugins/marketplace.json     Local/Git marketplace entry
-.github/workflows/ci.yml             Tests and plugin package verification
-plugins/charakit/
-  plugin.json                       Plugin manifest
-  README.md                         Standalone plugin instructions
-  modules.json                      Available and planned module definitions
-  ROADMAP.md                        Module scope and development sequence
-  requirements.txt                  Helper dependency
-  lib/studio_core.py                Shared file workflow for both modules
-  skills/charakit-expressions/
-    SKILL.md                        Workflow and language behavior
-    references/                     Expression and review guidelines
-    scripts/studio.py               Local file helper
-  skills/charakit-outfits/
-    SKILL.md                        Garment recoloring workflow
-    references/recolor-guide.md     Editing and review directions
-    references/garment-domains.md    Component, material, and interface rules
-    scripts/studio.py               Outfit helper entrypoint
-  references/edit-boundaries.md     Shared editing scope across modules
-  references/quality-review.md      Development baseline and internal delivery rubric
-tests/test_studio.py                 Synthetic-fixture workflow tests
-tests/test_outfits.py                Recolor and packaging workflow tests
-tests/test_outfit_fidelity.py        Source-reference and manual-fidelity workflow tests
-tests/test_quality.py                Internal review, delivery and compatibility gates
-tools/build_plugin.py               Plugin ZIP builder
+Use $charakit-outfits to change this character into a Japanese school uniform:
+a navy blazer, white shirt, red bow, pleated skirt, white ankle socks,
+and brown loafers. Keep the face, expression, hair, pose, and background.
 ```
+
+Name every garment you want changed in a full outfit, including shoes and socks. Unlisted clothing and separate equipment remain protected. For a smaller edit, ask for only a recolor or replacement of the named garment.
+
+### Accessories and props
+
+```text
+Use $charakit-outfits to add thin-frame glasses.
+Keep the expression, facial features, hair, clothing, and pose.
+```
+
+To remove or replace an object, name it explicitly. A clothing request alone does not authorize changes to separate accessories or weapons.
+
+You may attach additional reference images to either module. Describe what each should guide—for example, only the jacket cut or the glasses design. References guide those attributes while the source illustration governs the protected character details.
+
+Responses and preview labels follow your language. Outputs default to `art-output/<character-key>/` in your workspace.
+
+## Review and delivery
+
+1. **Define the edit.** Codex inspects the source and records the requested change, allowed boundaries, protected details, and reference roles.
+2. **Generate and inspect.** Each requested result has up to three image-tool attempts by default, including the first. Failed checks trigger a targeted redraw within that budget; a full pass stops generation early. Explicit smaller limits are honored.
+3. **Review the candidates.** After a full pass or budget exhaustion, the local HTML page shows every readable candidate in that batch alongside the source. Full images remain visible, optional face / target details expand for closer inspection, and the large viewer supports synchronized source comparison. Recommendations remain separate from your choice.
+4. **Choose or revise.** Reply in chat with “Use A”, “Revise B: …”, or “Reject all”. You can also copy feedback from the page. Failed candidates remain available for comments and revision requests. A specific correction starts a new bounded batch linked to your chosen candidate and original feedback.
+5. **Receive the result.** Actual human feedback precedes the final review report. Only accepted candidates that pass every delivery check become final full PNGs, with a comparison preview, report, and ZIP when requested. Recorded face / target regions also appear as separate inspection images in the final report.
+
+Internal review uses five dimensions: requested result, character identity, non-target preservation, structure / interfaces, and visual finish. Passage requires **at least 80/100**, **every dimension at least 4/5**, and all applicable domain, fidelity, and file checks. A high total or user preference cannot override a blocking check. If the attempt budget runs out, Codex explains the remaining issues before human review.
+
+Scores are Codex's evidence-based visual judgments; the helper validates records and files rather than independently scoring images. Reports created before human feedback are internal drafts. Details and failed candidates are inspection evidence, not final artwork.
+
+## Documentation
+
+| Topic | Guide |
+| --- | --- |
+| Expression presets and intensity | [Expression guidelines](plugins/charakit/skills/charakit-expressions/references/expression-guidelines.md) |
+| Static dialogue mouth states | [Mouth states](plugins/charakit/skills/charakit-expressions/references/mouth-states.md) |
+| Clothing edits | [Recoloring](plugins/charakit/skills/charakit-outfits/references/recolor-guide.md) · [Single replacement](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md) · [Full outfits](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md) |
+| Accessories and props | [Prop edits](plugins/charakit/skills/charakit-outfits/references/prop-edit-guide.md) |
+| Reference images and protected scope | [Scoped references](plugins/charakit/references/edit-references.md) · [Editing boundaries](plugins/charakit/references/edit-boundaries.md) |
+| Review, redraws, and user revisions | [Candidate review](plugins/charakit/references/candidate-review.md) · [Quality policy](plugins/charakit/references/quality-review.md) |
+| Reports and exports | [Delivery reports](plugins/charakit/references/delivery-report.md) |
+| Helper entrypoints and packaged usage | [Plugin guide](plugins/charakit/README.md) |
+
+Release history is available in [GitHub Releases](https://github.com/SorryM4ker446/CharaKit/releases). Compatibility and legacy workflow details live in the linked guides.
 
 ## Development
+
+The repository keeps plugin code under `plugins/charakit/`, synthetic workflow tests under `tests/`, and the ZIP builder under `tools/`. The marketplace entry is `.agents/plugins/marketplace.json`.
+
+Run from the repository root:
 
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.21.zip
+python tools/build_plugin.py --output dist/charakit.zip
 ```
 
-Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.
+CI checks Linux and Windows. The builder refuses to overwrite an existing ZIP and packages only the plugin files. User artwork, prompts, feedback, and local experiment records stay in ignored output directories.
 
-The plugin ZIP contains only the plugin's files. Keep user images, prompts, local feedback, caches, credentials, and personal machine paths out of commits.
+## Limitations
 
-## Current limitations
-
-Expression and garment edits may alter unrelated details or produce a different canvas size. Preserving character identity, facial detail, original style, and alignment requires visual review; prompt instructions alone cannot guarantee consistency.
-
-Automatic checks cover file format, canvas dimensions, transparency, and file integrity. They do not assess artistic quality or how expression changes look in a game. Export requires passing technical checks and approval after visual review.
-
-See the [plugin guide](plugins/charakit/README.md) for details.
-
-Full-outfit base workflows are available through `outfit_replace`: explicit clothing mappings, ensemble and per-component review, human-guided revision, and accepted PNG exports. See the [full outfit guide](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md). Real generated-art quality requires visual testing; users can manually pass an output PNG to Expressions without shared project state.
-
-## Accessories and props
-
-Outfits `prop_edit` supports `add`, `remove` and `replace` through `--prop-action`. It shares candidate selection, actual human feedback, linked revisions and raw PNG export with garment modes, while using its own object, contact, occlusion/reconstruction and anatomy checks. See the [prop edit guide](plugins/charakit/skills/charakit-outfits/references/prop-edit-guide.md). Clothing edits do not implicitly authorize object changes.
-
-Add/replace specify `--replacement`; removal omits it. All require a prepared boundary, actual prompt, rubric 1.2, fresh fidelity observations and a candidate pool. Helper 0.1.22 backs up legacy metadata before the first prop import and upgrades Outfits projects to schema 1.5 without altering existing artwork, selections or historical findings. Workflow tests establish these mechanics; real object-edit quality remains to be evaluated.
+- Image generation depends on the host's editing tool. CharaKit does not bundle an image model, external image API, or MCP service.
+- Edits can drift in identity, pose, framing, or unrelated details. Review helps detect these defects but does not guarantee pixel preservation or fewer revisions.
+- Final PNGs must match the source canvas and pass applicable transparency and integrity checks. Canvas mismatch can remain visible in review, but blocks formal acceptance and export; the helper does not resize or repair candidates.
+- Outputs are complete static illustrations. Animation, lip synchronization, automatic expression generation from an outfit, and pose editing are outside the implemented feature set.
