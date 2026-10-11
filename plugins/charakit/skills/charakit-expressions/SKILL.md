@@ -13,6 +13,10 @@ Support twelve fixed expression presets and independently selectable static mout
 
 Garment recoloring and single-garment replacement use the separate [CharaKit Outfits Skill](../charakit-outfits/SKILL.md). Full outfit replacement and pose editing remain planned in [the module roadmap](../../ROADMAP.md). This Skill remains scoped to expressions; keep outfit projects and candidates separate.
 
+## Candidate selection and human review
+
+For every new request, follow [candidate selection and human review](../../references/candidate-review.md). Define source-grounded checks before generation, start a candidate pool before scoring, and use rubric 1.2 with five evidence-linked dimensions. Honor the authorized count: one image means budget 1; explicitly enabled automatic improvement allows at most three attempts, with independent source sampling and at most one evidence-based repair. Show an anonymous review page and inline candidates, collect actual user feedback, and only then deliver/package accepted eligible artwork. Chat replies are sufficient; do not demand a second approval or a feedback file. This workflow replaces sequential refinement for new work; old tracked cases retain [their original workflow](../../references/refinement.md).
+
 ## User language
 
 - Respond in the language of the user's current request, or their explicitly preferred language. Follow a later language change without asking again.
@@ -26,7 +30,7 @@ Garment recoloring and single-garment replacement use the separate [CharaKit Out
 
 - Inspect the source first. Prefer a single character with a clear front or slightly angled face. Preserve transparency for transparent artwork; do not assume an illustration with a background is a transparent sprite.
 - Use the OpenAI image editing tool currently available in the Codex host. Follow its current reference-image, transparency, and file-saving requirements. If unavailable, explain the missing capability. This plugin has no external API integration and cannot select a hidden model through a prompt.
-- Use the same immutable source as the primary reference for every expression. For an ordinary revision, keep that source as the baseline and optionally include the previous candidate. In explicitly enabled bounded refinement, also supply the previous complete candidate as the edit target, following the shared refinement workflow; do not make it the identity/design baseline.
+- Use the same immutable source as the primary reference for every expression. For an ordinary revision, keep that source as the baseline and optionally include the previous candidate. For new pools, the second attempt samples only the immutable source; an authorized third repair uses source plus the preferred candidate. Existing legacy refinements follow their recorded strategy.
 - Preserve the **entire face**: eyes, eyebrows, nose, lips, contours, proportions, skin tone, shading, linework, and brushwork. Eyes are one part of this requirement. Allow necessary expression changes without redesigning, blurring, or simplifying facial features.
 - Preserve the original style and character design: hair, ears, accessories, clothing, weapons, pose, proportions, composition, materials, and lighting. Make only the changes needed for the requested emotion; keep the expression harmonious with the whole illustration.
 - Return the complete original framing. Do not deliver a face crop as the final asset, extract reusable facial parts, or composite a generated face onto the original. Subtle blush is appropriate for `shy`, and visible tears are part of `crying`, unless excluded by the user. Do not add these effects to other presets by default, or add emotion symbols, sweat drops, or text without a request.
@@ -38,7 +42,7 @@ Garment recoloring and single-garment replacement use the separate [CharaKit Out
 
 Save each generated image as a candidate before checking it. Saving or displaying an image does not imply art approval.
 
-Read and apply the shared [quality review and delivery policy](../../references/quality-review.md) for every generation/revision. New projects enable internal review by default; before generating into a legacy project, run `enable-quality`. Inspect actual comparisons, record four evidence-backed rubric scores with `quality`, then use `deliver` before showing a candidate as a deliverable. Serious defects, uncertainty and technical failures other than temporarily excluded canvas mismatch block delivery independently of the total. This is assistant visual judgment with deterministic record validation, not an automatic objective identity metric. User acceptance stays separate.
+Read and apply the shared [quality review and delivery policy](../../references/quality-review.md) for every generation/revision. New projects enable internal review by default; before generating into a legacy project, run `enable-quality`. Inspect actual comparisons, record five evidence-linked rubric 1.2 scores with `quality`, then use the anonymous review sheet for inspection and `deliver` only after actual user acceptance. Serious defects, uncertainty and technical failures other than temporarily excluded canvas mismatch block delivery independently of the total. This is assistant visual judgment with deterministic record validation, not an automatic objective identity metric. User acceptance stays separate.
 
 Include the active `domain_review` checklist: `expression` checks emotion, facial design, nonface protection and rendering; an explicit open/closed candidate uses `mouth_state` and also checks the specified mouth state. Preserve established emotion for mouth-only edits; for combined requests inspect the requested emotion and state together. Record actual source-specific evidence for each item. Any failed/uncertain domain item blocks delivery regardless of global scores. Explain the failed module/component and visible deviation in the user's language, rather than reporting only a number.
 
@@ -54,7 +58,7 @@ Include the active `domain_review` checklist: `expression` checks emotion, facia
 
 `scripts/studio.py` uses Python 3.11+ and Pillow, runs once, and exits. Resolve its absolute path from the actual installed Skill location. Keep the complete plugin including its shared `lib/studio_core.py` together. Use proper shell quoting for paths with spaces or Unicode.
 
-Example commands; replace bracketed paths with actual paths:
+File-management command reference (not the full generation workflow). Follow candidate-review.md for pool/review-sheet/human-feedback ordering; replace bracketed paths with actual paths:
 
 ```text
 python <skill>/scripts/studio.py presets
@@ -64,8 +68,10 @@ python <skill>/scripts/studio.py add --project <output-dir> --expression happy -
 python <skill>/scripts/studio.py add --project <output-dir> --expression happy --mouth-state open --image <generated-open.png> --prompt-file <open-prompt.txt>
 python <skill>/scripts/studio.py preview --project <output-dir> --output <preview.png> --face-box <left> <top> <right> <bottom> --labels-file <labels.json>
 python <skill>/scripts/studio.py quality --project <output-dir> --asset angry_v001 --assessment-file <assessment.json> --comparison <output-dir/preview/light.png> --comparison <output-dir/preview/dark.png>
+python <skill>/scripts/studio.py review-sheet --project <output-dir> --asset angry_v001 --purpose user
+# Wait for actual user feedback, then record its packet and alias.
+python <skill>/scripts/studio.py human-feedback --project <output-dir> --feedback-file <feedback.json>
 python <skill>/scripts/studio.py deliver --project <output-dir> --asset angry_v001
-python <skill>/scripts/studio.py review --project <output-dir> --asset angry_v001 --status accepted --note <user-feedback>
 python <skill>/scripts/studio.py select --project <output-dir> --asset angry_v001
 python <skill>/scripts/studio.py export --project <output-dir>
 ```
@@ -81,8 +87,8 @@ python <skill>/scripts/studio.py export --project <output-dir>
 
 ## Revisions and delivery
 
-When the user enables automatic improvement from review findings, read and follow [bounded refinement](../../references/refinement.md). Each expression/mouth-state combination gets at most three total rounds (first image plus two targeted revisions). Use rubric 1.1 for fresh assessments; minor rendering differences can pass at 4/5, while actual scope/identity violations still veto. Use `refine-start`, `refine-status`, `refine-add` and `refine-deliver`; stop on passage or the limit, present only the passed final, and retain process versions for requested inspection. The host may still display native generation previews. This mode is the explicit attempt-budget exception to the ordinary one-revision rule below.
+For new generation and revision batches, use the candidate-pool and human-review workflow above. The [bounded refinement reference](../../references/refinement.md) applies only to existing `refinements` records; never reset those budgets or rewrite historical assessments. Fresh pools use rubric 1.2 and the explicit attempt allowance, not an automatic three-image default.
 
 Revise only the requested image; preserve other expressions and history. Produce one new candidate for an explicit revision request and review it afresh; show it as a deliverable only after the internal gate passes. Report blocked results in text, unless the user requested inspection of failed/experimental images. No additional generations without an explicit revision or attempt budget; do not retry indefinitely or silently regenerate images the user likes.
 
-Finish every generation/revision batch with the shared [delivery report](../../references/delivery-report.md): run `report`, show each passed full PNG separately inline, show the final preview inline, and link the Markdown report. Use actual absolute local paths in Codex image embeds. If none pass, return only the failure report. Keep process images as linked inspection evidence. Export selected PNGs or ZIPs as requested after the existing user/technical and quality gates pass. A request to try one expression does not require generating the whole standard set.
+After internal evaluation, present the human review stage before final delivery. Once actual user acceptance is recorded and gates pass, finish with the shared [delivery report](../../references/delivery-report.md): show accepted full PNGs and final preview inline, and link the Markdown report. Complete already requested packaging without another permission question. If no candidate passes, provide a failure report and clearly labeled inspection candidates for user feedback; they are not final assets. Keep all prompts, findings, candidates and actual feedback.

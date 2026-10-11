@@ -10,6 +10,14 @@ from PIL import Image, ImageDraw
 
 
 ZH = {
+    'draft_title': '内部检查草稿', 'final_title': '最终评审报告',
+    'draft_note': '尚有情况未完成人工评图。这是内部检查记录，不是最终评审报告，不含成品或打包输出。',
+    'final_note': '本次候选池已记录实际人工意见；以下汇总人工选择、内部检查和 Codex 处理结果。',
+    'awaiting_report': '已完成人评，等待汇总', 'next_awaiting_report': '其余情况完成人评后生成最终报告。',
+    'user_declined': '用户未采用', 'next_user_declined': '保留评审记录，停止本批次，不打包。',
+    'human_action': 'Codex 处理结果', 'accept': '采用', 'reject': '都不采用', 'revision_request': '按人工意见等待修订',
+    'export': '满足交付条件，可打包', 'stopped': '已停止本批次', 'feedback_blocked': '保留人工意见，检查未通过，暂不能交付',
+    'human_facets': '人工评价', 'fit': '需求符合度', 'preservation': '人物与细节保留', 'usability': '实际使用意愿',
     'title': '角色图像交付报告', 'overview': '结果概览', 'case': '情况', 'module': '模块',
     'rounds': '轮数', 'scores': '逐轮评分', 'status': '结果', 'final': '成品图',
     'passed': '通过', 'exhausted': '达到上限，未通过', 'blocked': '记录或文件失效',
@@ -17,7 +25,9 @@ ZH = {
     'unrecorded': '未记录', 'pending': '待评审', 'stale': '证据失效',
     'expression': '表情', 'mouth_state': 'mouth', 'garment_recolor': 'outfits · 改色', 'garment_replace': 'outfits · 替换',
     'details': '评审与修订记录', 'round': '轮次', 'asset': '版本', 'quality': '质量',
-    'target': '目标', 'identity': '身份', 'protection': '保护', 'rendering': '绘制',
+    'target': '需求达成', 'identity': '角色一致性', 'protection': '非目标保留', 'integration': '结构与衔接', 'rendering': '画面完成度',
+    'source_sample': '原图独立采样', 'repair_best': '修订择优候选', 'human_review': '等待人工评图',
+    'human': '人工评审', 'next_human_review': '展示匿名评图页，记录用户采用、修改或拒绝的实际反馈，再处理交付。',
     'issues': '未通过项', 'component': '编辑部位', 'request': '请求', 'source': '原图',
     'domain': '最终专项检查', 'check': '检查项', 'evidence': '观察依据',
     'limits': '检查范围与限制', 'preview': '最终版预览', 'history': '过程证据（供查看）',
@@ -25,7 +35,7 @@ ZH = {
     'next': '后续处理', 'next_exhausted': '停止自动生成；根据上述未通过项调整编辑策略，后续尝试需另行明确授权。',
     'next_blocked': '先检查缺失或变更的文件及评审证据，不能复用失效分数作为通过依据。',
     'next_review': '完成本轮评审与适用的保真检查；尚未形成合格成品。',
-    'next_revise': '按已记录的问题修订上一版，在剩余授权轮数内重新评审。',
+    'next_revise': '按 refine-status 返回的策略与参考图角色，在剩余授权轮数内修订并重新评审。',
     'next_failed': '保留当前候选及问题记录；需要修订时另行明确尝试次数。',
     'note': '分数与观察来自已保存的助手或用户评审；本命令只核对记录和门禁，不进行视觉评分。通过表示可供用户验收，不代表用户已接受。报告仅覆盖所列项目与情况。',
     'scope_note': '全图、目标细节、保护细节、正常展示和背景边缘的检查完成情况见下方记录；具体展示尺寸以原评审记录为准，本命令不新增游戏内验证。',
@@ -44,8 +54,19 @@ ZH = {
     'quality_stale': '提示词或对照证据已变更，原评分不能作为当前通过依据。',
     'quality_pending': '本轮质量评审尚未完成。', 'quality_unrecorded': '尚未记录质量评审。',
     'fidelity_pending': '本轮保真检查尚未完成。', 'user_rejected': '用户已拒绝此版本。',
+    'blockers': '阻塞原因', 'threshold': '总分门槛', 'dimension_floor': '分项下限',
+    'gate_note': '总分达标不等于通过：还需各分项达标、专项检查全部通过，以及评审证据和适用的保真／文件检查有效。轻微笔触变化可接受；身份或结构误改仍须修复。',
+    'strategy': '生成策略', 'initial': '首版', 'continue_previous': '修订上一版', 'source_rebase': '从原图重做目标衣物',
 }
 EN = {
+    'draft_title': 'Internal inspection draft', 'final_title': 'Final review report',
+    'draft_note': 'Some cases await actual human feedback. This internal inspection draft is not a final report and contains no final assets or package.',
+    'final_note': 'Actual human decisions have been recorded for the candidate pools. This report combines their feedback, internal findings and Codex disposition.',
+    'awaiting_report': 'Reviewed; awaiting remaining cases', 'next_awaiting_report': 'Complete human review of remaining cases before the final report.',
+    'user_declined': 'User declined', 'next_user_declined': 'Retain feedback and stop this batch without packaging.',
+    'human_action': 'Codex disposition', 'accept': 'Accept', 'reject': 'Reject all', 'revision_request': 'Revision requested',
+    'export': 'Eligible for packaging', 'stopped': 'Batch stopped', 'feedback_blocked': 'Feedback retained; checks block delivery',
+    'human_facets': 'Human ratings', 'fit': 'Request fit', 'preservation': 'Character/detail preservation', 'usability': 'Usability',
     'title': 'Character image delivery report', 'overview': 'Results', 'case': 'Case', 'module': 'Module',
     'rounds': 'Rounds', 'scores': 'Scores by round', 'status': 'Result', 'final': 'Final PNG',
     'passed': 'Passed', 'exhausted': 'Limit reached; failed', 'blocked': 'Invalid records or files',
@@ -53,7 +74,9 @@ EN = {
     'unrecorded': 'Unrecorded', 'pending': 'Pending', 'stale': 'Stale evidence',
     'expression': 'Expressions', 'mouth_state': 'Mouth', 'garment_recolor': 'Outfits',
     'details': 'Review and revision history', 'round': 'Round', 'asset': 'Version', 'quality': 'Quality',
-    'target': 'Target', 'identity': 'Identity', 'protection': 'Protection', 'rendering': 'Rendering',
+    'target': 'Target', 'identity': 'Identity', 'protection': 'Protection', 'integration': 'Integration', 'rendering': 'Rendering',
+    'source_sample': 'Independent source sample', 'repair_best': 'Repair preferred candidate', 'human_review': 'Human review pending',
+    'human': 'Human review', 'next_human_review': 'Present anonymous review and record the actual user decision before delivery.',
     'issues': 'Unmet criteria', 'component': 'Component', 'request': 'Request', 'source': 'Source',
     'domain': 'Final domain checks', 'check': 'Check', 'evidence': 'Observation',
     'limits': 'Inspection scope and limitations', 'preview': 'Final preview', 'history': 'Process evidence (inspection only)',
@@ -61,7 +84,7 @@ EN = {
     'next': 'Next step', 'next_exhausted': 'Stop generation. Change the editing strategy using these findings; further attempts require explicit authorization.',
     'next_blocked': 'Resolve missing or changed files/evidence before relying on the recorded scores.',
     'next_review': 'Complete this round’s quality and applicable fidelity review; no qualified final yet.',
-    'next_revise': 'Revise the previous candidate using the recorded findings within the remaining authorized rounds.',
+    'next_revise': 'Follow refine-status strategy and reference roles within the remaining authorized rounds, then review again.',
     'next_failed': 'Retain the candidate and findings; obtain an explicit attempt budget for a further revision.',
     'note': 'Scores and observations are from saved assistant/user reviews. This command validates records and gates, not visual quality. Passed images are ready for user review, not automatically accepted. Only listed projects and cases are covered.',
     'scope_note': 'Recorded full-image, target, protected-detail, normal-display and edge inspection flags appear below. Display size follows the original assessment; this command does not add game integration testing.',
@@ -81,6 +104,9 @@ EN = {
     'quality_stale': 'Prompt/comparison evidence changed; recorded scores cannot establish current passage.',
     'quality_pending': 'Quality review is incomplete.', 'quality_unrecorded': 'No quality review recorded.',
     'fidelity_pending': 'Fidelity review is incomplete.', 'user_rejected': 'The user rejected this version.',
+    'blockers': 'Blocking reasons', 'threshold': 'Total threshold', 'dimension_floor': 'Dimension floor',
+    'gate_note': 'Meeting the total threshold alone does not pass: each dimension, all domain checks, current review evidence and applicable fidelity/file gates must also pass. Minor brushwork variation is acceptable; identity or structural changes still require correction.',
+    'strategy': 'Generation strategy', 'initial': 'Initial image', 'continue_previous': 'Revise previous image', 'source_rebase': 'Reapply garment edit to source',
 }
 EXPRESSION_ZH = dict(zip(
     ('neutral', 'happy', 'sad', 'angry', 'surprised', 'eyes_closed', 'shy', 'confused', 'wry_smile', 'worried', 'confident', 'crying'),
@@ -136,11 +162,21 @@ def round_record(core, root: Path, state: dict, asset: dict, number: int) -> dic
         'model': asset.get('model', 'unknown'), 'origin': asset.get('origin'),
         'parent_asset_id': asset.get('parent_asset_id'), 'refinement_inputs': asset.get('refinement_inputs'),
         'recorded_score': review.get('result', {}).get('total'),
+        'gate_summary': {
+            'threshold': review.get('result', {}).get('threshold'),
+            'dimension_floor': review.get('result', {}).get('dimension_floor'),
+            'total_passed': (review['result']['total'] >= review['result']['threshold']) if review else None,
+            'failed_dimensions': [key for key, finding in review.get('dimensions', {}).items() if finding['score'] < 4],
+            'failed_domain_checks': [key for key, finding in review.get('domain_review', {}).get('checks', {}).items() if finding['status'] != 'passed'],
+            'incomplete_inspections': [key for key, done in review.get('inspection', {}).items() if not done],
+        },
+        'strategy': asset.get('generation_inputs', {}).get('strategy', asset.get('refinement_inputs', {}).get('strategy', 'source_sample' if asset.get('candidate_pool') else ('continue_previous' if asset.get('refinement_round', 1) > 1 else 'initial'))),
         'score_valid': bool(review) and quality != 'stale' and gate['passed'],
         'rubric': review.get('rubric_version'), 'basis': review.get('basis'),
         'dimensions': review.get('dimensions', {}), 'domain_review': review.get('domain_review'),
         'critical_defects': review.get('critical_defects', []), 'uncertainties': review.get('uncertainties', []),
         'fidelity_review': asset.get('fidelity_review'),
+        'criteria': review.get('criteria'), 'human_feedback': asset.get('human_feedback'),
         'inspection': review.get('inspection', {}), 'issues': list(dict.fromkeys(issues)),
         'validation': raw, 'warnings': gate['warnings'], 'fidelity_status': fidelity,
         'art_review_status': asset['art_review_status'], 'request': review.get('request'),
@@ -171,6 +207,31 @@ def display_issues(record: dict, t: dict) -> list[str]:
     return list(dict.fromkeys(issues))
 
 
+def blocking_summary(record: dict, t: dict) -> str:
+    """Show gate failures beside the total without inventing new visual findings."""
+    gate = record['gate_summary']
+    reasons = []
+    if gate['total_passed'] is False:
+        reasons.append(f"{t['threshold']} {record['recorded_score']:g} < {gate['threshold']:g}")
+    for key in gate['failed_dimensions']:
+        reasons.append(f"{t[key]} {record['dimensions'][key]['score']}/5 < {gate['dimension_floor']}/5")
+    for key in gate['failed_domain_checks']:
+        evidence = ' '.join(record['domain_review']['checks'][key]['evidence'].split())
+        excerpt = evidence if len(evidence) <= 120 else evidence[:120] + '…'
+        reasons.append(t.get(key, key) + ': ' + excerpt)
+    reasons.extend(t.get(key, key) + ': ' + t['unchecked'] for key in gate['incomplete_inspections'])
+    if record['quality_status'] in ('stale', 'pending', 'unrecorded'):
+        reasons.append(t['quality_' + record['quality_status']])
+    reasons.extend(code for code in record['validation']['errors'] if code != 'CANVAS_MISMATCH')
+    if record['fidelity_status'] in ('failed', 'uncertain', 'pending'):
+        reasons.append(t['fidelity'] + ': ' + t[record['fidelity_status']])
+    if record['art_review_status'] == 'rejected':
+        reasons.append(t['user_rejected'])
+    if not reasons:
+        reasons.extend(record['critical_defects'] + record['uncertainties'])
+    return '; '.join(dict.fromkeys(reasons)) or t['none']
+
+
 def write_preview(core, cases: list[dict], sources: list[dict], output: Path, t: dict,
                   face_box: list[int] | None, background: str) -> None:
     # This display sheet never appears in assessment bindings or replaces raw PNGs.
@@ -199,7 +260,8 @@ def write_preview(core, cases: list[dict], sources: list[dict], output: Path, t:
             draw.text((x+10,y+424+line_no*20),line,font=core.font(16),fill='#222222')
         suffix = f'{image.width} × {image.height}'
         if case:
-            suffix = f"{t['passed']} · {len(case['history'])}{t['round_unit']} · {score_text(case['history'][-1],t)}/100 · " + suffix
+            final_record = next(r for r in case['history'] if r['asset_id'] == case['final']['asset_id'])
+            suffix = f"{t['passed']} · {len(case['history'])}{t['round_unit']} · {score_text(final_record,t)}/100 · " + suffix
         draw.text((x+10,y+469),suffix,font=core.font(13),fill='#267048' if case else '#444444')
         if case and 'CANVAS_MISMATCH' in case['history'][-1]['warnings']:
             draw.text((x+10,y+489),t['canvas_warning'],font=core.font(12),fill='#b45309')
@@ -213,28 +275,35 @@ def write_preview(core, cases: list[dict], sources: list[dict], output: Path, t:
     sheet.save(output,format='PNG')
 
 
+def case_record(case):
+    return next((record for record in case['history'] if record['asset_id'] == case.get('assessed_asset_id')), case['history'][-1])
+
+
 def render_markdown(data: dict, output: Path, t: dict) -> str:
     lines = [f"# {md(data['title'])}", '', data['created_at'] + ' (UTC)', '',
-             t['summary'].format(**data['summary']), '', '## '+t['overview'], '',
-             '| '+' | '.join(t[k] for k in ('module','case','rounds','scores','status','final'))+' |',
-             '|---|---|---:|---|---|---|']
+             t['draft_note' if data['stage'] == 'draft' else 'final_note'] if any(c.get('candidate_pool') for c in data['cases']) else t['snapshot'], '',
+             t['summary'].format(**data['summary']), '', t['gate_note'], '', '## '+t['overview'], '',
+             '| '+' | '.join(t[k] for k in ('module','case','rounds','scores','status','blockers','final'))+' |',
+             '|---|---|---:|---|---|---|---|']
     for c in data['cases']:
         final = link('PNG',output/c['final']['path']) if c['final'] else t['report_only']
         lines.append('| '+' | '.join((t[c['kind']],md(c['label']),str(len(c['history'])),
-            ' → '.join(score_text(r,t) for r in c['history']),t[c['status']],final))+' |')
+            ' → '.join(score_text(r,t) for r in c['history']),t[c['status']],
+            md(blocking_summary(case_record(c),t)),final))+' |')
     if data['preview']:
         lines += ['',link(t['preview'],output/data['preview'])]
     for c in data['cases']:
         if not c['final']:
             lines += ['',f"**{md(c['label'])} — {t[c['status']]}**", '']
-            issues = display_issues(c['history'][-1],t)
+            issues = display_issues(case_record(c),t)
             lines += ['- '+md(issue) for issue in issues]
             if not issues and c.get('delivery_error'):
                 lines.append('- '+md(c['delivery_error']['code']))
-            lines += ['',t['next']+'：'+t.get('next_'+c['status'],t['next_failed'])]
+            next_step = ('按实际人工意见处理修订请求；本报告不自动新增生成次数。' if data['language']=='zh-CN' else 'Handle the actual revision request; this report does not authorize additional generation.') if (c.get('human_result') or {}).get('next_action')=='revision_request' else t.get('next_'+c['status'],t['next_failed'])
+            lines += ['',t['next']+'：'+next_step]
     lines += ['', '## '+t['details'], '']
     for c in data['cases']:
-        last = c['history'][-1]
+        last = case_record(c)
         domain = last['domain_review'] or {}
         lines += ['### '+md(c['label']), '',t['source']+'：'+link(c['character'],c['source']),
                   '',t['request']+'：'+md(c['history'][0]['request'] or last['request'] or '—'),
@@ -243,12 +312,26 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             edit = c['edit']
             change = edit.get('replacement', edit.get('color', '—'))
             lines += [t['edit_definition']+'：'+t[edit['edit_type']]+' · '+md(edit['target'])+' → '+md(change), '']
-        lines += ['| '+' | '.join(t[k] for k in ('round','asset','target','identity','protection','rendering','scores','quality','fidelity'))+' |',
-                  '|---:|---|---:|---:|---:|---:|---:|---|---|']
+        if c.get('candidate_pool'):
+            feedback = c.get('human_feedback')
+            lines += [t['human']+'：'+(md(t.get(feedback['decision'],feedback['decision'])+' · '+feedback['note']) if feedback else t['human_review']), '']
+            result = c.get('human_result')
+            if result:
+                action = result['next_action']
+                lines += [t['human_action']+'：'+t.get('feedback_blocked' if action == 'blocked' else action,action), '']
+            facets = (feedback or {}).get('facets', {})
+            ratings = [t.get(k,k)+': '+str(v) for k,v in facets.items() if v != 'unspecified']
+            if ratings:
+                lines += [t['human_facets']+'：'+md('；'.join(ratings)), '']
+        gate = last['gate_summary']
+        if gate['threshold'] is not None:
+            lines += [f"{t['threshold']}: {gate['threshold']}/100; {t['dimension_floor']}: {gate['dimension_floor']}/5", '']
+        lines += ['| '+' | '.join(t[k] for k in ('round','asset','strategy','target','identity','protection','integration','rendering','scores','quality','fidelity','blockers'))+' |',
+                  '|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|---|']
         for r in c['history']:
-            dims = [str(r['dimensions'].get(k,{}).get('score','—')) for k in ('target','identity','protection','rendering')]
+            dims = [str(r['dimensions'].get(k,{}).get('score','—')) for k in ('target','identity','protection','integration','rendering')]
             fidelity = t.get(r['fidelity_status'],r['fidelity_status']) if c['kind'] in ('garment_recolor','garment_replace') else t['not_applicable']
-            lines.append('| '+' | '.join([str(r['round']),md(r['asset_id']),*dims,score_text(r,t),t.get(r['quality_status'],r['quality_status']),fidelity])+' |')
+            lines.append('| '+' | '.join([str(r['round']),md(r['asset_id']),t[r['strategy']],*dims,score_text(r,t),t.get(r['quality_status'],r['quality_status']),fidelity,md(blocking_summary(r,t))])+' |')
         lines += ['', '**'+t['domain']+'**', '', '| '+t['check']+' | '+t['status']+' | '+t['evidence']+' |', '|---|---|---|']
         for key,finding in domain.get('checks',{}).items():
             lines.append('| '+t.get(key,key)+' | '+t[finding['status']]+' | '+md(finding['evidence'])+' |')
@@ -272,8 +355,8 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
 
 def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] | None = None,
                     language: str = 'zh-CN', title: str | None = None, labels: dict | None = None,
-                    face_box: list[int] | None = None, background: str = 'light') -> dict:
-    if language not in ('zh-CN','en') or background not in ('light','dark','checker'):
+                    face_box: list[int] | None = None, background: str = 'light', stage: str = 'auto') -> dict:
+    if language not in ('zh-CN','en') or background not in ('light','dark','checker') or stage not in ('auto','final'):
         raise core.StudioError('INVALID_REPORT_OPTIONS','Unsupported report language or preview background.')
     roots = [p.resolve() for p in projects]; output = output.resolve()
     if not roots or len(set(roots)) != len(roots) or (ids is not None and (len(roots)!=1 or not ids or len(ids)!=len(set(ids)))):
@@ -297,7 +380,25 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
         for selected in chosen:
             case_id=selected.get('refinement_case')
             plan=core.refinement_status(root,case_id) if case_id else None
-            if plan:
+            pool_id=selected.get('candidate_pool')
+            human_result=None
+            feedback=None
+            if pool_id:
+                pool=state['candidate_pools'][pool_id]
+                history=[core.get_asset(state,a['asset_id']) for a in pool['attempts'] if a['status']=='imported']
+                accepted=state['selected'].get(core.asset_slot(selected))
+                history_ids={a['id'] for a in history}
+                packet=next((p for p in reversed(list(state.get('review_packets',{}).values()))
+                             if p['purpose']=='user' and p.get('feedback')
+                             and {item['asset_id'] for item in p['items'].values()} <= history_ids),None)
+                if packet:
+                    core.workflow_call('packet_valid',root,state,packet)
+                    human_result=packet['feedback']['result']
+                    feedback=packet['feedback']['input']
+                preferred=pool['comparisons'][-1]['preferred'] if pool['comparisons'] else selected['id']
+                reviewed=human_result['asset_ids'][0] if human_result else preferred
+                asset=next((a for a in history if a['id']==accepted), next((a for a in history if a['id']==reviewed),selected))
+            elif plan:
                 asset=core.get_asset(state,plan['current_asset'])
                 history=[core.get_asset(state,h['asset_id']) for h in plan['history']]
             else:
@@ -313,17 +414,28 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
             delivered=None; error=None
             try:
                 delivery=core.delivery_assets(root,[asset['id']])['delivery'][0]
-                delivered={'path':f'final/{project_index:03d}_{asset["id"]}.png','original_image':str(core.contained(root,asset['path'])),'sha256':asset['sha256'],'canvas':delivery['canvas'],'warnings':delivery['warnings']}
+                delivered={'asset_id':asset['id'],'path':f'final/{project_index:03d}_{asset["id"]}.png','original_image':str(core.contained(root,asset['path'])),'sha256':asset['sha256'],'canvas':delivery['canvas'],'warnings':delivery['warnings']}
                 action='passed'
             except core.StudioError as exc:
                 error={'code':exc.code,'message':exc.message}
-                if plan and action=='deliver':
+                if exc.code=='HUMAN_REVIEW_REQUIRED':
+                    action='human_review'
+                elif plan and action=='deliver':
                     action='blocked'
                 elif last['quality_status']=='stale' or 'ASSET_CHANGED' in last['validation']['errors'] or asset['art_review_status']=='rejected':
                     action='blocked'
                 elif action=='failed' and last['quality_status']=='uncertain':
                     action='uncertain'
-            cases.append({'project':str(root),'character':state['character_key'],'case_id':case_id or asset['id'],'kind':core.quality_domain(state,asset),
+            if human_result and not delivered:
+                if feedback['decision']=='reject':
+                    action='user_declined'
+                elif feedback['decision']=='revise':
+                    action='revise'
+                elif human_result['next_action']=='blocked':
+                    action='failed'
+            cases.append({'project':str(root),'character':state['character_key'],'case_id':pool_id or case_id or asset['id'],'kind':core.quality_domain(state,asset),
+                          'human_feedback':feedback or asset.get('human_feedback'), 'human_result':human_result,
+                          'assessed_asset_id':asset['id'], 'candidate_pool':state.get('candidate_pools',{}).get(pool_id),
                           'label':label_for(core,asset,labels,language),'status':action,'max_rounds':plan['max_rounds'] if plan else None,
                           'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','edit_brief') if key in asset} if 'outfit_id' in asset else None,
                           'source':str(core.contained(root,state['source'])),'source_sha256':state['source_sha256'],
@@ -332,8 +444,21 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
             sources.append({'label':labels.get('source',t['source']+' · '+state['character_key']),'image':str(core.contained(root,state['source'])),'sha256':state['source_sha256'],'canvas':state['canvas']})
     if not cases:
         raise core.StudioError('NO_REPORT_ASSETS','No candidates in the requested scope.')
+    pending=[c['case_id'] for c in cases if c.get('candidate_pool') and not c.get('human_result')]
+    if stage=='final' and pending:
+        raise core.StudioError('HUMAN_REVIEW_REQUIRED','Record actual human feedback for every requested pool before generating the final review report.')
+    resolved_stage='draft' if pending else 'final'
+    if resolved_stage=='draft':
+        for case in cases:
+            if case['final']:
+                case['final']=None
+                case['status']='awaiting_report'
     passed=sum(c['final'] is not None for c in cases)
-    data={'schema_version':'1.0','created_at':core.timestamp(),'title':title or t['title'],'language':language,
+    report_title=title or (t['draft_title'] if resolved_stage=='draft' else (t['final_title'] if any(c.get('candidate_pool') for c in cases) else t['title']))
+    if resolved_stage=='draft' and title:
+        report_title=t['draft_title']+' · '+title
+    data={'schema_version':'1.0','created_at':core.timestamp(),'title':report_title,'language':language,
+          'stage':resolved_stage,'pending_human_cases':pending,
           'summary':{'cases':len(cases),'passed':passed,'other':len(cases)-passed,'images':sum(len(c['history']) for c in cases)},
           'cases':cases,'preview':'preview.png' if passed else None,'project_bindings':[{'project':str(r),'run_sha256':sha} for r,sha in bindings]}
     output.parent.mkdir(parents=True,exist_ok=True)
@@ -355,11 +480,11 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                 raise core.StudioError('PROJECT_CHANGED','Project changed while assembling the report; retry after edits finish.')
         for c in cases:
             if c['final']:
-                core.delivery_assets(Path(c['project']),[c['history'][-1]['asset_id']])
+                core.delivery_assets(Path(c['project']),[c['final']['asset_id']])
         if output.exists():
             raise FileExistsError(output)
         staging.rename(output)
-    return {'report':str(output/'report.md'),'manifest':str(output/'report.json'),
+    return {'report':str(output/'report.md'),'manifest':str(output/'report.json'),'stage':resolved_stage,
             'preview':str(output/'preview.png') if passed else None,
             'images':[str(output/c['final']['path']) for c in cases if c['final']],
             'summary':data['summary']}

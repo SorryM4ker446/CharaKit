@@ -1,5 +1,7 @@
 # CharaKit roadmap
 
+New requests use [candidate selection and human review](references/candidate-review.md): authorized independent source sampling, at most one repair of a preferred candidate, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sequential refinement descriptions below apply only to existing `refinements` records. Historical scores remain unchanged; generation-quality gains are not yet established.
+
 CharaKit currently provides expression editing, recoloring and replacement of one specified existing garment. Full outfit replacement and pose editing are planned extensions.
 
 | Module | Status | Scope |
@@ -17,7 +19,7 @@ All future development follows the shared [quality-first baseline and internal d
 1. Improve expression consistency, canvas alignment, and transparent edges for use in games.
 2. Validate expression and static mouth-state quality on actual artwork. Independent gaze states are deferred while Outfits is the current development priority.
 3. Evaluate quality-focused, domain-specific editing instructions using one complete source by default, optional target references, and enlarged checks of target and protected regions on actual artwork before expanding garment edits.
-4. Validate single-garment replacement on actual artwork (such as stockings to socks and boots to shoes), including necessary coverage changes and protected equipment, before expanding to full outfit replacement.
+4. Validate single-garment replacement on actual artwork, including upper/lower garments, necessary coverage changes and protected equipment. Version 0.1.18 adds compact repair prompts and a source-based third-round strategy after stalled protection checks; compare actual results before expanding to full outfit replacement.
 5. Introduce simple static pose changes before more complex action poses.
 6. Support requested combinations of outfits, poses, and expressions.
 

@@ -2,6 +2,39 @@
 
 Use this shared baseline for every implemented editing module and future development. Quality means achieving the request while preserving the source within the operation's allowed changes. Prompt length, recognizability alone, a successful recolor, and passing file tests are insufficient acceptance criteria.
 
+## Current workflow and rubric 1.2
+
+New work uses [candidate selection and human review](candidate-review.md) and rubric **1.2**. The legacy 1.0/1.1 material below documents saved projects only; do not copy its assessment example into a new candidate pool. Scoring is an attributed assistant judgment, not an automatic calibrated measurement.
+
+| Dimension | Weight | What it measures | Boundary |
+| --- | ---: | --- | --- |
+| `target` — requested result | 25 | Requested emotion/state, color or garment design, extent and intensity | Judge the request, not personal style preference |
+| `identity` — character consistency | 20 | Stable character-defining feature design, proportions and identity cues | Permit explicitly requested expression movement; do not require a frozen expression |
+| `protection` — non-target preservation | 25 | Unrequested components, internal invariants, pose, composition and background | Do not penalize new coverage/occlusion that is necessary for the authorized edit |
+| `integration` — structure and interfaces | 15 | Plausible local anatomy, garment construction, contact, overlap order and boundary continuity | Assess how the edit fits into the illustration; defects here are distinct from a wrong requested design |
+| `rendering` — visual finish | 15 | Original visual style, coherent linework/material/light, edges and normal-size readability | Minor brushwork differences can pass; prettier unrelated restyling earns no bonus |
+
+Define a source-grounded contract before generation. Copy its definitions unchanged into each `criteria` entry and add `observed`, `status` (`passed`, `failed`, `uncertain`) and integer `score`. Each check names its component, property, expected outcome and inspection view. Each dimension's score is the **minimum** of its applicable checks, with a concise evidence summary. This prevents a preserved large area from averaging away one broken important component. Domain checks remain independent vetoes, not additional weighted penalties. Choose non-overlapping criteria; do not enumerate every pixel or every absent object.
+
+Score anchors:
+
+| Score | Observable meaning |
+| ---: | --- |
+| 5 | Fully satisfies the criterion, with no material defect in the inspected full/detail/normal views |
+| 4 | Usable and faithful; only minor finish differences without changed identity, structure, scope or intended effect |
+| 3 | A visible, localized requirement violation; the result is close but requires correction |
+| 2 | Major deviation, several structural errors or a weakly achieved result |
+| 1 | Mostly fails the requirement |
+| 0 | Missing/contradictory result, or evidence is insufficient; insufficient evidence must also be `uncertain` with an uncertainty note |
+
+`passed` requires check score 4–5. Failed/uncertain checks must be below 4 and cannot be hidden by a passing dimension score. Total is `sum(dimension_score × weight) / 5`. Pass requires total ≥80, every dimension ≥4, all domain items passed, complete actual inspections, no critical defect/uncertainty and current file/fidelity evidence. The 80 threshold and weights are explicit product policy, not empirically proven accuracy. Do not reduce a score simply to avoid 100; do not raise one to make a total pass.
+
+Fresh assessments retain `basis`, `request`, `domain_review`, `dimensions`, `inspection`, `critical_defects`, `uncertainties` and add `criteria`, `normal_display_height` (actual inspected pixel height), `blind_packet` (assistant packet ID). Every pool candidate gets one assessment; no repeated regrading of unchanged art. Record exact display height and distinguish local inspection from untested game integration. Inspect alpha on light/dark backgrounds; opaque images retain and inspect their original background.
+
+The anonymous review package hides candidate IDs, round order, previous scores and generation prompts from its public material. Same-chat memory is a limitation; do not claim independent blind evaluation. Internal reviews and pairwise preferences precede human review. User decisions and optional satisfaction facets are saved separately, used to identify disagreements and future calibration examples, and never overwrite historical grades. Actual acceptance is required before final delivery/ZIP for new pools, including one-candidate requests. Positive feedback cannot override failed file/quality/fidelity checks.
+
+Rubrics 1.0 and 1.1 remain readable with their original four dimensions and thresholds (85 and 80). Their scores are not directly comparable to 1.2; reports identify the rubric and retain old verdicts unchanged.
+
 ## Development baseline
 
 Define the target outcome, internal invariants, protected remainder and technical requirements before implementing a mode. Shared rules establish the baseline; domain rules define permitted movements/material changes; current source facts and user requirements determine the actual constraints. Use complete, consistent prompts without guessed appearance attributes. Evaluate real outputs against the same requirements, preserving evidence and failures. Changes to prompts, models or workflows need visual regression examples as well as appropriate file-workflow tests; neither substitutes for the other.
@@ -24,7 +57,7 @@ Protection checks follow the source, including complex or overlapping components
 
 This check is worthwhile as a pre-delivery defect filter, particularly for scope violations. The numbers are secondary and can give false confidence: reviewers can miss defects or misinterpret source details, and the helper verifies records rather than independently observing images. Keep the workflow lightweight and evidence-based, distinguish blocking requirement violations from minor imperfections, and calibrate against user feedback instead of expanding checklists without demonstrated benefit. Filtering does not repair artwork or guarantee fewer revisions.
 
-## Generation, inspection and delivery
+## Legacy generation, inspection and delivery (non-pool records)
 
 1. Inspect the immutable source and define the requested change, including expression/state or garment surfaces and exclusions. Identify comparison regions before generation.
 2. Initialize a new project (quality policy defaults on). For an existing project lacking `quality_policy`, run `enable-quality` before a new generation request. This backs up metadata and gates future candidates, without fabricating historical observations or undoing old selections.
@@ -40,11 +73,11 @@ Default user-facing delivery shows internally passed candidates. Keep failed/pen
 
 After the batch, assemble the shared [delivery report](delivery-report.md) using `report`: passed unchanged PNGs, a final preview and a report of the actual saved observations. Failed cases appear in the report without final-image delivery. Reporting does not replace inspection, alter scores, accept/select artwork or authorize new generations. Unlike inspection `preview`, the report's final preview is gated and excludes failed/intermediate candidates.
 
-Do not silently add generations to an explicit requested count. Default additional generations remain zero without user authorization. When the user enables review-driven automatic improvement, use [bounded refinement](refinement.md): at most three total rounds per requested case, editing the previous complete version with the immutable original as the design authority. Preserve evidence, perform fresh review and stop on passage or exhaustion. Do not reset the budget, repeatedly regrade unchanged artwork, or weaken gates to force passage. Protected-region restoration is allowed only for defects observed in the review, and all final editing stays in the host image tool, never local repainting/compositing.
+Do not silently add generations to an explicit requested count. Default additional generations remain zero without user authorization. When the user enables review-driven automatic improvement, use [bounded refinement](refinement.md): at most three total rounds per requested case, following its strategy/reference roles with the immutable original as preservation authority. Preserve evidence, perform fresh review and stop on passage or exhaustion. Do not reset the budget, repeatedly regrade unchanged artwork, or weaken gates to force passage. Protected-region restoration is allowed only for defects observed in the review, and all final editing stays in the host image tool, never local repainting/compositing.
 
 ## Rubrics 1.0 and 1.1
 
-Fresh reviews use rubric **1.1**, with an 80/100 total threshold and the same 4/5 dimension floor and domain/technical/fidelity vetoes. This makes four scores of 4 (acceptable with minor imperfections) eligible to pass. Rubric **1.0** keeps its historical 85/100 threshold; saved verdicts are not rewritten. See [refinement calibration](refinement.md#review-calibration) for minor rendering variation versus material identity/structure/scope violations. A detectable difference alone is not a failed domain item; do not demand pixel equality unless explicitly required.
+Legacy refinement reviews use rubric **1.1**, with an 80/100 total threshold and the same 4/5 dimension floor and domain/technical/fidelity vetoes. This makes four scores of 4 (acceptable with minor imperfections) eligible to pass. Rubric **1.0** keeps its historical 85/100 threshold; saved verdicts are not rewritten. See [refinement calibration](refinement.md#review-calibration) for minor rendering variation versus material identity/structure/scope violations. A detectable difference alone is not a failed domain item; do not demand pixel equality unless explicitly required.
 
 Each dimension receives an integer 0–5 with source-grounded evidence. These are ordinal assistant judgments, not probabilities, certified identity measurements or objective pixel scores.
 
@@ -63,7 +96,7 @@ The weighted total is `sum(score × weight) / 5`, on a 0–100 scale. Passage re
 
 The thresholds and weights are product policies, not empirically calibrated predictors of user satisfaction. Rubric 1.1 corrects the inconsistency between four acceptable 4/5 scores and the old total gate; it does not establish improved generation quality. Track actual user reviews and first-attempt/final pass rates across characters and parts. Bounded improvement uses review findings but does not guarantee passage or fewer user revisions.
 
-## Assessment and commands
+## Legacy assessment example and shared quality command
 
 Example structure below is deliberately incomplete for delivery: all scores are 4 (total 80), normal-size inspection is false and uncertainty is present. Replace it with actual inspected findings; never copy a passing assessment as a default.
 

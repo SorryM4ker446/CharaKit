@@ -141,6 +141,29 @@ class DeliveryReportTests(unittest.TestCase):
         self.assertEqual(Path(result['images'][0]).read_bytes(),self.raw.read_bytes())
         self.assertEqual(studio.read_state(self.root)['selected'],{})
 
+    def test_eighty_points_failed_protection_is_explained_beside_score(self):
+        asset = self.candidate()
+        data = assessment(scores={'target': 5, 'identity': 4, 'protection': 3, 'rendering': 4})
+        data['rubric_version'] = '1.1'
+        data['domain_review']['checks']['nonface_protection'] = {'status': 'failed', 'evidence': 'Weapon fork was redesigned.'}
+        preview = self.root / 'preview' / 'evidence.png'
+        studio.make_preview(self.root, preview, [asset['id']])
+        studio.record_quality(self.root, asset['id'], data, [preview])
+        for language in ('zh-CN', 'en'):
+            result, report = self.report(name=language, language=language)
+            last = report['cases'][0]['history'][-1]
+            self.assertEqual(last['recorded_score'], 80)
+            self.assertTrue(last['gate_summary']['total_passed'])
+            self.assertEqual(last['gate_summary']['failed_dimensions'], ['protection'])
+            self.assertEqual(last['gate_summary']['failed_domain_checks'], ['nonface_protection'])
+            self.assertEqual(result['images'], [])
+            text = Path(result['report']).read_text(encoding='utf-8')
+            overview = text.split('## ')[1]
+            self.assertIn('3/5', overview)
+            self.assertIn('Weapon fork was redesigned.', overview)
+            self.assertIn('非面部保护' if language == 'zh-CN' else 'Non-face protection', overview)
+            self.assertIn('未通过' if language == 'zh-CN' else 'Failed', overview)
+
     def test_existing_output_invalid_scope_and_bad_source_are_not_overwritten(self):
         first=self.candidate();self.review(first)
         result,_=self.report();before=Path(result['report']).read_bytes()

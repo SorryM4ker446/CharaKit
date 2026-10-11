@@ -44,8 +44,9 @@ class RefinementTests(unittest.TestCase):
     def revision(self, case_id, root=None, module=studio, references=None):
         root = root or self.root
         plan = module.refinement_status(root, case_id)
-        refs = references if references is not None else [Path(plan['references']['source']), Path(plan['references']['edit_target'])]
-        return module.add_refinement(root, case_id, self.image, self.prompt, refs)['asset']
+        refs = references if references is not None else [Path(p) for p in plan['references'].values()]
+        return module.add_refinement(root, case_id, self.image, self.prompt, refs,
+                                     strategy=plan['strategy'] or 'continue_previous')['asset']
 
     def code(self, expected, call, *args, **kwargs):
         with self.assertRaises((studio.StudioError, outfits.StudioError)) as caught:
@@ -198,6 +199,105 @@ class RefinementTests(unittest.TestCase):
             else:
                 altered['critical_defects'] = ['Synthetic wrong component changed.']
             self.assertNotEqual(studio.quality_result(altered)['status'], 'passed')
+
+    def outfit_rounds(self, *, improving=False, legacy=False, target_failed=False):
+        root = self.folder / 'outfits'
+        outfits.init_project(root, self.source, 'test_character')
+        first = outfits.add_asset(root, self.image, 'coat_white', 'coat', 'white', self.prompt)['asset']
+        current = first
+        for number in (1, 2):
+            data = assessment(domain='garment_recolor')
+            data['rubric_version'] = '1.1'
+            data['dimensions']['identity']['score'] = 4 if improving and number == 2 else 3
+            data['domain_review']['checks']['face_expression'] = {'status': 'failed', 'evidence': 'Eye shape changed.'}
+            if target_failed:
+                data['domain_review']['checks']['target_color'] = {'status': 'failed', 'evidence': 'Wrong color.'}
+            preview = root / 'preview' / (current['id'] + '.png')
+            outfits.make_preview(root, preview, [current['id']])
+            outfits.record_fidelity(root, current['id'], 'failed' if target_failed else 'passed', 'failed', 'Eye shape changed.')
+            outfits.record_quality(root, current['id'], data, [preview])
+            if number == 1:
+                outfits.start_refinement(root, first['id'])
+                if legacy:
+                    state = outfits.read_state(root)
+                    state['refinements'][first['id']]['version'] = '1.0'
+                    outfits.write_state(root, state)
+                current = self.revision(first['id'], root=root, module=outfits)
+        return root, first, current
+
+    def test_stalled_outfit_round_three_rebases_with_explicit_reference_roles(self):
+        root, first, previous = self.outfit_rounds()
+        before = (root / 'run.json').read_bytes()
+        plan = outfits.refinement_status(root, first['id'])
+        self.assertEqual(plan['strategy'], 'source_rebase')
+        self.assertEqual(plan['stalled_checks'], ['face_expression'])
+        self.assertEqual(plan['repair_brief']['edit_target'], plan['references']['source'])
+        self.assertEqual(Path(plan['references']['design_reference']), (root / previous['path']).resolve())
+        refs = [Path(p) for p in plan['references'].values()]
+        self.code('REFINEMENT_STRATEGY_MISMATCH', outfits.add_refinement, root, first['id'], self.image, self.prompt, refs)
+        self.assertEqual((root / 'run.json').read_bytes(), before)
+        final = self.revision(first['id'], root=root, module=outfits)
+        inputs = final['refinement_inputs']
+        self.assertEqual(inputs['strategy'], 'source_rebase')
+        self.assertEqual(inputs['edit_target'], inputs['source'])
+        self.assertEqual(inputs['design_reference']['sha256'], previous['sha256'])
+        self.assertEqual(final['parent_asset_id'], previous['id'])
+        self.assertEqual(final['refinement_round'], 3)
+        self.assertEqual(outfits.read_state(root)['selected'], {})
+        self.assertEqual((root / final['path']).read_bytes(), self.image.read_bytes())
+        outfits.record_fidelity(root, final['id'], 'passed', 'failed', 'Eye shape still changed.')
+        self.review(final, module=outfits, root=root)
+        self.assertEqual(outfits.refinement_status(root, first['id'])['action'], 'exhausted')
+        self.code('REFINEMENT_NOT_READY', self.revision, first['id'], root=root, module=outfits)
+        report = outfits.generate_report([root], self.folder / 'strategy-report')
+        manifest = json.loads(Path(report['manifest']).read_text(encoding='utf-8'))
+        self.assertEqual(manifest['cases'][0]['history'][-1]['strategy'], 'source_rebase')
+        self.assertEqual(report['images'], [])
+        altered = outfits.read_state(root)
+        altered['assets'][-1]['refinement_inputs']['design_reference']['sha256'] = '0' * 64
+        (root / 'run.json').write_text(json.dumps(altered), encoding='utf-8')
+        self.code('INVALID_PROJECT', outfits.read_state, root)
+
+    def test_improving_protection_keeps_previous_candidate_strategy(self):
+        root, first, _ = self.outfit_rounds(improving=True)
+        self.assertEqual(outfits.refinement_status(root, first['id'])['strategy'], 'continue_previous')
+
+    def test_unsuccessful_target_does_not_become_a_design_reference(self):
+        root, first, _ = self.outfit_rounds(target_failed=True)
+        self.assertEqual(outfits.refinement_status(root, first['id'])['strategy'], 'continue_previous')
+
+    def test_legacy_case_keeps_original_strategy_and_reads_without_writes(self):
+        root, first, _ = self.outfit_rounds(legacy=True)
+        # Pre-0.1.17 candidates do not have a strategy field.
+        state = outfits.read_state(root)
+        state['assets'][-1]['refinement_inputs'].pop('strategy')
+        outfits.write_state(root, state)
+        before = (root / 'run.json').read_bytes()
+        self.assertEqual(outfits.refinement_status(root, first['id'])['strategy'], 'continue_previous')
+        self.assertEqual((root / 'run.json').read_bytes(), before)
+
+    def test_compact_findings_deduplicate_evidence_without_losing_distinct_defects(self):
+        issues = [
+            {'check': 'face_expression', 'status': 'failed', 'evidence': 'Eye shape changed.'},
+            {'check': 'identity', 'status': 'failed', 'evidence': '  Eye  shape changed. '},
+            {'check': 'fidelity', 'status': 'failed', 'evidence': 'Eye shape changed。'},
+            {'check': 'non_target_protection', 'status': 'failed', 'evidence': 'Weapon fork missing.'},
+        ]
+        findings = studio.compact_repair_findings(issues)
+        self.assertEqual(len(findings), 2)
+        self.assertEqual(findings[0]['checks'], ['face_expression', 'identity', 'fidelity'])
+        self.assertEqual(findings[1]['evidence'], 'Weapon fork missing.')
+        self.assertEqual(len(issues), 4)
+
+    def test_cli_records_source_rebase_strategy(self):
+        root, first, _ = self.outfit_rounds()
+        plan = outfits.refinement_status(root, first['id'])
+        result = subprocess.run([sys.executable, str(OUTFITS_SCRIPT), 'refine-add', '--project', str(root),
+                                 '--case', first['id'], '--image', str(self.image), '--prompt-file', str(self.prompt),
+                                 '--strategy', 'source_rebase', '--reference', plan['references']['source'],
+                                 '--reference', plan['references']['design_reference']], capture_output=True, encoding='utf-8')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['asset']['refinement_inputs']['strategy'], 'source_rebase')
 
     def test_cli_bounded_workflow_and_wrong_module_guard(self):
         first = self.candidate()

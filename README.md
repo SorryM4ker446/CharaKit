@@ -1,16 +1,20 @@
 # CharaKit
 
+New requests use [candidate selection and human review](plugins/charakit/references/candidate-review.md): authorized independent source sampling, at most one repair of a preferred candidate, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sequential refinement descriptions below apply only to existing `refinements` records. Historical scores remain unchanged; generation-quality gains are not yet established.
+
 **English** | [简体中文](README.zh-CN.md)
 
 **CharaKit** is a modular Codex plugin for visual novel character artwork. **CharaKit Expressions** creates full expression variants; **CharaKit Outfits** recolors or replaces one specified existing garment while preserving character identity and unrelated design.
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.16**.
+Development version: **0.1.19**.
+
+Review pages now use a separate zoom/pan viewer and match the user's language. Before actual human feedback, reports are labeled internal drafts with no final assets; `report --stage final` requires feedback for every requested pool. The final report includes the user's selected candidate, comments and Codex disposition, including revision and rejection outcomes.
 
 Every generation/revision batch ends with [final PNGs, a preview and a saved-review report](plugins/charakit/references/delivery-report.md). The shared `report` command can cover Expressions, mouth states and Outfits together, includes per-round scores and failure findings, and copies only gated final PNGs unchanged. If none pass, it produces only the report. Reporting does not generate, regrade or accept artwork; use helper 0.1.15 or later.
 
-Opt-in [review-driven bounded refinement](plugins/charakit/references/refinement.md) permits three total rounds per expression/mouth-state or garment/color case: the first image plus at most two targeted revisions. Use the previous complete image as the edit target and the immutable original as the design authority. Stop on passage or the limit; deliver only the passed final and retain process images for inspection. Codex still performs host-tool generation and visual review; the helper records budgets and gates. Host-native generation previews may appear automatically.
+Opt-in [review-driven bounded refinement](plugins/charakit/references/refinement.md) permits three total rounds per expression/mouth-state or garment option. Version 0.1.18 adds compact repair findings and explicit reference roles. New Outfits cases can reapply the garment edit to the original in round three when protection checks persist without score improvement and the target passes; the previous candidate then supplies only the successful design/color. Otherwise continue the previous image. Legacy histories and budgets remain intact. Reports show blocking reasons beside totals: 80 points still requires all dimension/domain gates. Codex performs generation and visual review; actual improvement awaits art testing. No mask, regional editing or MCP integration is added. Native tool previews may appear automatically.
 
 Fresh assessments use rubric 1.1: at least **80/100**, every dimension at least **4/5**, and unchanged domain, critical-defect, uncertainty, technical and fidelity vetoes. Minor brushwork variation can pass; pixel equality is not required by default. Historical rubric 1.0 reviews retain their 85 threshold and recorded verdicts. Use helper 0.1.14 or later.
 
@@ -201,7 +205,7 @@ tools/build_plugin.py               Plugin ZIP builder
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.16.zip
+python tools/build_plugin.py --output dist/charakit-0.1.19.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.

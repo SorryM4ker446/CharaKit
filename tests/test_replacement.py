@@ -140,7 +140,7 @@ class ReplacementTests(unittest.TestCase):
         for _ in range(2):
             plan = outfits.refinement_status(self.root, case)
             revised = outfits.add_refinement(self.root, case, self.raw, self.prompt,
-                                             [Path(p) for p in plan['references'].values()])['asset']
+                                             [Path(p) for p in plan['references'].values()], strategy=plan['strategy'])['asset']
             self.assertEqual(revised['replacement'], self.design)
             self.assertNotIn('fidelity_review', revised)
             self.review(revised, failed='fit_interfaces')

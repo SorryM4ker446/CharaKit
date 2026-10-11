@@ -16,7 +16,7 @@ Apply the shared [editing boundaries](../../../references/edit-boundaries.md) at
 
 Generate only requested combinations. An ordinary request for happy does not require happy/open and happy/closed. For “happy, open and closed, two candidates each,” save four images: two versions in each state. Do not create new expression IDs such as `talking`.
 
-Every image retains the immutable source as its primary design authority. Ordinary pairs/revisions may include a selected emotion image as support. Explicit [bounded refinement](../../../references/refinement.md) uses the previous complete candidate as the edit target while the original remains the baseline for all non-mouth features. Never promote an unreviewed image to the source. Keep the open/closed state during revisions; changing it creates a separate resource.
+Every image retains the immutable source as its primary design authority. Ordinary pairs/revisions may include a selected emotion image as support. New requests use [candidate selection and human review](../../../references/candidate-review.md); existing [bounded refinements](../../../references/refinement.md) retain their saved strategy. Never promote an unreviewed image to the source. Keep the open/closed state during revisions; changing it creates a separate resource.
 
 In the user's language, state the emotion, mouth state, allowed change, and preserved full-face details. When changing only mouth state, preserve emotional intensity and the established eyes/brows as well as clothing, hair, pose, and layout. Allow the lip and mouth-interior changes needed for a natural opening; do not paste a new mouth onto the source.
 

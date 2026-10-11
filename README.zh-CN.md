@@ -1,16 +1,22 @@
 # CharaKit
 
+新工作流：[候选择优与人工评图](plugins/charakit/references/candidate-review.md)。按授权预算先从原图独立采样，最多一次修订择优候选；采用五维 rubric 1.2 和生成前确定的检查项。内部评审后显示匿名 A/B 评图页，支持聊天反馈或下载 JSON。实际人工选择后才进入最终 PNG／报告／已请求的 ZIP 交付，旧案例与评分保留原样。
+
+下文原有三轮连续修订说明仅适用于旧 `refinements` 记录。新流程的通过率收益尚待真实图像测试。
+
 [English](README.md) | **简体中文**
 
 **CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。**CharaKit Expressions** 生成完整表情差分，**CharaKit Outfits** 为指定的一件现有衣物改色或替换款式。
 
 两个模块各有独立 Skill，共用本地 Python 文件助手。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与局部对比预览，以及导出选定资源。
 
-开发版本：**0.1.16**。
+开发版本：**0.1.19**。
+
+评图页使用独立大图窗口，支持缩放、拖动与切换候选，界面语言匹配用户。人工评图前的报告明确标为内部检查草稿，不含成品；`report --stage final` 要求本次所有候选池已记录实际人工意见。最终报告汇总用户选中的候选、意见和 Codex 处理结果，修改或拒绝也有完整记录。
 
 每次生图／修订结束默认交付[成品 PNG、最终版 preview 与完整报告](plugins/charakit/references/delivery-report.md)。共用 `report` 命令可汇总表情、mouth 和 outfits，包含请求、逐轮评分、专项检查、失败原因和过程证据，只复制门禁通过的最终 PNG，保留原字节。全部失败时只输出报告，不生成成品图或 preview；不新增生图、不重新评分、不自动验收。报告功能需要 0.1.15 或更新助手；替换功能需要 0.1.16。
 
-可启用[评审驱动的限次修订](plugins/charakit/references/refinement.md)：每个表情／mouth 状态或衣物／颜色方案最多三轮（首版＋两次修订）。未通过时根据具体评审问题，在上一版完整图上定向改进，同时用原图约束身份、设计和材质；通过即停止，只交付最终通过版本，过程图保留可查看。三轮仍不合格就停止并报告原因，不把最高分失败图当作合格资产。实际生图和视觉评审仍由 Codex 与宿主图像工具执行，本地助手记录预算与执行门禁。宿主原生生图预览可能仍自动出现。
+可启用[评审驱动的限次修订](plugins/charakit/references/refinement.md)：每个表情／mouth 状态或衣物方案最多三轮（首版＋两次修订）。修订摘要合并重复问题，提示词按部件明确修正。0.1.18 的新换装测试若前两轮持续出现面部／保护问题、对应分项未提升且目标已通过，第三轮从原图重做目标衣物，上一版仅作成功款式／颜色参考；否则继续修订上一版。通过即停止，三轮上限及旧测试历史保留。报告在总分旁展示阻塞原因，80 分仍需各分项及专项检查通过。实际生图和视觉评审由 Codex 与宿主图像工具执行；效果改善需实图测试，未接入蒙版、区域编辑或 MCP。宿主原生生图预览可能仍自动出现。
 
 新版评分使用 rubric 1.1：总分至少 **80/100**、每项至少 **4/5**，所有专项通过且无严重缺陷或不确定问题。细微笔触差异可视为 4 分的小瑕疵，不要求像素相等；错表情／mouth／部件、面部改设计、明显越界或缺失仍拦截。旧版 rubric 1.0 审核保留 85 分门槛和原记录。需使用 0.1.14 或更新助手。
 
@@ -212,7 +218,7 @@ tools/build_plugin.py               插件 ZIP 构建脚本
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.16.zip
+python tools/build_plugin.py --output dist/charakit-0.1.19.zip
 ```
 
 测试使用合成图片，不需要第三方角色美术。CI 在 Linux 和 Windows 上运行。构建脚本不会覆盖已存在的 ZIP。

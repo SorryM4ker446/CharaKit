@@ -33,7 +33,7 @@ Fill the slots with inspected source facts; omit irrelevant exclusions. Domain g
 
 When preserving an attribute, prefer inheritance from the source over an uncertain descriptive label. Do not turn a guessed iris/skin/material color into a generation instruction. Retain the active domain's positive target cues: expression movements and required tears/blush differ from a recolor's color-only permission. Clear organization, consistency with the source, and visual success determine whether a prompt is suitable; brevity does not.
 
-Use the immutable complete source as the primary design authority. In ordinary generation it is also the edit target; explicitly enabled [bounded refinement](refinement.md) uses the previous complete candidate as the edit target and the original as the authoritative baseline. Restore only observed defects without broadening the requested emotion/color/replacement or redesigning protected components. Save actual submitted prompts and references. For Outfits, persist scope in `prepare`; for Expressions, retain it in prompt and review notes.
+Use the immutable complete source as the primary design authority. In new [candidate pools](candidate-review.md), independent samples edit only the original; an authorized repair uses the original plus the preferred candidate. Existing [bounded refinement](refinement.md) records retain their own strategy and reference roles. Restore only observed defects without broadening the requested emotion/color/replacement or redesigning protected components. Save actual submitted prompts and references. For Outfits, persist scope in `prepare`; for Expressions, retain it in prompt and review notes.
 
 ## Inspect the same scope
 
