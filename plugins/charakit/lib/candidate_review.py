@@ -419,6 +419,8 @@ def render_sheet(key, labels, request, contract, purpose, language="zh-CN", tran
 
 def refresh_review_sheet(c, root, key):
     """Add a fixed page for an unanswered packet without changing its aliases/evidence."""
+    # contained() resolves paths, including Windows short directory names.
+    root = root.resolve()
     state = c.read_state(root)
     packet = state.get('review_packets', {}).get(key)
     require(c, packet is not None and packet['purpose'] == 'user' and not packet.get('feedback'),

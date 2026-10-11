@@ -1,6 +1,7 @@
 """Synthetic mechanics tests; scores are fixtures, never image-quality claims."""
 import copy
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -245,6 +246,47 @@ class CandidateReviewTests(unittest.TestCase):
         self.call('packet_valid',self.root,after,after['review_packets'][sheet['packet']])
         self.call('human_feedback',self.root,{'packet':sheet['packet'],'basis':'user','candidate':'A','decision':'reject','note':'Fixture rejection.'})
         self.code('INVALID_CANDIDATE_REVIEW',self.call,'refresh_review_sheet',self.root,sheet['packet'])
+
+    def assert_refresh_with_project_alias(self, root):
+        self.review(self.first)
+        sheet = self.call('review_sheet', self.root, [self.key], 'user')
+        before = studio.read_state(self.root)
+        old_page = Path(sheet['page']).read_bytes()
+        refreshed = self.call('refresh_review_sheet', root, sheet['packet'])
+        after = studio.read_state(self.root)
+        packet = after['review_packets'][sheet['packet']]
+        relative = Path(refreshed['page']).relative_to(self.root.resolve()).as_posix()
+        self.assertEqual(packet['latest_page'], relative)
+        self.assertEqual(packet['artifacts'][-1]['path'], relative)
+        self.assertEqual(Path(sheet['page']).read_bytes(), old_page)
+        for field in ('assets', 'candidate_pools', 'selected'):
+            self.assertEqual(before[field], after[field])
+        self.assertEqual(before['review_packets'][sheet['packet']]['items'], packet['items'])
+        self.call('packet_valid', self.root, after, packet)
+
+    def test_refresh_resolves_noncanonical_project_path(self):
+        self.assert_refresh_with_project_alias(self.root / 'reviews' / '..')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows short paths only')
+    def test_refresh_resolves_windows_short_project_path(self):
+        import ctypes
+        from ctypes import wintypes
+
+        short_path = ctypes.WinDLL('kernel32', use_last_error=True).GetShortPathNameW
+        short_path.argtypes = (wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD)
+        short_path.restype = wintypes.DWORD
+        source = str(self.root.resolve())
+        size = short_path(source, None, 0)
+        if not size:
+            raise ctypes.WinError(ctypes.get_last_error())
+        buffer = ctypes.create_unicode_buffer(size)
+        length = short_path(source, buffer, size)
+        if not length or length >= size:
+            raise ctypes.WinError(ctypes.get_last_error())
+        alias = Path(buffer.value)
+        if alias == self.root.resolve():
+            self.skipTest('8.3 short directory names are disabled on this volume')
+        self.assert_refresh_with_project_alias(alias)
 
     def test_preview_language_covers_controls_and_refresh_preserves_it(self):
         self.review(self.first)
