@@ -2,7 +2,7 @@
 
 New requests use [candidate selection and human review](references/candidate-review.md): authorized independent source sampling, at most one repair of a preferred candidate, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sequential refinement descriptions below apply only to existing `refinements` records. Historical scores remain unchanged; generation-quality gains are not yet established.
 
-Version **0.1.20**. Outfits supports single-garment `recolor` and `replace`; see the [replacement guide](skills/charakit-outfits/references/replacement-guide.md). Actual replacement quality requires visual validation. A modular Codex plugin for visual novel character artwork.
+Version **0.1.21**. Outfits supports single-garment `recolor` and `replace`, plus inventory-bound `outfit_replace`; see the [replacement guide](skills/charakit-outfits/references/replacement-guide.md). Actual replacement quality requires visual validation. A modular Codex plugin for visual novel character artwork.
 
 Specific human corrections use the [linked revision procedure](references/candidate-review.md#continue-a-specific-human-correction): preserve the user's chosen parent and original comment, reserve one revision, inherit protection checks, and review the new image afresh. The user preview adds before/after context; final reports and export manifests retain revision provenance. This phase focuses on this plugin's own review/revision behavior, without direct-dialogue comparison or a task-recovery feature.
 
@@ -29,10 +29,10 @@ The available **CharaKit Expressions** module preserves the entire face, origina
 | Module | Skill ID | Status |
 | --- | --- | --- |
 | Expressions | `charakit-expressions` | Available |
-| Outfits | `charakit-outfits` | Available: one-garment recoloring/replacement workflows |
+| Outfits | `charakit-outfits` | Available: single-garment editing and full-outfit base workflows |
 | Poses | `charakit-poses` | Planned |
 
-The plugin ID is `charakit`. Use `$charakit-expressions` for expressions and static mouth states, or `$charakit-outfits` for recoloring/replacing one existing garment. Full outfit replacement, accessory additions/removals, and poses remain planned. [modules.json](modules.json) and [ROADMAP.md](ROADMAP.md) define availability and scope.
+The plugin ID is `charakit`. Use `$charakit-expressions` for expressions and static mouth states, or `$charakit-outfits` for editing garments or replacing a clothing ensemble. Linked outfit expression sets, independent accessory/prop edits, and poses remain planned. [modules.json](modules.json) and [ROADMAP.md](ROADMAP.md) define availability and scope.
 
 ## Install
 
@@ -92,7 +92,7 @@ Keep trim, buttons, material, folds, lighting, face, expression, mouth state,
 hair, other clothing, and pose. Generate two candidates and compare them.
 ```
 
-Outfits uses its own project, such as `art-output/my-character/outfits/`, with schema 1.2 for recolor-only work; the first replacement backs up metadata and upgrades to schema 1.3. Each garment/color or garment/replacement option has independent versions, review, and selection. Actual image quality requires visual review. See the [Outfits Skill](skills/charakit-outfits/SKILL.md).
+Outfits uses its own project, such as `art-output/my-character/outfits/`, with schema 1.2 for recolor-only work; the first replacement backs up metadata and upgrades to schema 1.3; full outfit imports back up metadata and upgrade to 1.4. Each garment/color or garment/replacement option has independent versions, review, and selection. Actual image quality requires visual review. See the [Outfits Skill](skills/charakit-outfits/SKILL.md).
 
 Use `prepare` before generation to save the allowed boundary, protected regions, and a source-only detail reference. Default to one complete source and a complete domain-specific prompt describing the allowed recolor, invariants, exclusions, preservation, and output. Prioritize quality over prompt length, retaining necessary detail in both the submission and inspection brief. Send the crop only for ambiguous target identification or a requested reference comparison when supported. The local crop is not an edit mask or a final asset; all final edits stay in the host image tool.
 
@@ -141,3 +141,5 @@ Inputs are static PNG/JPEG files up to 50 MiB and 40 million pixels. Final asset
 User artwork belongs in a workspace output directory, not inside this plugin. The distribution ZIP includes only the plugin and its supporting resources.
 
 For a single-garment replacement, use `$charakit-outfits` and describe the existing garment and desired design, such as replacing boots with black low shoes while preserving socks, pose and all separate equipment. Follow the [replacement guide](skills/charakit-outfits/references/replacement-guide.md); `prepare` and `add` use `--edit-type replace --replacement` rather than `--color`. Replacement has its own review checklist and shares bounded refinement and final reporting.
+
+For a full outfit, request a coherent ensemble with `$charakit-outfits`. Follow the [full outfit guide](skills/charakit-outfits/references/full-outfit-guide.md): `--edit-type outfit_replace --replacement --components-file`, explicit clothing mappings, component/ensemble checks, candidate pools and actual human review. Output is one complete outfit base image; linked expression sets remain planned.

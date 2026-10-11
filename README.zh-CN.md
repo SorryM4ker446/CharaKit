@@ -6,11 +6,11 @@
 
 [English](README.md) | **简体中文**
 
-**CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。**CharaKit Expressions** 生成完整表情差分，**CharaKit Outfits** 为指定的一件现有衣物改色或替换款式。
+**CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。**CharaKit Expressions** 生成完整表情差分，**CharaKit Outfits** 支持单件衣物改色／替换和整套服装基础图替换。
 
 两个模块各有独立 Skill，共用本地 Python 文件助手。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与局部对比预览，以及导出选定资源。
 
-开发版本：**0.1.20**。
+开发版本：**0.1.21**。
 
 人工提出具体修改意见后，使用 `revision-prepare` 和 `revision-import` 接续用户选中的候选。助手保留原话、保护约束和前后版本关系，单独记录一次修订，新图重新进行内部检查和人工评审。评图页增加“修订前”对照，报告与导出清单保留修订来源。详见[人工意见到修订流程](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction)。
 
@@ -39,7 +39,7 @@
 | 模块 | Skill 标识 | 状态 |
 | --- | --- | --- |
 | CharaKit Expressions | `charakit-expressions` | 已实现：完整表情差分 |
-| CharaKit Outfits | `charakit-outfits` | 已实现：单件衣物改色／替换工作流；整套换装仍在规划中 |
+| CharaKit Outfits | `charakit-outfits` | 已实现：单件衣物改色／替换、整套服装基础图替换及人工修订工作流 |
 | CharaKit Poses | `charakit-poses` | 计划中：静态动作与姿势编辑 |
 
 插件安装标识为 `charakit`；表情与静态嘴部状态使用 `$charakit-expressions`，指定衣物改色／替换使用 `$charakit-outfits`。姿势模块仍在规划中，尚不能调用。详见[模块定义](plugins/charakit/modules.json)与[模块规划（英文）](plugins/charakit/ROADMAP.md)。
@@ -80,7 +80,7 @@
 同时放大面部与外套区域。
 ```
 
-支持一件现有衣物的颜色变化，以及独立的 `replace` 单件替换模式，例如长袜换短袜、靴子换低帮鞋。替换需要准备边界说明、保存实际提示词，并检查款式、合身／交界、覆盖／人体结构及保护区域；详见[替换指南](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md)。替换工作流实现不代表真实生图效果已经验收。整套换装、配饰增减、穿脱状态及自动组合管理仍在规划中。实际生图的改色范围和细节保留需要人工检查，工作流测试通过不等于美术验收。
+支持单件衣物改色、`replace` 单件替换，以及 `outfit_replace` 整套服装替换。整套模式先明确服装部件清单和必要的覆盖／交界变化，再检查每件完成度、整套搭配、合身、人体结构和保护区域；详见[整套换装指南](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md)及[单件替换指南](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md)。未列入清单的衣物、鞋袜、装备和配饰保留，人物面部、表情、头发和姿势继续受保护。候选择优后由用户实际评图，具体意见进入一次修订及重新评审，通过且被采用后交付。第一版输出完整的新服装基础图；配套表情组、独立配饰增减、穿脱状态和自动组合管理仍在规划中。工作流测试通过不等于实际生图美术验收。
 
 服饰使用独立项目，例如 `art-output/my-character/outfits/`，保留自己的不可变源图。助手记录方案标识、目标衣物、操作类型与颜色／替换款式；每个方案独立保留版本和选择。单张修订沿用原方案定义，改变定义时另建方案标识。
 
@@ -220,7 +220,7 @@ tools/build_plugin.py               插件 ZIP 构建脚本
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.20.zip
+python tools/build_plugin.py --output dist/charakit-0.1.21.zip
 ```
 
 测试使用合成图片，不需要第三方角色美术。CI 在 Linux 和 Windows 上运行。构建脚本不会覆盖已存在的 ZIP。

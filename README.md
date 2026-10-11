@@ -4,11 +4,11 @@ New requests use [candidate selection and human review](plugins/charakit/referen
 
 **English** | [简体中文](README.zh-CN.md)
 
-**CharaKit** is a modular Codex plugin for visual novel character artwork. **CharaKit Expressions** creates full expression variants; **CharaKit Outfits** recolors or replaces one specified existing garment while preserving character identity and unrelated design.
+**CharaKit** is a modular Codex plugin for visual novel character artwork. **CharaKit Expressions** creates full expression variants; **CharaKit Outfits** edits individual garments or replaces a complete clothing ensemble while preserving character identity and unrelated design.
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.20**.
+Development version: **0.1.21**.
 
 Specific human corrections now continue from the user-chosen candidate through `revision-prepare` and `revision-import`. The helper preserves the original comment, protection checks and parent link, reserves one revision, and requires fresh internal/human review. The review page adds a before-revision reference; reports and exports retain that lineage. See the [human-revision procedure](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction).
 
@@ -37,7 +37,7 @@ Release notes are published with GitHub Releases.
 | Module | Skill ID | Status |
 | --- | --- | --- |
 | CharaKit Expressions | `charakit-expressions` | Available: full expression variants |
-| CharaKit Outfits | `charakit-outfits` | Available: one-garment recoloring/replacement; full outfit replacement planned |
+| CharaKit Outfits | `charakit-outfits` | Available: single-garment editing and full-outfit base replacement workflows |
 | CharaKit Poses | `charakit-poses` | Planned: static pose and action edits |
 
 Install the plugin as `charakit`; use `$charakit-expressions` for expressions and static mouth states, or `$charakit-outfits` for garment recoloring/replacement. Pose editing remains planned. See the [module definitions](plugins/charakit/modules.json) and [roadmap](plugins/charakit/ROADMAP.md).
@@ -65,7 +65,7 @@ face, expression, mouth state, hair, and pose. Generate two candidates
 and compare them, including enlarged face and jacket regions.
 ```
 
-Outfits supports `recolor` for one existing garment and `replace` for a single garment design; see the [replacement guide](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md). Replacement requires a prepared boundary, actual prompt and its own domain/fidelity review. Workflow support does not establish generated replacement quality. Full outfit replacement, accessory additions/removals, clothing on/off states, and automated outfit/expression combinations remain planned. Actual recolor quality needs review of generated images; workflow tests do not prove visual preservation.
+Outfits supports `recolor` for one garment, `replace` for one garment design and `outfit_replace` for an explicit clothing ensemble; see the [replacement guide](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md). Replacement requires a prepared boundary, actual prompt and its own domain/fidelity review. Workflow support does not establish generated replacement quality. Linked outfit expression sets, accessory additions/removals, clothing on/off states, and automated outfit/expression combinations remain planned. Actual recolor quality needs review of generated images; workflow tests do not prove visual preservation.
 
 Use a separate outfit project, for example `art-output/my-character/outfits/`, with its own immutable source. The helper records an option ID, existing target, operation and requested color/replacement. Each definition has independent versions and selection. Revisions retain that definition; changing it requires a new ID.
 
@@ -207,7 +207,7 @@ tools/build_plugin.py               Plugin ZIP builder
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
 python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit-0.1.20.zip
+python tools/build_plugin.py --output dist/charakit-0.1.21.zip
 ```
 
 Tests use synthetic images; no third-party character art is required. CI runs on Linux and Windows. The build refuses to overwrite an existing ZIP.
@@ -221,3 +221,5 @@ Expression and garment edits may alter unrelated details or produce a different 
 Automatic checks cover file format, canvas dimensions, transparency, and file integrity. They do not assess artistic quality or how expression changes look in a game. Export requires passing technical checks and approval after visual review.
 
 See the [plugin guide](plugins/charakit/README.md) for details.
+
+Full-outfit base workflows are available through `outfit_replace`: explicit clothing mappings, ensemble and per-component review, human-guided revision, and accepted PNG exports. See the [full outfit guide](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md). Real generated-art quality requires visual testing; linked expression sets remain planned.

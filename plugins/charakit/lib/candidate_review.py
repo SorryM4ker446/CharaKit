@@ -45,6 +45,13 @@ def validate_assessment(c, data):
                 "Each dimension uses its weakest applicable check; do not average away defects.")
 
 
+def validate_outfit_contract(c, asset, contract):
+    if asset.get("edit_type") == "outfit_replace":
+        require(c, all(any(check["dimension"] == "target" and check["component"] == item["source"]
+                           for check in contract) for item in asset["outfit_components"]),
+                "Full outfit contracts must include a target check for each source clothing component.")
+
+
 def validate_state(c, state):
     pools = state.get("candidate_pools", {})
     require(c, isinstance(pools, dict), "Invalid candidate pools.")
@@ -56,6 +63,7 @@ def validate_state(c, state):
         if not pool.get("stopped"):
             slots.add(pool["slot"])
         validate_contract(c, pool["contract"])
+        validate_outfit_contract(c, by_id[key], pool["contract"])
         attempts = pool["attempts"]
         require(c, type(pool["budget"]) is int and 1 <= pool["budget"] <= 3 and isinstance(attempts, list)
                 and 1 <= len(attempts) <= pool["budget"] and attempts[0].get("asset_id") == key, "Invalid fixed budget.")
@@ -96,7 +104,7 @@ def validate_state(c, state):
                     and pools[aid]["budget"] == 1 and pools[aid]["contract"] == revision["contract"],
                     "Invalid imported human revision.")
             require(c, all(by_id[aid].get(field) == parent.get(field) for field in
-                          ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "edit_brief")),
+                          ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "edit_brief")),
                     "Human revisions retain their chosen parent's edit definition and brief.")
     for asset in state["assets"]:
         if "human_revision" in asset:
@@ -108,6 +116,7 @@ def validate_state(c, state):
 
 def validate_revision_contract(c, state, parent, contract):
     validate_contract(c, contract)
+    validate_outfit_contract(c, parent, contract)
     fields = {"id", "component", "property", "expected", "dimension", "view"}
     require(c, all(set(item) == fields for item in contract), "Revision contracts contain definitions only.")
     original = state["candidate_pools"][parent["candidate_pool"]]["contract"]
@@ -141,7 +150,7 @@ def revision_plan(c, root, state, key):
     parent = c.get_asset(state, revision["parent_asset"])
     return {"revision": key, "status": revision["status"], "budget": 1,
             "parent_asset": parent["id"], "note": revision["note"], "contract": revision["contract"],
-            "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "edit_brief") if k in parent},
+            "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "edit_brief") if k in parent},
             "references": copy.deepcopy(revision["references"]),
             "reference_paths": [str(c.contained(root, item["path"])) for item in revision["references"]],
             "asset_id": revision.get("asset_id"), "failure": revision.get("failure"),
@@ -190,7 +199,7 @@ def revision_import(c, root, key, image, prompt, references, failure=None):
             "Use the immutable source first and the user-chosen edit target second.", "INVALID_REVISION_REFERENCES")
     actual_prompt = prompt.read_text(encoding="utf-8")
     require(c, bool(actual_prompt.strip()), "Save the actual targeted revision prompt.")
-    fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "edit_brief") if k in parent}
+    fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "edit_brief") if k in parent}
     fields.update(human_revision=key, quality_required=c.QUALITY_VERSION,
                   generation_inputs={"strategy": "user_revision", "references": copy.deepcopy(revision["references"]), "packet": key})
     return c.save_candidate(root, state, image, fields, c.validate_image(image, state["canvas"], state["background_mode"]), actual_prompt)
@@ -200,6 +209,7 @@ def pool_start(c, root, aid, contract, budget=3):
     state = c.read_state(root)
     asset = c.get_asset(state, aid)
     validate_contract(c, contract)
+    validate_outfit_contract(c, asset, contract)
     require(c, all(set(x) == {"id", "component", "property", "expected", "dimension", "view"} for x in contract), "Contracts contain definitions only, not retrospective scores.")
     require(c, type(budget) is int and 1 <= budget <= 3, "Use one to three total attempts.")
     existing = state.get("candidate_pools", {}).get(aid)
@@ -308,7 +318,7 @@ def pool_import(c, root, key, token, image, prompt, references, failure=None):
     actual_prompt = prompt.read_text(encoding="utf-8")
     require(c, bool(actual_prompt.strip()), "Save the actual submitted prompt.")
     original = c.get_asset(state, key)
-    fields = {k: copy.deepcopy(original[k]) for k in ("expression", "mouth_state", "outfit_id", "target", "color", "replacement", "edit_type", "edit_brief") if k in original}
+    fields = {k: copy.deepcopy(original[k]) for k in ("expression", "mouth_state", "outfit_id", "target", "color", "replacement", "edit_type", "outfit_components", "edit_brief") if k in original}
     fields.update(candidate_pool=key, repair_parent=attempt["parent"], generation_inputs=copy.deepcopy(attempt))
     result = c.save_candidate(root, state, image, fields, c.validate_image(image, state["canvas"], state["background_mode"]), actual_prompt)
     return result
@@ -695,6 +705,8 @@ def validate_blind_record(c, root, state, asset, review):
 
 def require_user_feedback(c, root, state, asset):
     if "candidate_pool" not in asset:
+        require(c, asset.get("edit_type") != "outfit_replace",
+                "Full outfits require a candidate pool and actual user acceptance.", "HUMAN_REVIEW_REQUIRED")
         return
     feedback = asset.get("human_feedback", {})
     require(c, feedback.get("decision") == "accept" and feedback.get("basis") == "user"

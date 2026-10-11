@@ -2,14 +2,14 @@
 
 New requests use [candidate selection and human review](references/candidate-review.md): authorized independent source sampling, at most one repair of a preferred candidate, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sequential refinement descriptions below apply only to existing `refinements` records. Historical scores remain unchanged; generation-quality gains are not yet established.
 
-CharaKit currently provides expression editing, recoloring and replacement of one specified existing garment. Full outfit replacement and pose editing are planned extensions.
+CharaKit provides expression editing, single-garment recoloring/replacement, and full-outfit base image workflows. Linked outfit expression sets and pose editing remain planned.
 
-The current development focus is the human-feedback-to-revision flow within those implemented modes. Helper 0.1.20 links a specific correction to the user-chosen candidate, preserves prior constraints and history, and requires fresh internal/human review before delivery. Task recovery and comparisons against direct image-tool conversation are outside this phase; product acceptance concerns this plugin's own behavior and actual user feedback.
+Helper 0.1.21 adds full-outfit replacement with an explicit clothing inventory, component findings and ensemble checks, reusing candidate selection and human revision. Real outfit generation quality remains to be evaluated. Helper 0.1.20 links a specific correction to the user-chosen candidate, preserves prior constraints and history, and requires fresh internal/human review before delivery. Task recovery and comparisons against direct image-tool conversation are outside this phase; product acceptance concerns this plugin's own behavior and actual user feedback.
 
 | Module | Status | Scope |
 | --- | --- | --- |
 | CharaKit Expressions | Available | Twelve fixed expression presets, static mouth-open/closed states, revisions, comparisons, and PNG exports |
-| CharaKit Outfits | Available | One-garment recoloring/replacement workflows, edit boundaries, mode-specific reviews, comparisons and PNG exports; full outfit replacement planned |
+| CharaKit Outfits | Available | Single-garment recoloring/replacement and full-outfit base image workflows, explicit boundaries, component/ensemble checks, human revisions and PNG exports |
 | CharaKit Poses | Planned | Static pose and action edits |
 
 Expressions and the recolor/replacement workflows in Outfits are available. Replacement workflow tests do not establish generated-art quality; real replacement preservation still requires validation. Module IDs and availability are listed in [modules.json](modules.json).
@@ -21,9 +21,9 @@ All future development follows the shared [quality-first baseline and internal d
 1. Improve expression consistency, canvas alignment, and transparent edges for use in games.
 2. Validate expression and static mouth-state quality on actual artwork. Independent gaze states are deferred while Outfits is the current development priority.
 3. Evaluate quality-focused, domain-specific editing instructions using one complete source by default, optional target references, and enlarged checks of target and protected regions on actual artwork before expanding garment edits.
-4. Validate single-garment replacement on actual artwork, including upper/lower garments, necessary coverage changes and protected equipment. Version 0.1.18 adds compact repair prompts and a source-based third-round strategy after stalled protection checks; compare actual results before expanding to full outfit replacement.
+4. Validate single-garment replacement on actual artwork, including upper/lower garments, necessary coverage changes and protected equipment. Version 0.1.18 adds compact repair prompts and a source-based third-round strategy after stalled protection checks; legacy cases retain that strategy. Full outfit base workflows are now implemented; validate their actual design adherence and protection.
 5. Introduce simple static pose changes before more complex action poses.
-6. Support requested combinations of outfits, poses, and expressions.
+6. Add expression groups linked to accepted full-outfit bases, then evaluate requested outfit/pose/expression combinations.
 
 Plans may change based on image quality and practical game use. Planned features have no committed release dates and will be marked available only after implementation and validation.
 

@@ -1,13 +1,13 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "charakit",
-  "version": "0.1.20",
-  "description": "A modular Codex plugin for visual novel expressions and single-garment recoloring/replacement. Full outfit replacement and pose editing are planned.",
+  "version": "0.1.21",
+  "description": "A modular Codex plugin for visual novel expressions and single-garment editing and full-outfit replacement workflows. Linked outfit expressions and poses are planned.",
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "CharaKit",
-        "shortDescription": "Create expressions and recolor or replace one garment.",
+        "shortDescription": "Create expressions, edit garments, or replace full outfits.",
         "category": "Productivity"
       }
     }

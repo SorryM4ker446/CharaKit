@@ -12,7 +12,8 @@ def build(root: Path, output: Path) -> dict:
                    and "__pycache__" not in path.parts and path.suffix not in (".pyc", ".pyo"))
     required = {"plugin.json", "modules.json", "ROADMAP.md", "lib/studio_core.py",
                 "lib/delivery_report.py", "references/delivery-report.md",
-                "skills/charakit-outfits/references/replacement-guide.md"}
+                "skills/charakit-outfits/references/replacement-guide.md",
+                "skills/charakit-outfits/references/full-outfit-guide.md"}
     names = {path.relative_to(plugin).as_posix() for path in files}
     if not required.issubset(names):
         raise ValueError("Plugin manifest, module definitions, roadmap, or shared file helper is missing.")

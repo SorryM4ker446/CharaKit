@@ -10,6 +10,8 @@ from PIL import Image, ImageDraw
 
 
 ZH = {
+    'outfit_replace': '整套替换', 'outfit_design': '整套设计符合度', 'component_completion': '部件完成度',
+    'ensemble_coherence': '整套搭配一致性', 'outfit_components': '服装部件清单', 'component_checks': '逐件检查',
     'user_revision': '按人工意见修订', 'revision_parent': '修订所依据版本', 'revision_note': '原始修改意见',
     'revision_attempt': '人工修订执行状态', 'revision_failed': '本次人工修订生成失败',
     'next_revision_failed': '保留失败原因；本次额度已用，新的生成需要具体的新修订请求。',
@@ -63,6 +65,8 @@ ZH = {
     'strategy': '生成策略', 'initial': '首版', 'continue_previous': '修订上一版', 'source_rebase': '从原图重做目标衣物',
 }
 EN = {
+    'outfit_replace': 'Full outfit replacement', 'outfit_design': 'Outfit design adherence', 'component_completion': 'Component completion',
+    'ensemble_coherence': 'Ensemble coherence', 'outfit_components': 'Clothing component inventory', 'component_checks': 'Component findings',
     'user_revision': 'Revise from human feedback', 'revision_parent': 'Revision parent', 'revision_note': 'Original correction request',
     'revision_attempt': 'Human revision execution', 'revision_failed': 'Human revision generation failed',
     'next_revision_failed': 'Retain the failure; the attempt is spent. Another image requires a specific new revision request.',
@@ -137,7 +141,7 @@ def link(label: str, path: str | Path) -> str:
 
 def label_for(core, asset: dict, labels: dict, language: str) -> str:
     if 'outfit_id' in asset:
-        change = asset['replacement'] if asset['edit_type'] == 'replace' else asset['color']
+        change = asset['color'] if asset['edit_type'] == 'recolor' else asset['replacement']
         return labels.get(asset['outfit_id'], f"{asset['target']} → {change}")
     label = labels.get(asset['expression'], EXPRESSION_ZH[asset['expression']] if language == 'zh-CN' else core.EXPRESSION_PRESETS[asset['expression']]['name'])
     mouth = asset.get('mouth_state', 'default')
@@ -156,6 +160,7 @@ def round_record(core, root: Path, state: dict, asset: dict, number: int) -> dic
     if quality in ('stale', 'pending', 'unrecorded'):
         issues.append('quality_' + quality)
     issues.extend(finding['evidence'] for finding in review.get('domain_review', {}).get('checks', {}).values() if finding['status'] != 'passed')
+    issues.extend(finding['evidence'] for finding in review.get('domain_review', {}).get('component_checks', {}).values() if finding['status'] != 'passed')
     issues.extend(finding['evidence'] for finding in review.get('dimensions', {}).values() if finding['score'] < 4)
     issues.extend(review.get('critical_defects', []))
     issues.extend(review.get('uncertainties', []))
@@ -170,6 +175,7 @@ def round_record(core, root: Path, state: dict, asset: dict, number: int) -> dic
         'model': asset.get('model', 'unknown'), 'origin': asset.get('origin'),
         'parent_asset_id': asset.get('parent_asset_id'), 'refinement_inputs': asset.get('refinement_inputs'),
         'human_revision': state.get('human_revisions', {}).get(asset.get('human_revision')),
+        'outfit_components': asset.get('outfit_components'),
         'recorded_score': review.get('result', {}).get('total'),
         'gate_summary': {
             'threshold': review.get('result', {}).get('threshold'),
@@ -177,6 +183,7 @@ def round_record(core, root: Path, state: dict, asset: dict, number: int) -> dic
             'total_passed': (review['result']['total'] >= review['result']['threshold']) if review else None,
             'failed_dimensions': [key for key, finding in review.get('dimensions', {}).items() if finding['score'] < 4],
             'failed_domain_checks': [key for key, finding in review.get('domain_review', {}).get('checks', {}).items() if finding['status'] != 'passed'],
+            'failed_component_checks': [key for key, finding in review.get('domain_review', {}).get('component_checks', {}).items() if finding['status'] != 'passed'],
             'incomplete_inspections': [key for key, done in review.get('inspection', {}).items() if not done],
         },
         'strategy': asset.get('generation_inputs', {}).get('strategy', asset.get('refinement_inputs', {}).get('strategy', 'source_sample' if asset.get('candidate_pool') else ('continue_previous' if asset.get('refinement_round', 1) > 1 else 'initial'))),
@@ -205,6 +212,7 @@ def score_text(record: dict, t: dict) -> str:
 def display_issues(record: dict, t: dict) -> list[str]:
     """Avoid repeating the same observations from domain, dimensions and fidelity notes."""
     issues = [f['evidence'] for f in (record['domain_review'] or {}).get('checks', {}).values() if f['status'] != 'passed']
+    issues += [f['evidence'] for f in (record['domain_review'] or {}).get('component_checks', {}).values() if f['status'] != 'passed']
     issues += record['uncertainties']
     if not issues:
         issues += record['critical_defects']
@@ -228,6 +236,10 @@ def blocking_summary(record: dict, t: dict) -> str:
         evidence = ' '.join(record['domain_review']['checks'][key]['evidence'].split())
         excerpt = evidence if len(evidence) <= 120 else evidence[:120] + '…'
         reasons.append(t.get(key, key) + ': ' + excerpt)
+    for key in gate['failed_component_checks']:
+        finding = record['domain_review']['component_checks'][key]
+        names = {item['id']: item['source'] for item in record['outfit_components'] or []}
+        reasons.append(t['component_checks'] + ' ' + names.get(key,key) + ': ' + finding['evidence'])
     reasons.extend(t.get(key, key) + ': ' + t['unchecked'] for key in gate['incomplete_inspections'])
     if record['quality_status'] in ('stale', 'pending', 'unrecorded'):
         reasons.append(t['quality_' + record['quality_status']])
@@ -321,6 +333,10 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             edit = c['edit']
             change = edit.get('replacement', edit.get('color', '—'))
             lines += [t['edit_definition']+'：'+t[edit['edit_type']]+' · '+md(edit['target'])+' → '+md(change), '']
+            if edit.get('outfit_components'):
+                lines += ['**'+t['outfit_components']+'**', '']
+                lines += ['- '+md(item['source'])+' → '+md(item['replacement']) for item in edit['outfit_components']]
+                lines.append('')
         if c.get('human_revision'):
             revision = c['human_revision']
             lines += [t['revision_parent']+'：'+link(revision['parent_asset'],c['revision_parent_image']),
@@ -348,11 +364,16 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
                   '|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|---|']
         for r in c['history']:
             dims = [str(r['dimensions'].get(k,{}).get('score','—')) for k in ('target','identity','protection','integration','rendering')]
-            fidelity = t.get(r['fidelity_status'],r['fidelity_status']) if c['kind'] in ('garment_recolor','garment_replace') else t['not_applicable']
+            fidelity = t.get(r['fidelity_status'],r['fidelity_status']) if c['kind'] in ('garment_recolor','garment_replace','outfit_replace') else t['not_applicable']
             lines.append('| '+' | '.join([str(r['round']),md(r['asset_id']),t[r['strategy']],*dims,score_text(r,t),t.get(r['quality_status'],r['quality_status']),fidelity,md(blocking_summary(r,t))])+' |')
         lines += ['', '**'+t['domain']+'**', '', '| '+t['check']+' | '+t['status']+' | '+t['evidence']+' |', '|---|---|---|']
         for key,finding in domain.get('checks',{}).items():
             lines.append('| '+t.get(key,key)+' | '+t[finding['status']]+' | '+md(finding['evidence'])+' |')
+        if domain.get('component_checks'):
+            names = {item['id']: item['source'] for item in (c.get('edit') or {}).get('outfit_components', [])}
+            lines += ['', '**'+t['component_checks']+'**', '', '| '+t['component']+' | '+t['status']+' | '+t['evidence']+' |', '|---|---|---|']
+            for key, finding in domain['component_checks'].items():
+                lines.append('| '+md(names.get(key,key))+' | '+t[finding['status']]+' | '+md(finding['evidence'])+' |')
         coverage = '；'.join(t[key]+': '+t['checked' if value else 'unchecked'] for key,value in last['inspection'].items())
         actual = last['validation'].get('image')
         size = f"{actual['width']} × {actual['height']}" if actual else '—'
@@ -461,7 +482,7 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                           'human_feedback':feedback or asset.get('human_feedback'), 'human_result':human_result,
                           'assessed_asset_id':asset['id'], 'candidate_pool':state.get('candidate_pools',{}).get(pool_id),
                           'label':label_for(core,asset,labels,language),'status':action,'max_rounds':plan['max_rounds'] if plan else None,
-                          'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','edit_brief') if key in asset} if 'outfit_id' in asset else None,
+                          'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','outfit_components','edit_brief') if key in asset} if 'outfit_id' in asset else None,
                           'source':str(core.contained(root,state['source'])),'source_sha256':state['source_sha256'],
                           'source_canvas':state['canvas'],'history':records,'final':delivered,'delivery_error':error})
         if state['source_sha256'] not in {s['sha256'] for s in sources}:
