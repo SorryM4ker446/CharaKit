@@ -151,10 +151,10 @@ def read_state(root: Path) -> dict:
 
     try:
         state = json.loads((root / "run.json").read_text(encoding="utf-8"))
-        require(state["schema_version"] in ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5"))
+        require(state["schema_version"] in ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2.0"))
         module = state.get("module", "expressions")
         require(module in ("expressions", "outfits"))
-        require((module == "outfits") == (state["schema_version"] in ("1.2", "1.3", "1.4", "1.5")))
+        require((module == "outfits") == (state["schema_version"] in ("1.2", "1.3", "1.4", "1.5", "1.6")))
         require(bool(re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", state["character_key"])))
         require(state["background_mode"] in MODES)
         require(isinstance(state["assets"], list) and isinstance(state["selected"], dict))
@@ -173,9 +173,9 @@ def read_state(root: Path) -> dict:
                 require("expression" not in asset and "mouth_state" not in asset)
                 require(valid_outfit_id(asset["outfit_id"]))
                 require(valid_outfit_definition(asset))
-                require(asset["edit_type"] == "recolor" or state["schema_version"] in ("1.3", "1.4", "1.5"))
-                require(asset["edit_type"] != "outfit_replace" or state["schema_version"] in ("1.4", "1.5"))
-                require(asset["edit_type"] != "prop_edit" or state["schema_version"] == "1.5")
+                require(asset["edit_type"] == "recolor" or state["schema_version"] in ("1.3", "1.4", "1.5", "1.6"))
+                require(asset["edit_type"] != "outfit_replace" or state["schema_version"] in ("1.4", "1.5", "1.6"))
+                require(asset["edit_type"] != "prop_edit" or state["schema_version"] in ("1.5", "1.6"))
                 if asset["edit_type"] in ("replace", "outfit_replace", "prop_edit"):
                     require("edit_brief" in asset and "prompt_path" in asset and asset.get("quality_required") == QUALITY_VERSION)
                 definition = outfit_definition(asset)
@@ -196,7 +196,13 @@ def read_state(root: Path) -> dict:
                 require("outfit_id" not in asset)
                 require(asset["expression"] in EXPRESSIONS)
                 require(asset.get("mouth_state", "default") in MOUTH_STATES)
-                require(state["schema_version"] == "1.1" or asset.get("mouth_state", "default") == "default")
+                require(state["schema_version"] in ("1.1", "2.0") or asset.get("mouth_state", "default") == "default")
+            if "edit_references" in asset:
+                require(state["schema_version"] == ("1.6" if module == "outfits" else "2.0"))
+                try:
+                    reference_call("validate_asset", root, state, asset)
+                except StudioError as exc:
+                    raise ValueError("Invalid edit reference provenance.") from exc
             require(type(asset["version"]) is int and asset["version"] > 0)
             require(asset["id"] == f'{asset_slot(asset)}_v{asset["version"]:03d}')
             require(asset["id"] not in ids)
@@ -263,8 +269,10 @@ def outfit_definition(value: dict) -> tuple:
     mode = value.get("edit_type", "recolor")
     definition = (mode, value.get("target"), value.get("color" if mode == "recolor" else "replacement"))
     if mode == "prop_edit":
-        return definition + (value.get("prop_action"),)
-    return definition + (value.get("outfit_components"),) if mode == "outfit_replace" else definition
+        definition += (value.get("prop_action"),)
+    elif mode == "outfit_replace":
+        definition += (value.get("outfit_components"),)
+    return definition + (value["edit_references"],) if "edit_references" in value else definition
 
 
 def valid_outfit_components(components) -> bool:
@@ -289,6 +297,11 @@ def load_outfit_components(path: Path | None):
 
 
 def valid_outfit_definition(value: dict) -> bool:
+    if "edit_references" in value:
+        try:
+            reference_call("validate", value["edit_references"], value)
+        except (StudioError, KeyError, TypeError):
+            return False
     mode = value.get("edit_type", "recolor")
     if mode == "prop_edit":
         action = value.get("prop_action")
@@ -346,11 +359,13 @@ def valid_source_box(box, canvas: dict) -> bool:
 
 def validate_edit_brief(root: Path, state: dict, brief: dict, check_reference: bool = True) -> None:
     try:
-        valid = (isinstance(brief, dict) and brief["schema_version"] in ("1.0", "1.1", "1.2", "1.3")
-                 and (brief.get("edit_type", "recolor") == "recolor"
+        reference_brief = isinstance(brief, dict) and brief.get("schema_version") == "1.4" and bool(brief.get("edit_references"))
+        valid = (isinstance(brief, dict) and brief["schema_version"] in ("1.0", "1.1", "1.2", "1.3", "1.4")
+                 and (reference_brief or (brief.get("edit_type", "recolor") == "recolor"
                       or (brief.get("edit_type") == "replace" and brief["schema_version"] in ("1.1", "1.2"))
                       or (brief.get("edit_type") == "outfit_replace" and brief["schema_version"] == "1.2")
-                      or (brief.get("edit_type") == "prop_edit" and brief["schema_version"] == "1.3"))
+                      or (brief.get("edit_type") == "prop_edit" and brief["schema_version"] == "1.3")))
+                 and ("edit_references" not in brief or reference_brief)
                  and brief["source_sha256"] == state["source_sha256"]
                  and valid_outfit_id(brief["outfit_id"])
                  and valid_outfit_definition(brief)
@@ -367,17 +382,22 @@ def validate_edit_brief(root: Path, state: dict, brief: dict, check_reference: b
         raise StudioError("INVALID_EDIT_BRIEF", "Use a prepared brief with source coordinates, boundary, and protected regions.") from exc
     if check_reference and (not reference.is_file() or digest(reference) != brief["reference"]["sha256"]):
         raise StudioError("REFERENCE_CHANGED", "The source detail reference is missing or changed; prepare a new brief.")
+    if check_reference:
+        reference_call("check_files", root, brief.get("edit_references", []))
 
 
 def prepare_outfit(root: Path, outfit_id: str, target: str, color: str | None, boundary: str,
                    protected_regions: list[str], target_box: list[int],
-                   edit_type: str = "recolor", replacement: str | None = None, outfit_components=None, prop_action=None) -> dict:
+                   edit_type: str = "recolor", replacement: str | None = None, outfit_components=None, prop_action=None,
+                   reference_file: Path | None = None) -> dict:
     """Save a scope brief and source-only detail reference; never edits a candidate."""
     state = read_state(root)
     require_module(state, "outfits")
     if not valid_outfit_id(outfit_id):
         raise StudioError("INVALID_OUTFIT_ID", "Use a lowercase filename key.")
     fields = outfit_fields(outfit_id, target, color, edit_type, replacement, outfit_components, prop_action)
+    if reference_file is not None:
+        fields["edit_references"] = reference_call("load", root, state, reference_file, fields)
     if not (valid_edit_text(boundary, 1000) and isinstance(protected_regions, list)
             and 1 <= len(protected_regions) <= 20
             and all(valid_edit_text(region, 200) for region in protected_regions)):
@@ -399,7 +419,7 @@ def prepare_outfit(root: Path, outfit_id: str, target: str, color: str | None, b
     reference_path.parent.mkdir(parents=True, exist_ok=True)
     with reference_path.open("xb") as stream:
         detail.save(stream, format="PNG")
-    brief = {"schema_version": {"recolor": "1.0", "replace": "1.1", "outfit_replace": "1.2", "prop_edit": "1.3"}[edit_type], **fields,
+    brief = {"schema_version": "1.4" if "edit_references" in fields else {"recolor": "1.0", "replace": "1.1", "outfit_replace": "1.2", "prop_edit": "1.3"}[edit_type], **fields,
              "boundary": boundary, "protected_regions": protected_regions, "target_box": target_box,
              "source_sha256": state["source_sha256"],
              "reference": {"path": reference_path.relative_to(root).as_posix(), "sha256": digest(reference_path)},
@@ -408,8 +428,11 @@ def prepare_outfit(root: Path, outfit_id: str, target: str, color: str | None, b
     with brief_path.open("x", encoding="utf-8") as stream:
         json.dump(brief, stream, ensure_ascii=False, indent=2)
         stream.write("\n")
+    generation_refs = reference_call("bindings", root, state, fields)
     return {"brief_file": str(brief_path.resolve()), "source_reference": str(contained(root, state["source"])),
             "detail_reference": str(reference_path.resolve()), "edit_brief": brief,
+            "generation_references": generation_refs,
+            "reference_paths": [str(contained(root, r["path"])) for r in generation_refs],
             "note": "Detail reference identifies the target; it is not an edit mask or a final asset. Use the full source as the primary reference."}
 
 
@@ -585,6 +608,10 @@ def quality_status(root: Path, state: dict, asset: dict) -> str:
     review = asset.get("quality_review")
     if review is None:
         return "pending" if "quality_required" in asset else "unrecorded"
+    try:
+        reference_call("check_files", root, asset.get("edit_references", []))
+    except (StudioError, OSError):
+        return "stale"
     if review.get("rubric_version") == "1.2":
         try:
             workflow_call("validate_blind_record", root, state, asset, review)
@@ -633,8 +660,8 @@ def record_quality(root: Path, asset_id: str, assessment: dict, comparisons: lis
         raise StudioError("DOMAIN_REVIEW_REQUIRED", "Inspect and record the active module/state's specific checks, not only a global score.")
     validate_domain_review(assessment["domain_review"], quality_domain(state, asset))
     validate_outfit_component_review(asset, assessment)
-    if asset.get("edit_type") in ("outfit_replace", "prop_edit") and "candidate_pool" not in asset:
-        raise StudioError("POOL_IMPORT_REQUIRED", "Start a candidate pool before assessing a full outfit or prop edit.")
+    if (asset.get("edit_type") in ("outfit_replace", "prop_edit") or asset.get("edit_references")) and "candidate_pool" not in asset:
+        raise StudioError("POOL_IMPORT_REQUIRED", "Start a candidate pool before assessing a full outfit, prop or reference-guided edit.")
     if "candidate_pool" in asset:
         workflow_call("check_pool_assessment", root, state, asset, assessment)
     report = check_asset(root, state, asset)
@@ -726,7 +753,7 @@ def start_refinement(root: Path, asset_id: str, max_rounds: int = MAX_REFINEMENT
     """Explicit bounded authorization: initial candidate is round one."""
     state = read_state(root)
     asset = get_asset(state, asset_id)
-    if "candidate_pool" in asset or asset.get("edit_type") in ("outfit_replace", "prop_edit"):
+    if "candidate_pool" in asset or asset.get("edit_references") or asset.get("edit_type") in ("outfit_replace", "prop_edit"):
         raise StudioError("POOL_IMPORT_REQUIRED", "Use this candidate's existing pool and fixed budget.")
     if type(max_rounds) is not int or not 1 <= max_rounds <= MAX_REFINEMENT_ROUNDS:
         raise StudioError("INVALID_REFINEMENT_BUDGET", "Use one to three total rounds, including the initial image.")
@@ -977,11 +1004,17 @@ def check_asset(root: Path, state: dict, asset: dict) -> dict:
     if report["image"]["sha256"] != asset["sha256"]:
         report["errors"].append("ASSET_CHANGED")
         report["passed"] = False
+    try:
+        reference_call("check_files", root, asset.get("edit_references", []))
+    except (StudioError, OSError):
+        report["errors"].append("EDIT_REFERENCE_CHANGED")
+        report["passed"] = False
     return report
 
 
 def add_asset(root: Path, image: Path, expression: str, prompt_file: Path | None = None,
-              mouth_state: str = "default") -> dict:
+              mouth_state: str = "default", reference_file: Path | None = None,
+              references: list[Path] | None = None) -> dict:
     state = read_state(root)
     require_module(state, "expressions")
     if expression not in EXPRESSIONS:
@@ -990,6 +1023,18 @@ def add_asset(root: Path, image: Path, expression: str, prompt_file: Path | None
         raise StudioError("INVALID_MOUTH_STATE", "Use default, closed, or open.")
     report = validate_image(image, state["canvas"], state["background_mode"])
     prompt = prompt_file.read_text(encoding="utf-8") if prompt_file else None
+    fields = {"expression": expression}
+    if mouth_state != "default":
+        fields["mouth_state"] = mouth_state
+    if reference_file is not None:
+        fields["edit_references"] = reference_call("load", root, state, reference_file, fields)
+        fields["generation_inputs"] = reference_call("initial_inputs", root, state, fields, references)
+        if not prompt or not prompt.strip():
+            raise StudioError("REFERENCE_PROMPT_REQUIRED", "Save the actual reference-guided prompt.")
+        fields["quality_required"] = QUALITY_VERSION
+        upgrade_reference_schema(root, state, "2.0")
+    elif references is not None:
+        raise StudioError("INVALID_GENERATION_REFERENCES", "Prepare and bind reference inputs before recording them.")
     if mouth_state != "default" and state["schema_version"] == "1.0":
         # Preserve legacy metadata before importing the first explicit state.
         backup = root / "run.schema-1.0.backup.json"
@@ -999,15 +1044,13 @@ def add_asset(root: Path, image: Path, expression: str, prompt_file: Path | None
         else:
             copy_exclusive(root / "run.json", backup)
         state["schema_version"] = "1.1"
-    fields = {"expression": expression}
-    if mouth_state != "default":
-        fields["mouth_state"] = mouth_state
     return save_candidate(root, state, image, fields, report, prompt)
 
 
 def add_outfit(root: Path, image: Path, outfit_id: str, target: str, color: str | None = None,
                prompt_file: Path | None = None, brief_file: Path | None = None,
-               edit_type: str | None = None, replacement: str | None = None, outfit_components=None, prop_action=None) -> dict:
+               edit_type: str | None = None, replacement: str | None = None, outfit_components=None, prop_action=None,
+               references: list[Path] | None = None) -> dict:
     state = read_state(root)
     require_module(state, "outfits")
     if not valid_outfit_id(outfit_id):
@@ -1029,6 +1072,11 @@ def add_outfit(root: Path, image: Path, outfit_id: str, target: str, color: str 
     color = color.strip() if isinstance(color, str) else color
     replacement = replacement.strip() if isinstance(replacement, str) else replacement
     fields = outfit_fields(outfit_id, target, color, edit_type, replacement, outfit_components, prop_action)
+    if brief and "edit_references" in brief:
+        fields["edit_references"] = copy.deepcopy(brief["edit_references"])
+        fields["generation_inputs"] = reference_call("initial_inputs", root, state, fields, references)
+    elif references is not None:
+        raise StudioError("INVALID_GENERATION_REFERENCES", "Prepare and bind reference inputs before recording them.")
     if any(outfit_definition(a) != outfit_definition(fields) for a in previous):
         raise StudioError("OUTFIT_DEFINITION_CHANGED", "Use a new outfit ID when changing the target, mode or requested result.")
     report = validate_image(image, state["canvas"], state["background_mode"])
@@ -1037,6 +1085,11 @@ def add_outfit(root: Path, image: Path, outfit_id: str, target: str, color: str 
         if brief["outfit_id"] != outfit_id or outfit_definition(brief) != outfit_definition(fields):
             raise StudioError("INVALID_EDIT_BRIEF", "The brief must match this outfit option, target, mode and requested result.")
         fields["edit_brief"] = brief
+    if "edit_references" in fields:
+        if not prompt or not prompt.strip():
+            raise StudioError("REFERENCE_PROMPT_REQUIRED", "Save the actual reference-guided prompt.")
+        fields["quality_required"] = QUALITY_VERSION
+        upgrade_reference_schema(root, state, "1.6")
     if edit_type in ("replace", "outfit_replace", "prop_edit"):
         if "edit_brief" not in fields:
             raise StudioError("EDIT_BRIEF_REQUIRED", "Prepare the replacement boundary and pass --brief-file.")
@@ -1089,6 +1142,8 @@ def save_candidate(root: Path, state: dict, image: Path, fields: dict, report: d
             "version": revision.get("pool_version", "1.0"), "slot": slot, "budget": revision.get("budget", 1), "contract": copy.deepcopy(revision["contract"]),
             "attempts": [{"number": 1, "status": "imported", "strategy": "user_revision", "asset_id": asset_id}],
             "comparisons": [], "human_revision": key, "created_at": timestamp()}
+        if fields.get("edit_references"):
+            state["candidate_pools"][asset_id]["attempts"][0]["references"] = copy.deepcopy(fields["generation_inputs"]["references"])
         revision.update(status="imported", asset_id=asset_id)
     if "candidate_pool" in fields:
         asset["parent_asset_id"] = fields.get("repair_parent")
@@ -1344,10 +1399,15 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
                 sprites[-1]["fidelity_review"] = asset["fidelity_review"]
         else:
             sprites[-1]["expression"] = asset["expression"]
+        if "edit_references" in asset:
+            sprites[-1]["edit_references"] = asset["edit_references"]
+            for ref in asset["edit_references"]:
+                payloads[ref["path"]] = contained(root, ref["path"]).read_bytes()
+            sprites[-1]["generation_inputs"] = asset["generation_inputs"]
         if has_mouth_states:
             sprites[-1]["mouth_state"] = asset.get("mouth_state", "default")
         seen.add(slot)
-    manifest = {"schema_version": state["schema_version"] if is_outfit else ("1.1" if has_mouth_states else "1.0"), "character_key": state["character_key"],
+    manifest = {"schema_version": state["schema_version"] if is_outfit or state["schema_version"] == "2.0" else ("1.1" if has_mouth_states else "1.0"), "character_key": state["character_key"],
                 "asset_kind": "full_character_outfit" if is_outfit else "full_character_expression", "background_mode": state["background_mode"],
                 "canvas": state["canvas"], "sprites": sprites}
     payloads["manifest.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
@@ -1389,6 +1449,26 @@ def workflow_call(operation, *args, **kwargs):
     return getattr(helper, operation)(sys.modules.get(__name__) or _core_proxy(), *args, **kwargs)
 
 
+def reference_call(operation, *args, **kwargs):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("charakit_edit_references", Path(__file__).with_name("edit_references.py"))
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    return getattr(helper, operation)(sys.modules.get(__name__) or _core_proxy(), *args, **kwargs)
+
+
+def upgrade_reference_schema(root: Path, state: dict, version: str) -> None:
+    if state["schema_version"] == version:
+        return
+    backup = root / f'run.schema-{state["schema_version"]}.backup.json'
+    if backup.exists():
+        if digest(backup) != digest(root / "run.json"):
+            raise StudioError("MIGRATION_BACKUP_EXISTS", "Existing schema backup differs; preserve it and use a new project.")
+    else:
+        copy_exclusive(root / "run.json", backup)
+    state["schema_version"] = version
+
+
 def _core_proxy():
     from types import SimpleNamespace
     return SimpleNamespace(**globals())
@@ -1398,6 +1478,9 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
     workflow_call("add_commands", commands)
+    reference_prepare = commands.add_parser("reference-prepare", help="Snapshot scoped edit references for the current module; never generates images.")
+    reference_prepare.add_argument("--project", required=True, type=Path)
+    reference_prepare.add_argument("--references-file", required=True, type=Path)
     report = commands.add_parser("report", help="Build gated final PNGs, a final preview and a saved-review report; never generates or scores art.")
     report.add_argument("--project", required=True, action="append", type=Path, dest="projects")
     report.add_argument("--output", required=True, type=Path, help="New delivery directory; existing files are never overwritten.")
@@ -1443,6 +1526,7 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
         prepare.add_argument("--color")
         prepare.add_argument("--replacement", help="Requested garment, outfit or added/replacement prop design; omit for prop removal.")
         prepare.add_argument("--components-file", type=Path, help="Full outfit component inventory JSON.")
+        prepare.add_argument("--reference-file", type=Path, help="Prepared in-project edit reference manifest.")
         prepare.add_argument("--boundary", required=True)
         prepare.add_argument("--protect", required=True, action="append", dest="protected_regions")
         prepare.add_argument("--target-box", required=True, nargs=4, type=int)
@@ -1468,6 +1552,7 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
             command.add_argument("--background", choices=("auto",) + MODES, default="auto")
         elif name == "add":
             command.add_argument("--image", required=True, type=Path)
+            command.add_argument("--reference", action="append", type=Path, dest="references", help="Actual submitted inputs in the prepared order.")
             if module == "outfits":
                 command.add_argument("--outfit", required=True, dest="outfit_id")
                 command.add_argument("--target", required=True, help="Garment, outfit scope, object or addition site, in the user's language.")
@@ -1480,6 +1565,7 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
             else:
                 command.add_argument("--expression", choices=EXPRESSIONS, required=True)
                 command.add_argument("--mouth-state", choices=MOUTH_STATES, default="default")
+                command.add_argument("--reference-file", type=Path, help="Prepared in-project edit reference manifest.")
             command.add_argument("--prompt-file", type=Path)
         elif name in ("review", "select"):
             command.add_argument("--asset", required=True)
@@ -1515,9 +1601,11 @@ def main(module: str = "expressions") -> int:
             result = workflow_call("dispatch", args)
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0 if result.get("passed", True) else 2
-        if args.command in ("add", "status", "review", "select", "preview", "export", "prepare", "fidelity", "quality", "enable-quality", "deliver", "refine-start", "refine-status", "refine-add", "refine-deliver"):
+        if args.command in ("reference-prepare", "add", "status", "review", "select", "preview", "export", "prepare", "fidelity", "quality", "enable-quality", "deliver", "refine-start", "refine-status", "refine-add", "refine-deliver"):
             require_module(read_state(args.project), module)
-        if args.command == "report":
+        if args.command == "reference-prepare":
+            result = reference_call("prepare", args.project, args.references_file)
+        elif args.command == "report":
             result = generate_report(args.projects, args.output, ids=args.ids, language=args.language,
                                      title=args.title, labels=load_preview_labels(args.labels_file),
                                      face_box=args.face_box, background=args.background, stage=args.stage)
@@ -1532,7 +1620,7 @@ def main(module: str = "expressions") -> int:
         elif args.command == "init":
             result = init_project(args.project, args.source, args.character, args.background, module)
         elif args.command == "prepare":
-            result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action)
+            result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action, args.reference_file)
         elif args.command == "fidelity":
             result = record_fidelity(args.project, args.asset, args.target_check, args.protection_check, args.note, args.basis)
         elif args.command == "enable-quality":
@@ -1555,9 +1643,9 @@ def main(module: str = "expressions") -> int:
             result = deliver_refinement(args.project, args.case_id)
         elif args.command == "add":
             if module == "outfits":
-                result = add_outfit(args.project, args.image, args.outfit_id, args.target, args.color, args.prompt_file, args.brief_file, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action)
+                result = add_outfit(args.project, args.image, args.outfit_id, args.target, args.color, args.prompt_file, args.brief_file, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action, args.references)
             else:
-                result = add_asset(args.project, args.image, args.expression, args.prompt_file, args.mouth_state)
+                result = add_asset(args.project, args.image, args.expression, args.prompt_file, args.mouth_state, args.reference_file, args.references)
         elif args.command == "status":
             state = read_state(args.project)
             result = {"canvas": state["canvas"], "background_mode": state["background_mode"],

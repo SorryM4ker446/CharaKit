@@ -1,8 +1,10 @@
 # CharaKit roadmap
 
+0.1.25: [scoped edit references](references/edit-references.md) apply to Expressions, explicit mouth states, all Outfits modes and every future editing module. Immutable snapshots, recorded editable scopes, per-reference target checks and actual input bindings persist through internal redraws, human revisions, review pages and delivery. New modules must define their reference scopes and pass the same budget/integrity/review gates; this does not automatically link modules or implement planned Poses.
+
 0.1.23: new requests and human-correction batches default to at most three image-tool attempts. Internal failures trigger evidence-directed redraws; full passage or exhaustion precedes human review. Explicit smaller limits, old pools, historical assessments, module independence and final delivery gates remain intact. Workflow validation does not establish lower user revision rates.
 
-New requests use [candidate selection and human review](references/candidate-review.md): authorized independent source sampling, at most one repair of a preferred candidate, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sequential refinement descriptions below apply only to existing `refinements` records. Historical scores remain unchanged; generation-quality gains are not yet established.
+New requests use [candidate selection and human review](references/candidate-review.md): normally at most three total attempts, evidence-directed redraws until all required gates pass or the budget is spent, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sampling/refinement descriptions below apply only to existing historical records. Historical scores remain unchanged; generation-quality gains are not yet established.
 
 CharaKit provides expression editing, single-garment editing, full-outfit bases and accessory/prop add/remove/replace workflows. Expressions stays independent: users can manually use an output PNG as a new source without automatic invocation or shared state. Pose editing remains planned.
 

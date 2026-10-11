@@ -10,7 +10,9 @@
 
 两个模块各有独立 Skill，共用本地 Python 文件助手。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与局部对比预览，以及导出选定资源。
 
-开发版本：**0.1.24**。
+开发版本：**0.1.25**。
+
+[参考图准则](plugins/charakit/references/edit-references.md)适用于 Expressions、Outfits 全部编辑类型及未来模块：保存原始参考快照，明确用途范围，逐项评审，并在每轮重绘和人工修订中持续保留。模块继续保持独立，不自动互相调用。
 
 人工提出具体修改意见后，使用 `revision-prepare` 和 `revision-import` 接续用户选中的候选。助手保留原话、保护约束和前后版本关系，单独记录默认最多三轮的修订批次，每张新图重新评审，通过或预算耗尽后再人工评图。评图页增加“修订前”对照，报告与导出清单保留修订来源。详见[人工意见到修订流程](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction)。
 

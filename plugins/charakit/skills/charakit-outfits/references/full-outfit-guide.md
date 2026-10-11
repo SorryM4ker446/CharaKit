@@ -21,7 +21,7 @@ Only listed clothing may be redesigned. Shoes, stockings, gloves, belts and clot
 
 ## Prompt and references
 
-Use the immutable complete source as the identity, pose, style and composition authority. A supplied costume reference provides clothing design only; inspect it and record its role if actually submitted. Prepared crops remain inspection aids unless ambiguity justifies sending them. No mask or regional lock is available in this workflow.
+Use the immutable complete source as the identity, pose, style and composition authority. Follow [scoped edit references](../../../references/edit-references.md) for supplied costume images: prepare immutable snapshots, map each reference to editable inventory IDs, bind actual inputs and review each reference's permitted design cues. Every internal redraw and human revision retains all references. Prepared crops remain inspection aids; no mask or regional lock is available in this workflow.
 
 Adapt one organized prompt to the actual inventory:
 

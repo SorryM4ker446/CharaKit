@@ -8,7 +8,9 @@ New requests use [candidate selection and human review](plugins/charakit/referen
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.24**.
+Development version: **0.1.25**.
+
+Optional [scoped reference images](plugins/charakit/references/edit-references.md) work across Expressions and all Outfits modes, with immutable snapshots, per-reference review checks and retention through redraws and human revisions. The same contract governs future modules; they remain independent.
 
 Specific human corrections now continue from the user-chosen candidate through `revision-prepare` and `revision-import`. The helper preserves the original comment, protection checks and parent link, reserves a default three-attempt correction batch, and requires fresh internal/human review. The review page adds a before-revision reference; reports and exports retain that lineage. See the [human-revision procedure](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction).
 

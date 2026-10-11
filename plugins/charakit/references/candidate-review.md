@@ -1,4 +1,6 @@
-# Candidate selection and human review (helper 0.1.24)
+# Candidate selection and human review (helper 0.1.25)
+
+Optional references in every current or future editing mode follow [scoped edit references](edit-references.md): each gets a recorded target criterion, is shown as nonselectable context, and remains an actual input in every redraw and human revision. Always use the complete returned input list; the two-input CLI examples below assume no extra scoped references.
 
 Review pages show a responsive overview and a separate large-image dialog. Open any source/candidate, zoom or fit to the window, drag/scroll details, switch candidates while preserving position, change the backdrop, and close with Esc. Opening the viewer preserves the decision and written feedback. A local page does not submit feedback automatically.
 
@@ -97,7 +99,7 @@ python <skill>/scripts/studio.py pool-status --project <project> --case <first-i
 python <skill>/scripts/studio.py pool-reserve --project <project> --case <first-id>
 # Only now execute the returned generation plan once.
 python <skill>/scripts/studio.py pool-import --project <project> --case <first-id> --token <token> --image <raw.png> --prompt-file <actual.txt> --reference <source.png> --reference <preferred-candidate.png>
-# For review_redraw, pass both returned references: source first, preferred candidate second.
+# For review_redraw, pass ALL returned references: source, recorded parent, then scoped edit references if present.
 python <skill>/scripts/studio.py review-sheet --project <project> --asset <first-id> --asset <second-id> --purpose assistant
 python <skill>/scripts/studio.py pool-compare --project <project> --case <first-id> --feedback-file <comparison.json>
 python <skill>/scripts/studio.py review-sheet --project <project> --asset <chosen-id> --purpose user

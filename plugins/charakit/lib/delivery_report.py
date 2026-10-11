@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 
 
 ZH = {
+    'edit_references': '参考图与适用范围',
     'prop_edit': '配饰／道具编辑', 'prop_action': '物件操作', 'prop_add': '添加', 'prop_remove': '移除', 'prop_replace': '替换',
     'target_object': '目标物件符合度', 'placement_contacts': '位置与接触关系',
     'occlusion_reconstruction': '遮挡与移除补全', 'anatomy_pose': '人体结构与姿势',
@@ -72,6 +73,7 @@ ZH = {
     'strategy': '生成策略', 'initial': '首版', 'continue_previous': '修订上一版', 'source_rebase': '从原图重做目标衣物',
 }
 EN = {
+    'edit_references': 'Edit references and permitted scopes',
     'prop_edit': 'Accessory/prop editing', 'prop_action': 'Object operation', 'prop_add': 'Add', 'prop_remove': 'Remove', 'prop_replace': 'Replace',
     'target_object': 'Target object adherence', 'placement_contacts': 'Placement and contacts',
     'occlusion_reconstruction': 'Occlusion and reconstruction', 'anatomy_pose': 'Anatomy and pose',
@@ -196,6 +198,8 @@ def round_record(core, root: Path, state: dict, asset: dict, number: int) -> dic
         'parent_asset_id': asset.get('parent_asset_id'), 'refinement_inputs': asset.get('refinement_inputs'),
         'human_revision': state.get('human_revisions', {}).get(asset.get('human_revision')),
         'outfit_components': asset.get('outfit_components'),
+        'edit_references': asset.get('edit_references'),
+        'generation_inputs': asset.get('generation_inputs'),
         'prop_action': asset.get('prop_action'),
         'recorded_score': review.get('result', {}).get('total'),
         'gate_summary': {
@@ -362,6 +366,10 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
                 lines += ['**'+t['outfit_components']+'**', '']
                 lines += ['- '+md(item['source'])+' → '+md(item['replacement']) for item in edit['outfit_components']]
                 lines.append('')
+        if c.get('edit_references'):
+            lines += ['**'+t['edit_references']+'**', '']
+            lines += ['- '+link(ref['id'],ref['image'])+' · '+md(', '.join(ref['scope']))+' · '+md(ref['notes']) for ref in c['edit_references']]
+            lines.append('')
         if c.get('human_revision'):
             revision = c['human_revision']
             lines += [t['revision_parent']+'：'+link(revision['parent_asset'],c['revision_parent_image']),
@@ -516,6 +524,7 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                           'label':label_for(core,asset,labels,language),'status':action,'max_rounds':pool['budget'] if pool_id else plan['max_rounds'] if plan else None,
                           'attempt_count':len(pool['attempts']) if pool_id else len(records),
                           'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','outfit_components','prop_action','edit_brief') if key in asset} if 'outfit_id' in asset else None,
+                          'edit_references':[{**ref,'image':str(core.contained(root,ref['path']))} for ref in asset.get('edit_references',[])],
                           'source':str(core.contained(root,state['source'])),'source_sha256':state['source_sha256'],
                           'source_canvas':state['canvas'],'history':records,'final':delivered,'delivery_error':error})
         if state['source_sha256'] not in {s['sha256'] for s in sources}:

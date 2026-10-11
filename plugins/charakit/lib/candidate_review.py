@@ -46,6 +46,9 @@ def validate_assessment(c, data):
 
 
 def validate_outfit_contract(c, asset, contract):
+    for ref in asset.get("edit_references", []):
+        require(c, any(check["dimension"] == "target" and check["component"] == ref["id"] for check in contract),
+                "Include a target check for every reference ID, describing its permitted design/expression cues.")
     if asset.get("edit_type") == "prop_edit":
         require(c, any(check["dimension"] == "target" and check["component"] == asset["target"]
                        for check in contract), "Prop contracts must include a target check for the actual object or addition site.")
@@ -81,6 +84,20 @@ def validate_state(c, state):
                 require(c, aid in by_id and aid not in seen and by_id[aid].get("candidate_pool") == key
                         and c.asset_slot(by_id[aid]) == pool["slot"] and "refinement_case" not in by_id[aid], "Invalid pool member.")
                 seen.add(aid)
+            if by_id[key].get("edit_references"):
+                require(c, pool["version"] == "1.1", "Scoped references require the review/redraw workflow.")
+                expected = copy.deepcopy(by_id[key]["generation_inputs"]["references"])
+                if n > 1:
+                    parent = by_id.get(attempt.get("parent"))
+                    require(c, parent is not None, "A reference-aware redraw needs its recorded parent.")
+                    expected = [{"path": state["source"], "sha256": state["source_sha256"], "role": "immutable_source"},
+                                {"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"}] + copy.deepcopy(by_id[key]["edit_references"])
+                require(c, attempt.get("references") == expected, "Attempt references must preserve paths, roles, hashes and editable scopes.")
+                if attempt["status"] == "imported":
+                    member = by_id[attempt["asset_id"]]
+                    require(c, member.get("edit_references") == by_id[key]["edit_references"]
+                            and member.get("generation_inputs", {}).get("references") == expected
+                            and member["generation_inputs"]["strategy"] == attempt["strategy"], "Imported references differ from their reserved attempt.")
             if pool['version'] == '1.1' and n > 1:
                 parent = by_id.get(attempt.get('parent'))
                 require(c, parent is not None and parent['id'] in {a.get('asset_id') for a in attempts[:n-1] if a['status']=='imported'}
@@ -89,7 +106,7 @@ def validate_state(c, state):
                         and attempt.get('blocking_findings') == redraw_findings(parent)
                         and bool(attempt.get('blocking_findings')),
                         "Redraws must retain the assessed parent's failure evidence.")
-                require(c, [r['path'] for r in attempt.get('references', [])] == [state['source'], parent['path']],
+                require(c, [r['path'] for r in attempt.get('references', [])] == [state['source'], parent['path']] + [r['path'] for r in by_id[key].get('edit_references', [])],
                         "Redraws use the immutable source and their recorded parent.")
                 if attempt['status'] == 'imported':
                     require(c, by_id[attempt['asset_id']]['parent_asset_id'] == parent['id'], "Invalid redraw lineage.")
@@ -111,6 +128,11 @@ def validate_state(c, state):
                 and revision.get("parent_sha256") == parent["sha256"]
                 and revision.get("status") in ("reserved", "imported", "failed", "cancelled"), "Invalid human revision binding.")
         validate_revision_contract(c, state, parent, revision["contract"])
+        if parent.get("edit_references"):
+            expected = [{"path": state["source"], "sha256": state["source_sha256"], "role": "immutable_source"},
+                        {"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"}] + copy.deepcopy(parent["edit_references"])
+            require(c, revision.get("pool_version") == "1.1" and revision.get("references") == expected,
+                    "Human revision inputs retain source, chosen parent and every scoped reference.")
         if revision["status"] == "imported":
             aid = revision.get("asset_id")
             require(c, aid in by_id and by_id[aid].get("human_revision") == key
@@ -120,7 +142,7 @@ def validate_state(c, state):
                     and pools[aid]["budget"] == revision.get("budget", 1) and pools[aid]["contract"] == revision["contract"],
                     "Invalid imported human revision.")
             require(c, all(by_id[aid].get(field) == parent.get(field) for field in
-                          ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief")),
+                          ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references")),
                     "Human revisions retain their chosen parent's edit definition and brief.")
     for asset in state["assets"]:
         if "human_revision" in asset:
@@ -168,7 +190,7 @@ def revision_plan(c, root, state, key):
     parent = c.get_asset(state, revision["parent_asset"])
     return {"revision": key, "status": revision["status"], "budget": revision.get("budget", 1),
             "parent_asset": parent["id"], "note": revision["note"], "contract": revision["contract"],
-            "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief") if k in parent},
+            "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent},
             "references": copy.deepcopy(revision["references"]),
             "reference_paths": [str(c.contained(root, item["path"])) for item in revision["references"]],
             "asset_id": revision.get("asset_id"), "failure": revision.get("failure"),
@@ -192,6 +214,8 @@ def revision_prepare(c, root, key, contract, budget=None):
                       for r in state.get("human_revisions", {}).values()), "Another human revision is pending.", "HUMAN_REVISION_NOT_READY")
     references = [{"path": path, "sha256": c.digest(c.contained(root, path)), "role": role}
                   for path, role in ((state["source"], "immutable_source"), (parent["path"], "edit_target"))]
+    if parent.get("edit_references"):
+        references = c.reference_call("bindings", root, state, parent, parent)
     state.setdefault("human_revisions", {})[key] = {
         "packet": key, "parent_asset": parent["id"], "parent_sha256": parent["sha256"],
         "source_sha256": state["source_sha256"], "parent_quality_sha256": c.review_fingerprint(parent["quality_review"]),
@@ -216,10 +240,10 @@ def revision_import(c, root, key, image, prompt, references, failure=None):
         c.write_state(root, state)
         return revision_plan(c, root, state, key)
     require(c, [p.resolve() for p in references] == [c.contained(root, r["path"]) for r in revision["references"]],
-            "Use the immutable source first and the user-chosen edit target second.", "INVALID_REVISION_REFERENCES")
+            "Use the returned immutable source, chosen edit target and scoped references in order.", "INVALID_REVISION_REFERENCES")
     actual_prompt = prompt.read_text(encoding="utf-8")
     require(c, bool(actual_prompt.strip()), "Save the actual targeted revision prompt.")
-    fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief") if k in parent}
+    fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent}
     fields.update(human_revision=key, quality_required=c.QUALITY_VERSION,
                   generation_inputs={"strategy": "user_revision", "references": copy.deepcopy(revision["references"]), "packet": key})
     return c.save_candidate(root, state, image, fields, c.validate_image(image, state["canvas"], state["background_mode"]), actual_prompt)
@@ -244,9 +268,12 @@ def pool_start(c, root, aid, contract, budget=3):
     require(c, not any(p["slot"] == c.asset_slot(asset) and not p.get("stopped") for p in state.get("candidate_pools", {}).values()), "This request already has a pool.")
     asset["candidate_pool"] = aid
     asset["parent_asset_id"] = None
+    initial = {"number": 1, "status": "imported", "strategy": "source_sample", "asset_id": aid}
+    if asset.get("edit_references"):
+        initial["references"] = copy.deepcopy(asset["generation_inputs"]["references"])
     state.setdefault("candidate_pools", {})[aid] = {
         "version": "1.1", "slot": c.asset_slot(asset), "budget": budget, "contract": copy.deepcopy(contract),
-        "attempts": [{"number": 1, "status": "imported", "strategy": "source_sample", "asset_id": aid}],
+        "attempts": [initial],
         "comparisons": [], "created_at": c.timestamp()}
     c.write_state(root, state)
     return pool_status(c, root, aid)
@@ -338,6 +365,11 @@ def pool_reserve(c, root, key):
     attempt = {"number": len(pool["attempts"]) + 1, "status": "reserved", "token": secrets.token_hex(12),
                "strategy": {"sample": "source_sample", "repair": "repair_best", "redraw": "review_redraw"}[plan["action"]],
                "parent": plan["repair_parent"], "references": [{"path": p, "sha256": c.digest(c.contained(root, p))} for p in refs]}
+    original = c.get_asset(state, key)
+    if original.get("edit_references"):
+        parent = c.get_asset(state, plan["repair_parent"]) if plan["repair_parent"] else None
+        attempt["references"] = c.reference_call("bindings", root, state, original, parent)
+        refs = [r["path"] for r in attempt["references"]]
     if plan["repair_parent"]:
         attempt["repair_plan"] = (pool["comparisons"][-1]["repair_plan"] if plan["action"] == "repair" else
                                   "Correct the attached failed checks; retain the fixed contract and successful edits. The immutable source controls identity, pose and framing; do not copy failed properties from the candidate.")
@@ -367,7 +399,7 @@ def pool_import(c, root, key, token, image, prompt, references, failure=None):
     actual_prompt = prompt.read_text(encoding="utf-8")
     require(c, bool(actual_prompt.strip()), "Save the actual submitted prompt.")
     original = c.get_asset(state, key)
-    fields = {k: copy.deepcopy(original[k]) for k in ("expression", "mouth_state", "outfit_id", "target", "color", "replacement", "edit_type", "outfit_components", "prop_action", "edit_brief") if k in original}
+    fields = {k: copy.deepcopy(original[k]) for k in ("expression", "mouth_state", "outfit_id", "target", "color", "replacement", "edit_type", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in original}
     fields.update(candidate_pool=key, repair_parent=attempt["parent"], generation_inputs=copy.deepcopy(attempt))
     if pool.get("human_revision"):
         fields["human_revision"] = pool["human_revision"]
@@ -382,6 +414,7 @@ def packet_valid(c, root, state, packet):
         require(c, path.is_file() and c.digest(path) == item["sha256"], "Review page or reference changed.", "STALE_REVIEW_PACKET")
     for label, binding in packet["items"].items():
         asset = c.get_asset(state, binding["asset_id"])
+        c.reference_call("check_files", root, asset.get("edit_references", []))
         original = c.contained(root, asset["path"])
         snapshot = c.contained(root, binding["copy"])
         require(c, original.is_file() and snapshot.is_file() and c.digest(original) == binding["sha256"] == asset["sha256"]
@@ -417,6 +450,8 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
     require(c, 1 <= len(ids) <= 3 and len(set(ids)) == len(ids), "Review one to three distinct candidates from one request.")
     assets = [c.get_asset(state, i) for i in ids]
     require(c, len({c.asset_slot(a) for a in assets}) == 1, "Compare the same request only.")
+    reference_metadata = assets[0].get("edit_references", [])
+    require(c, all(a.get("edit_references", []) == reference_metadata for a in assets), "Compare candidates with the same scoped references.")
     require(c, all(c.delivery_validation(c.check_asset(root, state, a))["passed"] for a in assets), "Review requires readable, unchanged images.")
     if purpose == "user":
         require(c, all("quality_review" in a and c.quality_status(root, state, a) != "stale" for a in assets), "Complete internal assessment before human review.")
@@ -455,19 +490,30 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
         packet["revision_parent"] = {"asset_id": parent["id"], "sha256": parent["sha256"],
                                      "copy": (folder / "parent.png").relative_to(root).as_posix()}
         revision = {"source": "parent.png", "note": origin["note"]}
-    page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision)
+    edit_references = []
+    for index, ref in enumerate(reference_metadata, 1):
+        filename = f'reference-{index}' + Path(ref["path"]).suffix
+        c.copy_exclusive(c.contained(root, ref["path"]), folder / filename)
+        edit_references.append({**ref, "path": filename})
+    if edit_references:
+        packet["edit_references"] = copy.deepcopy(reference_metadata)
+    page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision, edit_references)
     (folder / "index.html").write_text(page, encoding="utf-8")
     # Public packet contains no mapping, version, generation prompt, prior score or status.
     public = {"packet": key, "purpose": purpose, "request": request, "contract": contract, "language": language, "ui_labels": ui,
               "source": "source.png", "candidates": {label: f"{label}.png" for label in items}}
     if revision:
         public["revision"] = revision
+    if edit_references:
+        public["edit_references"] = edit_references
     (folder / "packet.json").write_text(json.dumps(public, ensure_ascii=False, indent=2), encoding="utf-8")
     packet["artifacts"] = [{"path": p.relative_to(root).as_posix(), "sha256": c.digest(p)} for p in (folder / "source.png", folder / "index.html", folder / "packet.json")]
     if revision:
         packet["artifacts"].append({"path": packet["revision_parent"]["copy"], "sha256": origin["parent_sha256"]})
+    packet["artifacts"] += [{"path": (folder / ref["path"]).relative_to(root).as_posix(), "sha256": ref["sha256"]} for ref in edit_references]
     c.write_state(root, state)
     return {"packet": key, "page": str((folder / "index.html").resolve()), "public_packet": str((folder / "packet.json").resolve()),
+            **({"edit_references": [{**r, "path": str((folder / r["path"]).resolve())} for r in edit_references]} if edit_references else {}),
             **({"revision_parent": str((folder / "parent.png").resolve()), "revision_note": origin["note"]} if origin else {}),
             "source": str((folder / "source.png").resolve()), "candidates": {label: str((folder / f"{label}.png").resolve()) for label in items}}
 
@@ -529,7 +575,8 @@ PREVIEW_EN = {'CharaKit 评图': 'CharaKit image review',
                                         'package images automatically.'}
 
 # Append labels to preserve the existing template's numbered UI tokens.
-PREVIEW_EN.update({'修订前': 'Before revision', '本次修改': 'Requested correction'})
+PREVIEW_EN.update({'修订前': 'Before revision', '本次修改': 'Requested correction',
+                  '参考图': 'Edit reference', '仅参考指定修改内容': 'Use only for the specified edit'})
 
 REVIEW_SHEET_TEMPLATE = r"""<!doctype html>
 <html lang="__LANGUAGE__">
@@ -609,7 +656,9 @@ def preview_text(language="zh-CN", translations=None, allow_legacy=False):
         raise ValueError('Use a language tag such as zh-CN, en or ja.')
     if translations is not None:
         keys = set(PREVIEW_EN)
-        accepted = (keys, keys - {'修订前', '本次修改'}) if allow_legacy else (keys,)
+        reference_keys = {'参考图', '仅参考指定修改内容'}
+        revision_keys = {'修订前', '本次修改'}
+        accepted = (keys, keys - revision_keys, keys - reference_keys, keys - reference_keys - revision_keys) if allow_legacy else (keys,)
         if not isinstance(translations, dict) or set(translations) not in accepted or not all(isinstance(v, str) and v.strip() and len(v) <= 2000 for v in translations.values()):
             raise ValueError('Supply a complete text mapping for the preview language.')
         return dict(translations)
@@ -624,13 +673,16 @@ def script_json(value):
     return json.dumps(value, ensure_ascii=False).replace('<', r'\u003c').replace('>', r'\u003e').replace('&', r'\u0026')
 
 
-def render_sheet(key, labels, request, contract, purpose, language="zh-CN", translations=None, revision=None):
-    ui = preview_text(language, translations, allow_legacy=revision is None)
+def render_sheet(key, labels, request, contract, purpose, language="zh-CN", translations=None, revision=None, edit_references=None):
+    ui = preview_text(language, translations, allow_legacy=not edit_references)
+    if revision and not {'修订前', '本次修改'} <= set(ui):
+        raise ValueError('Supply revision comparison labels for this page.')
     items = [{"label": ui['原图'], "src": "source.png"}]
     if revision:
         items.append({"label": ui['修订前'], "src": revision['source']})
         request = f"{request} · {ui['本次修改']}: {revision['note']}"
     items += [{"label": label, "src": f"{label}.png"} for label in labels]
+    items += [{"label": ui['参考图']+' · '+ref['id'], "src": ref['path']} for ref in (edit_references or [])]
     cards = ''.join(f'<figure><figcaption>{html.escape(item["label"])}</figcaption><button class="image-button" type="button" data-viewer-index="{index}" aria-label="{html.escape(ui["放大查看"])} {html.escape(item["label"])}"><img src="{item["src"]}" alt="{html.escape(item["label"])}"></button></figure>' for index, item in enumerate(items))
     values = {
         '__REQUEST__': html.escape(str(request)), '__CARDS__': cards,
@@ -639,6 +691,8 @@ def render_sheet(key, labels, request, contract, purpose, language="zh-CN", tran
         '__PACKET__': script_json(key), '__VIEWER_ITEMS__': script_json(items),
         '__LANGUAGE__': html.escape(language), '__UI_STRINGS__': script_json(ui),
     }
+    if edit_references:
+        values['__CHECKS__'] += ''.join('<li>'+html.escape(ui['仅参考指定修改内容']+' · '+ref['id']+' · '+', '.join(ref['scope'])+'：'+ref['notes'])+'</li>' for ref in edit_references)
     values.update({f'__UI_{index}__': html.escape(ui[label]) for index, label in enumerate(PREVIEW_EN) if label in ui})
     # Substitute once: user prose that resembles a token remains literal text.
     import re
@@ -667,11 +721,12 @@ def refresh_review_sheet(c, root, key):
         number += 1
     page = folder / f'index-{number:03d}.html'
     with page.open('x', encoding='utf-8') as stream:
-        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', language, page_ui, public.get('revision')))
+        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', language, page_ui, public.get('revision'), public.get('edit_references')))
     packet.setdefault('artifacts', []).append({'path': page.relative_to(root).as_posix(), 'sha256': c.digest(page)})
     packet['latest_page'] = page.relative_to(root).as_posix()
     c.write_state(root, state)
     return {'packet': key, 'page': str(page.resolve()), 'public_packet': str(public_path.resolve()),
+            **({'edit_references': [{**r, 'path': str((folder / r['path']).resolve())} for r in public['edit_references']]} if public.get('edit_references') else {}),
             **({'revision_parent': str((folder / 'parent.png').resolve()), 'revision_note': public['revision']['note']} if public.get('revision') else {}),
             'source': str((folder / 'source.png').resolve()),
             'candidates': {label: str(c.contained(root, item['copy']).resolve()) for label, item in packet['items'].items()}}
@@ -764,7 +819,7 @@ def validate_blind_record(c, root, state, asset, review):
 
 def require_user_feedback(c, root, state, asset):
     if "candidate_pool" not in asset:
-        require(c, asset.get("edit_type") not in ("outfit_replace", "prop_edit"),
+        require(c, asset.get("edit_type") not in ("outfit_replace", "prop_edit") and "edit_references" not in asset,
                 "Full outfits and prop edits require a candidate pool and actual user acceptance.", "HUMAN_REVIEW_REQUIRED")
         return
     feedback = asset.get("human_feedback", {})

@@ -1,5 +1,7 @@
 # Final images, preview and generation report
 
+Helper 0.1.25 records [scoped edit references](edit-references.md) for all editing modes in reports and ZIP manifests, including their permitted scopes and actual generation/redraw inputs. ZIP reference snapshots remain separate from final sprites and do not count as deliverables. Changed/missing reference snapshots invalidate reuse and block packaging. The final report still requires actual human feedback; earlier reports are internal drafts.
+
 Helper 0.1.24 keeps actual candidate-pool attempt numbers instead of renumbering imported images after a failed call. The budget includes those failed calls; their recorded reasons appear separately. Exhausted new pools direct the user into human review with unresolved findings, without final artwork export.
 
 Helper 0.1.23 defaults new pools to three total attempts per result. Correct recorded internal failures before human review, even when the total is ≥80; require all five dimensions ≥4/5 and all domain/fidelity checks passed. Stop on full passage or recorded exhaustion; honor explicit smaller limits and preserve legacy pools. See [the current review/redraw procedure](candidate-review.md).
