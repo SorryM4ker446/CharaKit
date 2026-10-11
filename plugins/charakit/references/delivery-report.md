@@ -1,5 +1,7 @@
 # Final images, preview and generation report
 
+Helper 0.1.27 adds source-versus-selected detail PNGs to the final Markdown report and its `detail_previews` manifest/return values. Reuse the actual accepted human packet's whole-face/target coordinates; legacy outputs may use an explicitly requested `--face-box` and a recorded Outfits target box. Preserve original framing in full PNGs and the overview. Inspection images live under `details/`, retain source-coordinate comparisons and their hashes, and never count as final sprites. Draft, failed or rejected cases do not create final detail previews. No additional image generation or automatic PDF is required.
+
 Helper 0.1.25 records [scoped edit references](edit-references.md) for all editing modes in reports and ZIP manifests, including their permitted scopes and actual generation/redraw inputs. ZIP reference snapshots remain separate from final sprites and do not count as deliverables. Changed/missing reference snapshots invalidate reuse and block packaging. The final report still requires actual human feedback; earlier reports are internal drafts.
 
 Helper 0.1.24 keeps actual candidate-pool attempt numbers instead of renumbering imported images after a failed call. The budget includes those failed calls; their recorded reasons appear separately. Exhausted new pools direct the user into human review with unresolved findings, without final artwork export.

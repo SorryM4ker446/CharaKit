@@ -56,6 +56,7 @@ Include the active `domain_review` checklist: `expression` checks emotion, facia
 - Preserve the original file and all candidate versions. The helper does not repaint, remove backgrounds, change alpha, or resize candidate images.
 - Check decoding, PNG format, actual canvas dimensions, and background requirements. Record size mismatches accurately but temporarily exclude them from rubric scoring and preview-delivery rejection; formal acceptance/export retain their size gate. Do not hide mismatches with stretching, tight crops, or automatic centering.
 - Inspect both full images and enlarged **whole-face** comparisons. Check facial detail, style, design, and harmony at normal game display size; see [quality-checklist.md](references/quality-checklist.md).
+- Pass the inspected whole-face source coordinates to `review-sheet --face-box` so human pages include both full illustrations and face details. Use `--detail-box` for an additional relevant protected region when needed. Inspection crops stay separate from complete PNG deliverables; the accepted version's recorded regions appear in the final report.
 - Explain checks and visible problems in the user's language. Scripts verify file requirements and recorded rubric gates, not artistic fidelity. Use only inspected, attributed rubric scores; do not invent objective identity metrics or model identifiers.
 - Explicit satisfaction or version selection is sufficient art feedback; do not request the same approval again. Unreviewed candidates remain `unreviewed`.
 - The helper only sets `accepted` after technical checks pass. If a user likes a technically failed candidate, save their positive feedback separately and explain the remaining technical issue; do not erase their feedback or mark the technical check as passed. Such candidates remain available for inspection but cannot enter a formal export.
@@ -74,7 +75,7 @@ python <skill>/scripts/studio.py add --project <output-dir> --expression happy -
 python <skill>/scripts/studio.py add --project <output-dir> --expression happy --mouth-state open --image <generated-open.png> --prompt-file <open-prompt.txt>
 python <skill>/scripts/studio.py preview --project <output-dir> --output <preview.png> --face-box <left> <top> <right> <bottom> --labels-file <labels.json>
 python <skill>/scripts/studio.py quality --project <output-dir> --asset angry_v001 --assessment-file <assessment.json> --comparison <output-dir/preview/light.png> --comparison <output-dir/preview/dark.png>
-python <skill>/scripts/studio.py review-sheet --project <output-dir> --asset angry_v001 --purpose user
+python <skill>/scripts/studio.py review-sheet --project <output-dir> --asset angry_v001 --purpose user --face-box <left> <top> <right> <bottom>
 # Wait for actual user feedback, then record its packet and alias.
 python <skill>/scripts/studio.py human-feedback --project <output-dir> --feedback-file <feedback.json>
 python <skill>/scripts/studio.py deliver --project <output-dir> --asset angry_v001

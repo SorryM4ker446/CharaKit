@@ -496,7 +496,48 @@ def user_review_summary(c, root, state, assets, members, pool, items, omissions)
                                               "findings": redraw_findings(a)} for a in assets}}
 
 
-def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=None, selection_note=None):
+def inspection_regions(c, state, assets, face_box, detail_box):
+    """Inspection boxes locate source pixels; they never align or modify artwork."""
+    regions = []
+    if detail_box is None:
+        boxes = [a.get('edit_brief', {}).get('target_box') for a in assets]
+        if boxes and boxes[0] and all(box == boxes[0] for box in boxes):
+            detail_box = boxes[0]
+    for name, box in (('face', face_box), ('target', detail_box)):
+        if box is not None:
+            require(c, c.valid_source_box(box, state['canvas']),
+                    'Inspection boxes must be integer coordinates inside the source canvas.', 'INVALID_REVIEW_BOX')
+            regions.append({'id': name, 'box': list(box)})
+    return regions
+
+
+def inspection_images(c, folder, canvas, regions, labels, revision):
+    from PIL import Image
+    entries = [('source', 'source.png')] + ([('parent', 'parent.png')] if revision else [])
+    entries += [(label, label+'.png') for label in labels]
+    files, sizes = [], {}
+    for name, filename in entries:
+        with Image.open(folder / filename) as image:
+            sizes[name] = list(image.size)
+            for region in regions:
+                box = region['box']
+                # Same source coordinates for every version; no independent face centering.
+                coords = [round(v * image.size[i % 2] / canvas['width' if i % 2 == 0 else 'height']) for i, v in enumerate(box)]
+                coords[0] = min(image.width-1, coords[0]); coords[1] = min(image.height-1, coords[1])
+                coords[2] = min(image.width, max(coords[0]+1, coords[2]))
+                coords[3] = min(image.height, max(coords[1]+1, coords[3]))
+                dest = folder / (region['id']+'-'+name+'.png')
+                image.convert('RGBA').crop(tuple(coords)).save(dest)
+                files.append(dest)
+    return {'canvas': {key: canvas[key] for key in ('width', 'height')}, 'regions': regions, 'sizes': sizes}, files
+
+
+def detail_view_paths(folder, inspection):
+    return {r['id']: {name: str((folder/(r['id']+'-'+name+'.png')).resolve())
+                     for name in inspection['sizes']} for r in inspection['regions']}
+
+
+def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=None, selection_note=None, face_box=None, detail_box=None):
     root = root.resolve()
     try:
         ui = preview_text(language, translations)
@@ -520,6 +561,12 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
         parent = c.get_asset(state, origin["parent_asset"])
         parent_path = c.contained(root, parent["path"])
         require(c, parent_path.is_file() and c.digest(parent_path) == origin["parent_sha256"], "Revision parent changed or is missing.", "STALE_REVIEW_PACKET")
+        previous = state['review_packets'][origin['packet']].get('inspection', {}).get('regions', [])
+        if face_box is None:
+            face_box = next((r['box'] for r in previous if r['id']=='face'), None)
+        if detail_box is None:
+            detail_box = next((r['box'] for r in previous if r['id']=='target'), None)
+    regions = inspection_regions(c, state, assets, face_box, detail_box)
     secrets.SystemRandom().shuffle(assets)
     key = secrets.token_hex(12)
     folder = root / "reviews" / key
@@ -554,7 +601,8 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
     summary = user_review_summary(c, root, state, assets, members, pool, items, omissions) if purpose == "user" else None
     if summary is not None:
         packet["presentation"] = {"summary": summary, "omissions": omissions, "pool": assets[0].get("candidate_pool")}
-    page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision, edit_references, summary)
+    inspection, detail_files = inspection_images(c, folder, state['canvas'], regions, list(items), revision)
+    page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision, edit_references, summary, inspection)
     (folder / "index.html").write_text(page, encoding="utf-8")
     # Assistant packets stay blind; user packets expose checks/recommendation separately.
     public = {"packet": key, "purpose": purpose, "request": request, "contract": contract, "language": language, "ui_labels": ui,
@@ -565,13 +613,17 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
         public["edit_references"] = edit_references
     if summary is not None:
         public["review_summary"] = summary
+    public['inspection'] = inspection
+    packet['inspection'] = copy.deepcopy(inspection)
     (folder / "packet.json").write_text(json.dumps(public, ensure_ascii=False, indent=2), encoding="utf-8")
     packet["artifacts"] = [{"path": p.relative_to(root).as_posix(), "sha256": c.digest(p)} for p in (folder / "source.png", folder / "index.html", folder / "packet.json")]
     if revision:
         packet["artifacts"].append({"path": packet["revision_parent"]["copy"], "sha256": origin["parent_sha256"]})
     packet["artifacts"] += [{"path": (folder / ref["path"]).relative_to(root).as_posix(), "sha256": ref["sha256"]} for ref in edit_references]
+    packet['artifacts'] += [{'path': p.relative_to(root).as_posix(), 'sha256': c.digest(p)} for p in detail_files]
     c.write_state(root, state)
     return {"packet": key, "page": str((folder / "index.html").resolve()), "public_packet": str((folder / "packet.json").resolve()),
+            'inspection': inspection, 'detail_views': detail_view_paths(folder, inspection),
             **({"review_summary": summary} if summary is not None else {}),
             **({"edit_references": [{**r, "path": str((folder / r["path"]).resolve())} for r in edit_references]} if edit_references else {}),
             **({"revision_parent": str((folder / "parent.png").resolve()), "revision_note": origin["note"]} if origin else {}),
@@ -655,6 +707,20 @@ SUMMARY_LABELS = {
 }
 PREVIEW_EN.update(SUMMARY_LABELS)
 
+INTERACTION_LABELS = {
+    '局部对照': 'Detail comparisons', '整脸': 'Whole face', '目标部位': 'Target region',
+    '全图': 'Full canvas', '查看范围': 'Inspection area', '与原图同步对照': 'Compare with source',
+    '局部使用相同原图坐标；尺寸不同时仅按比例映射，不校正位置或修复画布。': 'Details use the same source coordinates. Different sizes are mapped proportionally; position and canvas differences are not corrected.',
+    '采用此版本': 'Use this version', '修改此版本': 'Revise this version',
+    '补充评价（可选）': 'Additional ratings (optional)', '复制评审意见': 'Copy review feedback',
+    '反馈已复制；粘贴到聊天后才会处理。': 'Feedback copied. Paste it into the chat to have it processed.',
+    '无法自动复制，请复制下面的反馈文字。': 'Copy is unavailable. Copy the feedback text below.',
+    '待交回的评审意见': 'Review feedback to return',
+    '切换图片保留比例和位置；拖动查看细节，方向键切换，Esc 关闭。': 'Switching images retains scale and position. Drag to inspect, use arrow keys to switch, and Esc to close.',
+    '原图尺寸': 'Source dimensions', '候选尺寸': 'Candidate dimensions',
+}
+PREVIEW_EN.update(INTERACTION_LABELS)
+
 REVIEW_SHEET_TEMPLATE = r"""<!doctype html>
 <html lang="__LANGUAGE__">
 <meta charset="utf-8">
@@ -728,6 +794,102 @@ byId('download').onclick=()=>{const value=id=>byId(id).value;const decision=valu
 """
 
 
+LEGACY_REVIEW_SHEET_TEMPLATE = REVIEW_SHEET_TEMPLATE
+REVIEW_SHEET_TEMPLATE = r"""<!doctype html>
+<html lang="__LANGUAGE__">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__UI_0__</title><link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}body{font:16px system-ui;max-width:1400px;margin:28px auto;padding:0 20px;background:#f5f4f0;color:#20232a}h1{font-size:28px}h2{font-size:22px}p{line-height:1.55}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}figure{margin:0;min-width:0;background:white;padding:12px;border-radius:12px}figcaption{font-weight:600;margin-bottom:8px}
+.image-button{display:block;border:0;margin:0;padding:0;width:100%;background:transparent;cursor:zoom-in}.image-button img{display:block;width:100%;height:360px;object-fit:contain;background:#ddd}.detail-grid .image-button img{height:240px}
+button,select,textarea,input{font:inherit}button,select{padding:9px;margin:6px 6px 6px 0}button{cursor:pointer}button:disabled{cursor:default;opacity:.55}.candidate-actions{display:flex;flex-wrap:wrap;margin-top:8px}.candidate-actions button{font-size:14px;flex:1;margin:4px 4px 0 0}
+textarea{display:block;width:100%;max-width:100%;min-height:88px;padding:10px;margin:8px 0}section{background:white;padding:20px;margin-top:18px;border-radius:12px}details summary{cursor:pointer}details[open]>summary{margin-bottom:12px}.hint{font-size:14px;color:#535761}
+button:focus-visible,select:focus-visible,textarea:focus-visible,input:focus-visible,summary:focus-visible,.viewport:focus-visible{outline:3px solid #3657ae;outline-offset:3px}
+dialog{width:min(1400px,96vw);height:94dvh;max-width:none;max-height:94dvh;padding:16px;border:0;border-radius:12px;background:#f5f4f0;color:#20232a}dialog::backdrop{background:#0009}dialog[open]{display:flex;flex-direction:column;gap:8px}body.viewer-open{overflow:hidden}
+.viewer-header{display:flex;align-items:center;justify-content:space-between;gap:12px}.viewer-header h2{font-size:20px;margin:0}.viewer-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.viewer-toolbar button,.viewer-header button,.viewer-toolbar select{margin:0}.viewer-toolbar input[type=range]{width:120px;max-width:25vw}.viewer-toolbar output{min-width:50px}
+.viewer-panels{display:flex;gap:12px;flex:1;min-height:0;min-width:0}.viewer-pane{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;gap:6px}.viewer-pane[hidden]{display:none}.pane-label{font-size:14px;margin:0;line-height:1.4}
+.viewport{flex:1;min-height:0;min-width:0;overflow:auto;background:#ddd;border-radius:8px;touch-action:pan-x pan-y;cursor:grab}.viewport.dragging{cursor:grabbing;user-select:none}.image-frame{display:flex;align-items:center;justify-content:center}.image-frame img{display:block;flex:none;max-width:none;pointer-events:none;user-select:none}
+body.dark .image-button img,body.dark .viewport{background:#25272c}#copy-output[hidden]{display:none}
+@media(max-width:600px){body{padding:0 12px;margin:20px auto}.grid{grid-template-columns:1fr}.image-button img{height:360px}dialog{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;padding:12px}.viewer-toolbar{gap:6px}.viewer-toolbar button,.viewer-toolbar select{padding:7px}.viewer-toolbar input[type=range]{width:90px}.viewer-panels.comparing{flex-direction:column}.hint{font-size:12px}.candidate-actions button{font-size:15px}}
+</style>
+<h1>__UI_1__</h1><p>__REQUEST__</p><p class="hint">__UI_2__</p>
+<button id="background" type="button" aria-pressed="false">__UI_3__</button><button id="open-viewer" type="button">__UI_4__</button>
+<div class="grid">__CARDS__</div>
+__DETAIL_CARDS__
+__REVIEW_CONTEXT__
+<section id="human-review"><details><summary>__UI_5__</summary><ul>__CHECKS__</ul></details>
+<h2>__UI_6__</h2><p>__UI_7__</p>
+<label>__UI_8__ <select id="decision"><option value="">__UI_9__</option><option value="accept">__UI_10__</option><option value="revise">__UI_11__</option><option value="reject">__UI_12__</option></select></label>
+<label>__UI_13__ <select id="candidate"><option value="">__UI_9__</option>__OPTIONS__</select></label>
+<textarea id="note" aria-label="__UI_14__" placeholder="__UI_15__"></textarea>
+<details><summary>__EXTRA_RATINGS__</summary>
+<label>__UI_16__ <select id="fit"><option value="unspecified">__UI_19__</option><option>__UI_20__</option><option>__UI_21__</option></select></label>
+<label>__UI_17__ <select id="preservation"><option value="unspecified">__UI_19__</option><option>__UI_20__</option><option>__UI_21__</option></select></label>
+<label>__UI_18__ <select id="usability"><option value="unspecified">__UI_19__</option><option>__UI_22__</option><option>__UI_23__</option></select></label>
+</details>
+<button id="copy-feedback" type="button">__COPY_FEEDBACK__</button><button id="download" type="button">__UI_24__</button><p id="message" role="status"></p>
+<textarea id="copy-output" readonly hidden aria-label="__COPY_OUTPUT__"></textarea><p class="hint">__UI_25__</p></section>
+<dialog id="viewer" aria-labelledby="viewer-title">
+<div class="viewer-header"><h2 id="viewer-title">__UI_26__</h2><button id="close-viewer" type="button" aria-label="__UI_27__">__UI_28__</button></div>
+<div class="viewer-toolbar">
+<button id="previous" type="button" aria-label="__UI_29__">←</button><label>__UI_31__ <select id="viewer-candidate"></select></label><button id="next" type="button" aria-label="__UI_30__">→</button>
+<label>__INSPECTION_AREA__ <select id="inspection-area"></select></label><label><input id="compare-source" type="checkbox"> __COMPARE_SOURCE__</label>
+<button id="zoom-out" type="button" aria-label="__UI_32__">−</button><input id="zoom" type="range" min="100" max="500" step="25" value="100" aria-label="__UI_33__"><output id="zoom-label" for="zoom">100%</output><button id="zoom-in" type="button" aria-label="__UI_34__">＋</button>
+<button id="fit-window" type="button">__UI_35__</button><button id="viewer-background" type="button" aria-pressed="false">__UI_3__</button>
+</div><p class="hint">__VIEWER_HINT__</p>
+<div id="viewer-panels" class="viewer-panels">
+<div id="source-pane" class="viewer-pane" hidden><p id="source-label" class="pane-label">__SOURCE_LABEL__</p><div id="source-viewport" class="viewport" tabindex="0" aria-label="__SOURCE_VIEWPORT__"><div id="source-frame" class="image-frame"><img id="source-image" alt="__SOURCE_LABEL__" draggable="false"></div></div></div>
+<div class="viewer-pane"><p id="candidate-label" class="pane-label"></p><div id="viewport" class="viewport" tabindex="0" aria-label="__UI_37__"><div id="image-frame" class="image-frame"><img id="viewer-image" alt="" draggable="false"></div></div></div>
+</div><p id="viewer-status" role="status" class="hint"></p>
+<div class="candidate-actions"><button id="viewer-accept" type="button">__ACCEPT_VERSION__</button><button id="viewer-revise" type="button">__REVISE_VERSION__</button></div>
+</dialog>
+<script>
+'use strict';
+const packet=__PACKET__,items=__VIEWER_ITEMS__,ui=__UI_STRINGS__,regions=__INSPECTION_REGIONS__;
+const byId=id=>document.getElementById(id),viewer=byId('viewer'),choice=byId('viewer-candidate'),area=byId('inspection-area'),compare=byId('compare-source');
+const panes=[{viewport:byId('viewport'),frame:byId('image-frame'),picture:byId('viewer-image')},{viewport:byId('source-viewport'),frame:byId('source-frame'),picture:byId('source-image')}];
+let current=0,zoom=1,position={x:.5,y:.5},drag=null,loadSerial=0;
+items.forEach((item,index)=>{const option=document.createElement('option');option.value=index;option.textContent=item.label;choice.append(option);});
+[{id:'full',label:ui['全图']},...regions].forEach(region=>{const option=document.createElement('option');option.value=region.id;option.textContent=region.label;area.append(option);});
+function remember(pane=panes[0]){const width=pane.frame.clientWidth||1,height=pane.frame.clientHeight||1;return {x:(pane.viewport.scrollLeft+pane.viewport.clientWidth/2)/width,y:(pane.viewport.scrollTop+pane.viewport.clientHeight/2)/height};}
+function scrollToPosition(pane){pane.viewport.scrollLeft=position.x*pane.frame.clientWidth-pane.viewport.clientWidth/2;pane.viewport.scrollTop=position.y*pane.frame.clientHeight-pane.viewport.clientHeight/2;pane.expected={left:pane.viewport.scrollLeft,top:pane.viewport.scrollTop};}
+function layout(){if(!viewer.open)return;for(const pane of panes){if(!pane.viewport.clientWidth||!pane.picture.naturalWidth||!pane.picture.complete)continue;const fit=Math.min(pane.viewport.clientWidth/pane.picture.naturalWidth,pane.viewport.clientHeight/pane.picture.naturalHeight);const width=pane.picture.naturalWidth*fit*zoom,height=pane.picture.naturalHeight*fit*zoom;pane.picture.style.width=width+'px';pane.picture.style.height=height+'px';pane.frame.style.width=Math.max(pane.viewport.clientWidth,width)+'px';pane.frame.style.height=Math.max(pane.viewport.clientHeight,height)+'px';scrollToPosition(pane);}byId('zoom').value=Math.round(zoom*100);byId('zoom-label').value=Math.round(zoom*100)+'%';}
+function imagePath(item){return (item.views||{})[area.value]||item.src;}
+function show(index,keepPosition=true){if(keepPosition&&panes[0].picture.complete&&panes[0].picture.naturalWidth)position=remember();current=(index+items.length)%items.length;choice.value=current;const item=items[current],serial=++loadSerial;
+for(const option of area.options)option.disabled=option.value!=='full'&&!(item.views||{})[option.value];if(area.selectedOptions[0].disabled)area.value='full';
+compare.disabled=!item.candidate;byId('source-pane').hidden=!compare.checked||compare.disabled;byId('viewer-panels').classList.toggle('comparing',!byId('source-pane').hidden);
+byId('viewer-title').textContent=ui['大图预览']+' · '+item.label;byId('viewer-status').textContent=ui['加载中…'];
+byId('candidate-label').textContent=item.label+(item.size?' · '+item.size.join(' × '):'');byId('source-label').textContent=ui['原图']+(items[0].size?' · '+items[0].size.join(' × '):'');
+for(const [i,pane] of panes.entries()){const entry=i===0?item:items[0];pane.picture.alt=entry.label;pane.picture.onload=()=>{if(serial!==loadSerial)return;layout();byId('viewer-status').textContent=item.label+' · '+ui[area.value==='face'?'整脸':area.value==='target'?'目标部位':'全图']+(area.value!=='full'?' · '+ui['局部使用相同原图坐标；尺寸不同时仅按比例映射，不校正位置或修复画布。']:'');};pane.picture.onerror=()=>{if(serial===loadSerial)byId('viewer-status').textContent=ui['图片加载失败，请关闭后重试。'];};pane.picture.src=imagePath(entry);}
+byId('viewer-accept').disabled=byId('viewer-revise').disabled=!item.candidate;}
+function openViewer(index,scope='full'){position={x:.5,y:.5};zoom=1;area.value=scope;viewer.showModal();document.body.classList.add('viewer-open');show(index,false);}
+function setZoom(value){position=remember();zoom=Math.min(5,Math.max(1,value));layout();}
+function toggleBackground(){const dark=document.body.classList.toggle('dark');for(const id of ['background','viewer-background'])byId(id).setAttribute('aria-pressed',String(dark));}
+byId('background').onclick=byId('viewer-background').onclick=toggleBackground;byId('open-viewer').onclick=()=>openViewer(0);
+document.querySelectorAll('[data-viewer-index]').forEach(button=>button.onclick=()=>openViewer(Number(button.dataset.viewerIndex),button.dataset.view||'full'));
+byId('close-viewer').onclick=()=>viewer.close();viewer.addEventListener('close',()=>{document.body.classList.remove('viewer-open');drag=null;for(const pane of panes)pane.viewport.classList.remove('dragging');});
+viewer.addEventListener('click',event=>{if(event.target!==viewer)return;const rect=viewer.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)viewer.close();});
+byId('previous').onclick=()=>show(current-1);byId('next').onclick=()=>show(current+1);choice.onchange=()=>show(Number(choice.value));
+area.onchange=()=>{position={x:.5,y:.5};zoom=1;show(current,false);};compare.onchange=()=>show(current);
+byId('zoom-in').onclick=()=>setZoom(zoom+.25);byId('zoom-out').onclick=()=>setZoom(zoom-.25);byId('zoom').oninput=event=>setZoom(Number(event.target.value)/100);
+byId('fit-window').onclick=()=>{zoom=1;position={x:.5,y:.5};layout();};
+viewer.addEventListener('keydown',event=>{if(event.target.matches('input,select,textarea'))return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();show(current+(event.key==='ArrowLeft'?-1:1));}});
+for(const pane of panes){pane.viewport.addEventListener('scroll',()=>{if(!viewer.open)return;const actual={left:pane.viewport.scrollLeft,top:pane.viewport.scrollTop};if(pane.expected&&Math.abs(actual.left-pane.expected.left)<.5&&Math.abs(actual.top-pane.expected.top)<.5)return;position=remember(pane);pane.expected=actual;for(const other of panes)if(other!==pane)scrollToPosition(other);});
+pane.viewport.addEventListener('pointerdown',event=>{if(event.pointerType!=='mouse'||event.button!==0)return;event.preventDefault();pane.viewport.focus();drag={pane,id:event.pointerId,x:event.clientX,y:event.clientY,left:pane.viewport.scrollLeft,top:pane.viewport.scrollTop};pane.viewport.setPointerCapture(event.pointerId);pane.viewport.classList.add('dragging');});
+pane.viewport.addEventListener('pointermove',event=>{if(!drag||drag.pane!==pane||drag.id!==event.pointerId)return;pane.viewport.scrollLeft=drag.left+drag.x-event.clientX;pane.viewport.scrollTop=drag.top+drag.y-event.clientY;});
+for(const name of ['pointerup','pointercancel','lostpointercapture'])pane.viewport.addEventListener(name,()=>{drag=null;pane.viewport.classList.remove('dragging');});}
+new ResizeObserver(()=>layout()).observe(byId('viewer-panels'));
+function chooseCandidate(label,decision){if(!Array.from(byId('candidate').options).some(option=>option.value===label))return;byId('candidate').value=label;byId('decision').value=decision;byId('copy-output').hidden=true;byId('message').textContent='';if(viewer.open)viewer.close();byId(decision==='revise'?'note':'decision').focus();}
+document.querySelectorAll('[data-review-candidate]').forEach(button=>button.onclick=()=>chooseCandidate(button.dataset.reviewCandidate,button.dataset.decision));
+byId('viewer-accept').onclick=()=>chooseCandidate(items[current].label,'accept');byId('viewer-revise').onclick=()=>chooseCandidate(items[current].label,'revise');
+function feedback(){const value=id=>byId(id).value;const decision=value('decision'),candidate=value('candidate'),note=value('note').trim();if(!decision||(decision!=='reject'&&!candidate)||(decision==='revise'&&!note)){byId('message').textContent=ui['请选择决定和候选；需要修改时请说明问题。'];return null;}return {packet,basis:'user',decision,candidate:decision==='reject'?null:candidate,note,facets:{fit:value('fit'),preservation:value('preservation'),usability:value('usability')}};}
+byId('copy-feedback').onclick=async()=>{const data=feedback();if(!data)return;const text=JSON.stringify(data,null,2);try{await navigator.clipboard.writeText(text);byId('copy-output').hidden=true;byId('message').textContent=ui['反馈已复制；粘贴到聊天后才会处理。'];}catch{const output=byId('copy-output');output.hidden=false;output.value=text;output.focus();output.select();byId('message').textContent=ui['无法自动复制，请复制下面的反馈文字。'];}};
+byId('download').onclick=()=>{const data=feedback();if(!data)return;const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='charakit-feedback-'+packet+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);byId('message').textContent=ui['反馈已下载。将文件交给 Codex 后才会处理，不会在此页面自动打包。'];};
+</script></html>
+"""
+
+
 def preview_text(language="zh-CN", translations=None, allow_legacy=False):
     import re
     if not isinstance(language, str) or not re.fullmatch(r'[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*', language):
@@ -738,7 +900,7 @@ def preview_text(language="zh-CN", translations=None, allow_legacy=False):
         revision_keys = {'修订前', '本次修改'}
         accepted = [keys]
         if allow_legacy:
-            for feature_keys in (revision_keys, reference_keys, set(SUMMARY_LABELS)):
+            for feature_keys in (revision_keys, reference_keys, set(SUMMARY_LABELS), set(INTERACTION_LABELS)):
                 accepted += [option - feature_keys for option in list(accepted)]
         if not isinstance(translations, dict) or set(translations) not in accepted or not all(isinstance(v, str) and v.strip() and len(v) <= 2000 for v in translations.values()):
             raise ValueError('Supply a complete text mapping for the preview language.')
@@ -785,7 +947,7 @@ def render_review_summary(summary, ui):
     return ''.join(lines)
 
 
-def render_sheet(key, labels, request, contract, purpose, language="zh-CN", translations=None, revision=None, edit_references=None, review_summary=None):
+def render_sheet(key, labels, request, contract, purpose, language="zh-CN", translations=None, revision=None, edit_references=None, review_summary=None, inspection=None):
     ui = preview_text(language, translations, allow_legacy=True)
     if revision and not {'修订前', '本次修改'} <= set(ui):
         raise ValueError('Supply revision comparison labels for this page.')
@@ -793,13 +955,36 @@ def render_sheet(key, labels, request, contract, purpose, language="zh-CN", tran
         raise ValueError('Supply scoped reference labels for this page.')
     if review_summary is not None and not set(SUMMARY_LABELS) <= set(ui):
         raise ValueError('Supply human review summary labels for this page.')
-    items = [{"label": ui['原图'], "src": "source.png"}]
+    modern = set(INTERACTION_LABELS) <= set(ui)
+    inspection = inspection or {'regions': [], 'sizes': {}}
+    regions = inspection['regions'] if modern else []
+    items = [{"label": ui['原图'], "src": "source.png", 'key': 'source'}]
     if revision:
-        items.append({"label": ui['修订前'], "src": revision['source']})
+        items.append({"label": ui['修订前'], "src": revision['source'], 'key': 'parent'})
         request = f"{request} · {ui['本次修改']}: {revision['note']}"
-    items += [{"label": label, "src": f"{label}.png"} for label in labels]
+    items += [{"label": label, "src": f"{label}.png", 'key': label, 'candidate': True} for label in labels]
     items += [{"label": ui['参考图']+' · '+ref['id'], "src": ref['path']} for ref in (edit_references or [])]
-    cards = ''.join(f'<figure><figcaption>{html.escape(item["label"])}</figcaption><button class="image-button" type="button" data-viewer-index="{index}" aria-label="{html.escape(ui["放大查看"])} {html.escape(item["label"])}"><img src="{item["src"]}" alt="{html.escape(item["label"])}"></button></figure>' for index, item in enumerate(items))
+    for item in items:
+        if item.get('key') in inspection['sizes']:
+            item['size'] = inspection['sizes'][item['key']]
+            item['views'] = {region['id']: region['id']+'-'+item['key']+'.png' for region in regions}
+    def card(index, item, region=None):
+        label = html.escape(item['label'])
+        view = region['id'] if region else 'full'
+        src = html.escape(item['views'][view] if region else item['src'], quote=True)
+        actions = ''
+        if modern and purpose == 'user' and item.get('candidate'):
+            actions = '<div class="candidate-actions">'+''.join(
+                f'<button type="button" data-review-candidate="{label}" data-decision="{decision}">{html.escape(ui[text])}</button>'
+                for decision, text in (('accept', '采用此版本'), ('revise', '修改此版本')))+'</div>'
+        return f'<figure><figcaption>{label}</figcaption><button class="image-button" type="button" data-viewer-index="{index}" data-view="{view}" aria-label="{html.escape(ui["放大查看"])} {label}"><img src="{src}" alt="{label}"></button>{actions}</figure>'
+    cards = ''.join(card(index, item) for index, item in enumerate(items))
+    detail_cards = ''
+    if regions:
+        detail_cards = '<section><details id="detail-comparisons"><summary>'+html.escape(ui['局部对照'])+'</summary><p class="hint">'+html.escape(ui['局部使用相同原图坐标；尺寸不同时仅按比例映射，不校正位置或修复画布。'])+'</p>'
+        for region in regions:
+            detail_cards += '<h3>'+html.escape(ui['整脸' if region['id']=='face' else '目标部位'])+'</h3><div class="grid detail-grid">'+''.join(card(index, item, region) for index, item in enumerate(items) if region['id'] in item.get('views', {}))+'</div>'
+        detail_cards += '</details></section>'
     values = {
         '__REQUEST__': html.escape(str(request)), '__CARDS__': cards,
         '__CHECKS__': ''.join(f'<li>{html.escape(x["component"])} · {html.escape(x["property"])}：{html.escape(x["expected"])}</li>' for x in contract),
@@ -808,12 +993,22 @@ def render_sheet(key, labels, request, contract, purpose, language="zh-CN", tran
         '__LANGUAGE__': html.escape(language), '__UI_STRINGS__': script_json(ui),
         '__REVIEW_CONTEXT__': render_review_summary(review_summary, ui) if review_summary is not None else '',
     }
+    if modern:
+        values.update({
+            '__DETAIL_CARDS__': detail_cards,
+            '__INSPECTION_REGIONS__': script_json([{'id': r['id'], 'label': ui['整脸' if r['id']=='face' else '目标部位']} for r in regions]),
+            **{token: html.escape(ui[text]) for token, text in {
+                '__EXTRA_RATINGS__': '补充评价（可选）', '__COPY_FEEDBACK__': '复制评审意见', '__COPY_OUTPUT__': '待交回的评审意见',
+                '__INSPECTION_AREA__': '查看范围', '__COMPARE_SOURCE__': '与原图同步对照', '__SOURCE_LABEL__': '原图', '__SOURCE_VIEWPORT__': '原图',
+                '__ACCEPT_VERSION__': '采用此版本', '__REVISE_VERSION__': '修改此版本',
+                '__VIEWER_HINT__': '切换图片保留比例和位置；拖动查看细节，方向键切换，Esc 关闭。'}.items()},
+        })
     if edit_references:
         values['__CHECKS__'] += ''.join('<li>'+html.escape(ui['仅参考指定修改内容']+' · '+ref['id']+' · '+', '.join(ref['scope'])+'：'+ref['notes'])+'</li>' for ref in edit_references)
     values.update({f'__UI_{index}__': html.escape(ui[label]) for index, label in enumerate(PREVIEW_EN) if label in ui})
     # Substitute once: user prose that resembles a token remains literal text.
     import re
-    return re.sub('|'.join(map(re.escape, values)), lambda match: values[match.group()], REVIEW_SHEET_TEMPLATE)
+    return re.sub('|'.join(map(re.escape, values)), lambda match: values[match.group()], REVIEW_SHEET_TEMPLATE if modern else LEGACY_REVIEW_SHEET_TEMPLATE)
 
 
 def refresh_review_sheet(c, root, key):
@@ -838,11 +1033,12 @@ def refresh_review_sheet(c, root, key):
         number += 1
     page = folder / f'index-{number:03d}.html'
     with page.open('x', encoding='utf-8') as stream:
-        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', language, page_ui, public.get('revision'), public.get('edit_references'), public.get('review_summary')))
+        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', language, page_ui, public.get('revision'), public.get('edit_references'), public.get('review_summary'), public.get('inspection')))
     packet.setdefault('artifacts', []).append({'path': page.relative_to(root).as_posix(), 'sha256': c.digest(page)})
     packet['latest_page'] = page.relative_to(root).as_posix()
     c.write_state(root, state)
     return {'packet': key, 'page': str(page.resolve()), 'public_packet': str(public_path.resolve()),
+            **({'inspection': public['inspection'], 'detail_views': detail_view_paths(folder, public['inspection'])} if public.get('inspection') else {}),
             **({'review_summary': public['review_summary']} if public.get('review_summary') is not None else {}),
             **({'edit_references': [{**r, 'path': str((folder / r['path']).resolve())} for r in public['edit_references']]} if public.get('edit_references') else {}),
             **({'revision_parent': str((folder / 'parent.png').resolve()), 'revision_note': public['revision']['note']} if public.get('revision') else {}),
@@ -982,6 +1178,8 @@ def add_commands(c, commands):
             p.add_argument("--language", default="zh-CN", help="Match the user's language; built-in zh-CN/en, or supply --ui-file for another language.")
             p.add_argument("--ui-file", type=Path, help="Complete UTF-8 mapping of preview UI text to the user's language.")
             p.add_argument("--selection-note", help="Only for the user's explicit request to show a subset; otherwise show the entire batch.")
+            p.add_argument('--face-box', type=int, nargs=4, help='Whole-face inspection in source-canvas coordinates.')
+            p.add_argument('--detail-box', type=int, nargs=4, help='Target inspection in source coordinates; defaults to the prepared target box.')
         if name == "refresh-review-sheet":
             p.add_argument("--packet", required=True)
         if name == "revision-prepare":
@@ -1018,7 +1216,7 @@ def dispatch(c, args):
     if args.command == "pool-compare":
         return compare(c, root, args.case_id, read(args.feedback_file))
     if args.command == "review-sheet":
-        return review_sheet(c, root, args.asset, args.purpose, args.language, read(args.ui_file) if args.ui_file else None, args.selection_note)
+        return review_sheet(c, root, args.asset, args.purpose, args.language, read(args.ui_file) if args.ui_file else None, args.selection_note, args.face_box, args.detail_box)
     if args.command == "refresh-review-sheet":
         return refresh_review_sheet(c, root, args.packet)
     if args.command == "revision-prepare":

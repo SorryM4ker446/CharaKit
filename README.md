@@ -8,7 +8,9 @@ New requests use [candidate selection and human review](plugins/charakit/referen
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.26**.
+Development version: **0.1.27**.
+
+Human review combines full illustrations with optional face/target details, synchronized source comparison and copyable feedback. Final reports retain accepted detail comparisons separately from complete PNGs.
 
 Human review pages show every readable candidate in the current batch by default, with recommendations separate from selection. Failed candidates can receive feedback and revision requests; final delivery still requires every gate.
 

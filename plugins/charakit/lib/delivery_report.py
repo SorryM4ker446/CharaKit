@@ -1,6 +1,7 @@
 """Assemble reviewed deliverables and an evidence-based report; never generate or regrade art."""
 from __future__ import annotations
 
+import copy
 import json
 import math
 from pathlib import Path
@@ -10,6 +11,7 @@ from PIL import Image, ImageDraw
 
 
 ZH = {
+    'detail_preview': '最终采用版局部对照', 'face_region': '整脸', 'target_region': '目标部位',
     'edit_references': '参考图与适用范围',
     'prop_edit': '配饰／道具编辑', 'prop_action': '物件操作', 'prop_add': '添加', 'prop_remove': '移除', 'prop_replace': '替换',
     'target_object': '目标物件符合度', 'placement_contacts': '位置与接触关系',
@@ -73,6 +75,7 @@ ZH = {
     'strategy': '生成策略', 'initial': '首版', 'continue_previous': '修订上一版', 'source_rebase': '从原图重做目标衣物',
 }
 EN = {
+    'detail_preview': 'Final selected version: detail comparisons', 'face_region': 'Whole face', 'target_region': 'Target region',
     'edit_references': 'Edit references and permitted scopes',
     'prop_edit': 'Accessory/prop editing', 'prop_action': 'Object operation', 'prop_add': 'Add', 'prop_remove': 'Remove', 'prop_replace': 'Replace',
     'target_object': 'Target object adherence', 'placement_contacts': 'Placement and contacts',
@@ -325,6 +328,24 @@ def case_record(case):
     return next((record for record in case['history'] if record['asset_id'] == case.get('assessed_asset_id')), case['history'][-1])
 
 
+def write_detail_preview(core, case, region, output, t, background):
+    """Display the accepted version and source at the recorded source coordinates."""
+    sheet = Image.new('RGB', (720, 340), '#ffffff')
+    draw = ImageDraw.Draw(sheet)
+    for index, (label, path) in enumerate(((t['source'], case['source']), (case['label'], case['final']['original_image']))):
+        with Image.open(path) as opened:
+            image = opened.convert('RGBA')
+        box = tuple(round(v*image.size[i%2]/case['source_canvas']['width' if i%2==0 else 'height']) for i,v in enumerate(region['box']))
+        detail = image.crop(box)
+        detail.thumbnail((340, 290), Image.Resampling.LANCZOS)
+        panel = core.backdrop((360, 310), background)
+        panel.alpha_composite(detail, ((360-detail.width)//2, (310-detail.height)//2))
+        sheet.paste(panel.convert('RGB'), (index*360, 0))
+        draw.text((index*360+10, 316), label[:36], font=core.font(15), fill='#222222')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(output, format='PNG')
+
+
 def render_markdown(data: dict, output: Path, t: dict) -> str:
     lines = [f"# {md(data['title'])}", '', data['created_at'] + ' (UTC)', '',
              t['draft_note' if data['stage'] == 'draft' else 'final_note'] if any(c.get('candidate_pool') for c in data['cases']) else t['snapshot'], '',
@@ -338,6 +359,12 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             md(blocking_summary(case_record(c),t)),final))+' |')
     if data['preview']:
         lines += ['',link(t['preview'],output/data['preview'])]
+    if any(c.get('detail_previews') for c in data['cases']):
+        lines += ['', '## '+t['detail_preview'], '']
+        for case in data['cases']:
+            for detail in case.get('detail_previews', []):
+                label = case['label']+' · '+t['face_region' if detail['id']=='face' else 'target_region']
+                lines += ['!'+link(label, output/detail['path']), '']
     for c in data['cases']:
         if not c['final']:
             lines += ['',f"**{md(c['label'])} — {t[c['status']]}**", '']
@@ -515,7 +542,16 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
             requested_revision = state.get('human_revisions',{}).get((feedback or {}).get('packet'))
             if requested_revision and requested_revision['status']=='failed' and not delivered:
                 action='revision_failed'
+            accepted_packet = state.get('review_packets', {}).get(asset.get('human_feedback', {}).get('packet'), {}) if delivered else {}
+            detail_regions = accepted_packet.get('inspection', {}).get('regions', [])
+            # Legacy reports may use an explicitly requested face box or saved outfit target.
+            if delivered and not detail_regions:
+                detail_regions = ([{'id': 'face', 'box': face_box}] if face_box else [])
+                target_box = asset.get('edit_brief', {}).get('target_box')
+                if target_box:
+                    detail_regions += [{'id': 'target', 'box': target_box}]
             cases.append({'project':str(root),'character':state['character_key'],'case_id':pool_id or case_id or asset['id'],'kind':core.quality_domain(state,asset),
+                          'inspection_regions': copy.deepcopy(detail_regions),
                           'requested_revision':requested_revision,
                           'human_revision':state.get('human_revisions',{}).get(asset.get('human_revision')),
                           'revision_parent_image':str(core.contained(root,core.get_asset(state,state['human_revisions'][asset['human_revision']]['parent_asset'])['path'])) if asset.get('human_revision') else None,
@@ -556,6 +592,13 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                 core.copy_exclusive(Path(c['final']['original_image']),staging/c['final']['path'])
                 if core.digest(staging/c['final']['path'])!=c['final']['sha256']:
                     raise core.StudioError('ASSET_CHANGED','A final candidate changed while assembling the report.')
+                c['detail_previews'] = []
+                for region in c['inspection_regions']:
+                    if not core.valid_source_box(region['box'], c['source_canvas']):
+                        raise core.StudioError('INVALID_REVIEW_BOX', 'Saved detail region must fit the source canvas.')
+                    detail = {**region, 'asset_id': c['final']['asset_id'], 'path': 'details/'+Path(c['final']['path']).stem+'-'+region['id']+'.png'}
+                    write_detail_preview(core, c, region, staging/detail['path'], t, background)
+                    c['detail_previews'].append(detail)
         if passed:
             write_preview(core,cases,sources,staging/'preview.png',t,face_box,background)
         data['artifacts']=[{'path':p.relative_to(staging).as_posix(),'sha256':core.digest(p)} for p in sorted(staging.rglob('*')) if p.is_file()]
@@ -573,5 +616,6 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
         staging.rename(output)
     return {'report':str(output/'report.md'),'manifest':str(output/'report.json'),'stage':resolved_stage,
             'preview':str(output/'preview.png') if passed else None,
+            'detail_previews': [str(output/d['path']) for case in cases for d in case.get('detail_previews', [])],
             'images':[str(output/c['final']['path']) for c in cases if c['final']],
             'summary':data['summary']}

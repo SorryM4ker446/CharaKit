@@ -85,6 +85,18 @@ class PropEditTests(unittest.TestCase):
                           decision=decision,note='修订物件接触位置' if decision=='revise' else '采用这个版本'))
         return page, result
 
+    def test_human_review_defaults_to_prepared_target_and_final_report_keeps_it(self):
+        asset = self.candidate('add')
+        self.review(asset)
+        page, result = self.feedback(asset)
+        self.assertEqual(result['next_action'], 'export')
+        public = json.loads(Path(page['public_packet']).read_text(encoding='utf-8'))
+        self.assertEqual(public['inspection']['regions'], [{'id':'target','box':[10,30,85,120]}])
+        report = outfits.generate_report([self.root], self.folder/'target-report', stage='final')
+        data = json.loads(Path(report['manifest']).read_text(encoding='utf-8'))
+        self.assertEqual(data['cases'][0]['detail_previews'][0]['box'], [10,30,85,120])
+        self.assertEqual(len(report['images']), 1)
+
     def test_all_operations_review_adoption_report_and_raw_export(self):
         for action in outfits.PROP_ACTIONS:
             with self.subTest(action=action):

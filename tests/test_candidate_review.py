@@ -304,6 +304,8 @@ class CandidateReviewTests(unittest.TestCase):
         public = json.loads(public_path.read_text(encoding='utf-8'))
         for key in ('修订前', '本次修改'):
             del public['ui_labels'][key]
+        for key in renderer.INTERACTION_LABELS:
+            del public['ui_labels'][key]
         public_path.write_text(json.dumps(public, ensure_ascii=False), encoding='utf-8')
         state = studio.read_state(self.root)
         for artifact in state['review_packets'][sheet['packet']]['artifacts']:
@@ -314,6 +316,7 @@ class CandidateReviewTests(unittest.TestCase):
         page = Path(refreshed['page']).read_text(encoding='utf-8')
         self.assertIn('lang="ja"', page)
         self.assertIn('Custom source label', page)
+        self.assertNotIn('Copy review feedback', page.split('<script>')[0])
 
     def test_revision_rechecks_reviews_and_exports_with_feedback_lineage(self):
         self.review(self.first, True)
@@ -635,6 +638,81 @@ class CandidateReviewTests(unittest.TestCase):
             item.update(observed='Fixture', status='passed', score=5)
         data['criteria'][0]['expected'] = 'A weaker retrospective requirement'
         self.code('INVALID_CANDIDATE_REVIEW', studio.record_quality, self.root, self.key, data, [])
+
+    def test_review_details_use_source_coordinates_and_preserve_raw_artwork(self):
+        from PIL import Image
+        self.review(self.first, True)
+        before = studio.digest(self.root/self.first['path'])
+        page = self.call('review_sheet', self.root, [self.key], 'user', face_box=[16, 20, 48, 44], detail_box=[16, 44, 48, 88])
+        folder = Path(page['page']).parent
+        public = json.loads(Path(page['public_packet']).read_text(encoding='utf-8'))
+        self.assertEqual([r['id'] for r in public['inspection']['regions']], ['face', 'target'])
+        for name, filename in [('source', 'source.png'), ('A', 'A.png')]:
+            with Image.open(folder/filename) as original, Image.open(folder/('face-'+name+'.png')) as crop:
+                self.assertEqual(crop.size, (32, 24))
+                self.assertEqual(crop.tobytes(), original.convert('RGBA').crop((16,20,48,44)).tobytes())
+        self.assertEqual(studio.digest(self.root/self.first['path']), before)
+        refreshed = self.call('refresh_review_sheet', self.root, page['packet'])
+        self.assertEqual(json.loads(Path(refreshed['public_packet']).read_text(encoding='utf-8'))['inspection'], public['inspection'])
+
+    def test_invalid_review_region_is_rejected_without_creating_a_packet(self):
+        self.review(self.first, True)
+        before = (self.root/'run.json').read_bytes()
+        packets = set((self.root/'reviews').iterdir())
+        for box in ([0,0,65,96], [16,20,16,44], [0.5,0,32,40], [True,0,32,40]):
+            self.code('INVALID_REVIEW_BOX', self.call, 'review_sheet', self.root, [self.key], 'user', face_box=box)
+        self.assertEqual((self.root/'run.json').read_bytes(), before)
+        self.assertEqual(set((self.root/'reviews').iterdir()), packets)
+
+    def test_mismatched_canvas_details_map_coordinates_without_fixing_the_candidate(self):
+        from PIL import Image
+        fixture(self.image, size=(128,192), color='#112233')
+        other = studio.add_asset(self.root, self.image, 'angry', self.prompt)['asset']
+        page = self.call('review_sheet', self.root, [other['id']], 'assistant', face_box=[16,20,48,44])
+        folder = Path(page['page']).parent
+        public = json.loads(Path(page['public_packet']).read_text(encoding='utf-8'))
+        self.assertEqual(public['inspection']['sizes']['A'], [128,192])
+        with Image.open(folder/'A.png') as original, Image.open(folder/'face-A.png') as crop:
+            self.assertEqual(crop.tobytes(), original.convert('RGBA').crop((32,40,96,88)).tobytes())
+        self.assertIn('CANVAS_MISMATCH', studio.check_asset(self.root, studio.read_state(self.root), other)['errors'])
+
+    def test_changed_detail_evidence_blocks_feedback_and_refresh(self):
+        self.review(self.first, True)
+        page = self.call('review_sheet', self.root, [self.key], 'user', face_box=[16,20,48,44])
+        (Path(page['page']).parent/'face-A.png').write_bytes(b'changed inspection')
+        self.code('STALE_REVIEW_PACKET', self.call, 'refresh_review_sheet', self.root, page['packet'])
+        self.code('STALE_REVIEW_PACKET', self.call, 'human_feedback', self.root, dict(packet=page['packet'],basis='user',candidate='A',decision='accept',note='Actual fixture feedback'))
+
+    def test_final_report_includes_only_selected_version_details_after_actual_feedback(self):
+        self.review(self.first, True)
+        page = self.call('review_sheet', self.root, [self.key], 'user', face_box=[16,20,48,44], detail_box=[16,44,48,88])
+        output = Path(self.temp.name)/'final-details'
+        self.code('HUMAN_REVIEW_REQUIRED', studio.generate_report, [self.root], output, stage='final')
+        self.assertFalse(output.exists())
+        self.call('human_feedback', self.root, dict(packet=page['packet'],basis='user',candidate='A',decision='accept',note='Actual acceptance fixture'))
+        report = studio.generate_report([self.root], output, stage='final')
+        data = json.loads(Path(report['manifest']).read_text(encoding='utf-8'))
+        details = data['cases'][0]['detail_previews']
+        self.assertEqual([d['id'] for d in details], ['face','target'])
+        self.assertEqual({d['asset_id'] for d in details}, {self.key})
+        self.assertEqual(len(report['images']), 1)
+        for detail in details:
+            self.assertTrue((output/detail['path']).is_file())
+            self.assertIn(detail['path'], Path(report['report']).read_text(encoding='utf-8'))
+        self.assertEqual(studio.digest(Path(report['images'][0])), self.first['sha256'])
+
+    def test_revision_inherits_review_regions_and_keeps_parent_nonselectable(self):
+        self.review(self.first, True)
+        page = self.call('review_sheet', self.root, [self.key], 'user', face_box=[16,20,48,44])
+        self.call('human_feedback', self.root, dict(packet=page['packet'],basis='user',candidate='A',decision='revise',note='Actual fixture correction'))
+        plan = self.call('revision_prepare', self.root, page['packet'], contract())
+        child = self.import_correction(plan)
+        self.review(child, True)
+        new = self.call('review_sheet', self.root, [child['id']], 'user')
+        public = json.loads(Path(new['public_packet']).read_text(encoding='utf-8'))
+        self.assertEqual(public['inspection']['regions'], [{'id':'face','box':[16,20,48,44]}])
+        self.assertEqual(set(public['candidates']), {'A'})
+        self.assertTrue((Path(new['page']).parent/'face-parent.png').is_file())
 
     def test_changed_decision_gets_new_packet_and_preserves_history(self):
         self.review(self.first, True)
