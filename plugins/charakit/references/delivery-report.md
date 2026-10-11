@@ -1,5 +1,9 @@
 # Final images, preview and generation report
 
+Helper 0.1.24 keeps actual candidate-pool attempt numbers instead of renumbering imported images after a failed call. The budget includes those failed calls; their recorded reasons appear separately. Exhausted new pools direct the user into human review with unresolved findings, without final artwork export.
+
+Helper 0.1.23 defaults new pools to three total attempts per result. Correct recorded internal failures before human review, even when the total is ≥80; require all five dimensions ≥4/5 and all domain/fidelity checks passed. Stop on full passage or recorded exhaustion; honor explicit smaller limits and preserve legacy pools. See [the current review/redraw procedure](candidate-review.md).
+
 For new candidate pools, first complete [human review](candidate-review.md). Before the actual user decision, `report` produces findings only; it cannot copy pool candidates into final outputs. Show the review sheet as inspection evidence, wait for feedback, and then run `report` before final delivery. Deliver the returned passed full PNGs, the final preview and the Markdown report. Use the user's language and short labels. A one-image request still gets a report; a multi-module batch can share one report. Do not add image generations to prepare these artifacts.
 
 The report is assembled from saved quality/fidelity observations and current delivery gates, not a new visual assessment. It includes the original request, source, per-case outcome, per-round dimension/total scores, final domain checks, inspection coverage, dimensions/warnings, failure findings and links to actual prompts/comparisons. Markdown is the human-readable report; JSON retains full findings, provenance paths and final/preview hashes. Do not invent time/cost/model measurements or reinterpret old failures as passes. Report labels are localized; historical observations retain the language in which they were saved.
@@ -33,6 +37,8 @@ Reports are immutable snapshots in new directories. Project metadata, candidate 
 ### Report timing in 0.1.19 and later
 
 Helper 0.1.20 also records a human revision's parent version and original correction request in the report and export manifest. The corrected candidate has a new assessment and actual acceptance; parent scores/acceptance are not reused. Revision review pages show original, before revision and the new candidate. Historical reports remain snapshots.
+
+Helper 0.1.22 also reports `prop_edit` actions and their object/contact/occlusion/anatomy findings in the user's language. Schema 1.5 exports retain the action, object definition, brief, actual feedback and revision provenance, using the existing Outfits resource paths. Add/remove/replace never reuse garment-only findings or bypass common gates.
 
 Before human feedback, `report --stage auto` (the default) creates an explicitly labeled **internal inspection draft**, with `stage: draft`, pending case IDs, no final PNGs and no final preview. It is not the final review report. After all requested pool cases have actual feedback, the same command produces a final review report. Use `report --stage final` for the final workflow step: missing actual human feedback fails with `HUMAN_REVIEW_REQUIRED` and creates no output directory.
 

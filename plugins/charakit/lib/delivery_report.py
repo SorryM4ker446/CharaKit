@@ -10,6 +10,9 @@ from PIL import Image, ImageDraw
 
 
 ZH = {
+    'prop_edit': '配饰／道具编辑', 'prop_action': '物件操作', 'prop_add': '添加', 'prop_remove': '移除', 'prop_replace': '替换',
+    'target_object': '目标物件符合度', 'placement_contacts': '位置与接触关系',
+    'occlusion_reconstruction': '遮挡与移除补全', 'anatomy_pose': '人体结构与姿势',
     'outfit_replace': '整套替换', 'outfit_design': '整套设计符合度', 'component_completion': '部件完成度',
     'ensemble_coherence': '整套搭配一致性', 'outfit_components': '服装部件清单', 'component_checks': '逐件检查',
     'user_revision': '按人工意见修订', 'revision_parent': '修订所依据版本', 'revision_note': '原始修改意见',
@@ -32,7 +35,11 @@ ZH = {
     'expression': '表情', 'mouth_state': 'mouth', 'garment_recolor': 'outfits · 改色', 'garment_replace': 'outfits · 替换',
     'details': '评审与修订记录', 'round': '轮次', 'asset': '版本', 'quality': '质量',
     'target': '需求达成', 'identity': '角色一致性', 'protection': '非目标保留', 'integration': '结构与衔接', 'rendering': '画面完成度',
-    'source_sample': '原图独立采样', 'repair_best': '修订择优候选', 'human_review': '等待人工评图',
+    'source_sample': '原图独立采样', 'repair_best': '修订择优候选', 'review_redraw': '按内部失败项重绘', 'redraw': '内部修订待生成', 'human_review': '等待人工评图',
+    'next_redraw': '按本轮失败项在剩余轮次内重绘，重新检查全部五维及专项；通过或用完预算后再进入人工评图。',
+    'compare': '内部候选比较待完成', 'generate_reserved': '已计次，等待本轮生成',
+    'tool_failure': '出图调用失败', 'attempt_budget': '已用调用／上限',
+    'next_exhausted_human': '停止生成，说明剩余失败项及调用失败原因，进入人工评图；不合格候选不能作为成品打包。',
     'human': '人工评审', 'next_human_review': '展示匿名评图页，记录用户采用、修改或拒绝的实际反馈，再处理交付。',
     'issues': '未通过项', 'component': '编辑部位', 'request': '请求', 'source': '原图',
     'domain': '最终专项检查', 'check': '检查项', 'evidence': '观察依据',
@@ -65,6 +72,9 @@ ZH = {
     'strategy': '生成策略', 'initial': '首版', 'continue_previous': '修订上一版', 'source_rebase': '从原图重做目标衣物',
 }
 EN = {
+    'prop_edit': 'Accessory/prop editing', 'prop_action': 'Object operation', 'prop_add': 'Add', 'prop_remove': 'Remove', 'prop_replace': 'Replace',
+    'target_object': 'Target object adherence', 'placement_contacts': 'Placement and contacts',
+    'occlusion_reconstruction': 'Occlusion and reconstruction', 'anatomy_pose': 'Anatomy and pose',
     'outfit_replace': 'Full outfit replacement', 'outfit_design': 'Outfit design adherence', 'component_completion': 'Component completion',
     'ensemble_coherence': 'Ensemble coherence', 'outfit_components': 'Clothing component inventory', 'component_checks': 'Component findings',
     'user_revision': 'Revise from human feedback', 'revision_parent': 'Revision parent', 'revision_note': 'Original correction request',
@@ -87,7 +97,11 @@ EN = {
     'expression': 'Expressions', 'mouth_state': 'Mouth', 'garment_recolor': 'Outfits',
     'details': 'Review and revision history', 'round': 'Round', 'asset': 'Version', 'quality': 'Quality',
     'target': 'Target', 'identity': 'Identity', 'protection': 'Protection', 'integration': 'Integration', 'rendering': 'Rendering',
-    'source_sample': 'Independent source sample', 'repair_best': 'Repair preferred candidate', 'human_review': 'Human review pending',
+    'source_sample': 'Independent source sample', 'repair_best': 'Repair preferred candidate', 'review_redraw': 'Redraw from internal findings', 'redraw': 'Internal redraw pending', 'human_review': 'Human review pending',
+    'next_redraw': 'Correct recorded failures within the remaining rounds and reassess all five dimensions and domain checks before human review.',
+    'compare': 'Internal comparison pending', 'generate_reserved': 'Attempt reserved; generation pending',
+    'tool_failure': 'Image-tool failure', 'attempt_budget': 'Attempts used / limit',
+    'next_exhausted_human': 'Stop generation, explain unresolved checks and failed calls, then present anonymous human review. Failed candidates cannot be packaged as final artwork.',
     'human': 'Human review', 'next_human_review': 'Present anonymous review and record the actual user decision before delivery.',
     'issues': 'Unmet criteria', 'component': 'Component', 'request': 'Request', 'source': 'Source',
     'domain': 'Final domain checks', 'check': 'Check', 'evidence': 'Observation',
@@ -141,6 +155,12 @@ def link(label: str, path: str | Path) -> str:
 
 def label_for(core, asset: dict, labels: dict, language: str) -> str:
     if 'outfit_id' in asset:
+        if asset['edit_type'] == 'prop_edit':
+            t = ZH if language == 'zh-CN' else EN
+            name = t['prop_'+asset['prop_action']]+' · '+asset['target']
+            if 'replacement' in asset:
+                name += ' → '+asset['replacement']
+            return labels.get(asset['outfit_id'], name)
         change = asset['color'] if asset['edit_type'] == 'recolor' else asset['replacement']
         return labels.get(asset['outfit_id'], f"{asset['target']} → {change}")
     label = labels.get(asset['expression'], EXPRESSION_ZH[asset['expression']] if language == 'zh-CN' else core.EXPRESSION_PRESETS[asset['expression']]['name'])
@@ -176,6 +196,7 @@ def round_record(core, root: Path, state: dict, asset: dict, number: int) -> dic
         'parent_asset_id': asset.get('parent_asset_id'), 'refinement_inputs': asset.get('refinement_inputs'),
         'human_revision': state.get('human_revisions', {}).get(asset.get('human_revision')),
         'outfit_components': asset.get('outfit_components'),
+        'prop_action': asset.get('prop_action'),
         'recorded_score': review.get('result', {}).get('total'),
         'gate_summary': {
             'threshold': review.get('result', {}).get('threshold'),
@@ -308,7 +329,7 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
              '|---|---|---:|---|---|---|---|']
     for c in data['cases']:
         final = link('PNG',output/c['final']['path']) if c['final'] else t['report_only']
-        lines.append('| '+' | '.join((t[c['kind']],md(c['label']),str(len(c['history'])),
+        lines.append('| '+' | '.join((t[c['kind']],md(c['label']),str(c.get('attempt_count', len(c['history']))),
             ' → '.join(score_text(r,t) for r in c['history']),t[c['status']],
             md(blocking_summary(case_record(c),t)),final))+' |')
     if data['preview']:
@@ -321,6 +342,8 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             if not issues and c.get('delivery_error'):
                 lines.append('- '+md(c['delivery_error']['code']))
             next_step = ('按实际人工意见处理修订请求；本报告不自动新增生成次数。' if data['language']=='zh-CN' else 'Handle the actual revision request; this report does not authorize additional generation.') if (c.get('human_result') or {}).get('next_action')=='revision_request' and c['status']!='revision_failed' else t.get('next_'+c['status'],t['next_failed'])
+            if c['status']=='exhausted' and (c.get('candidate_pool') or {}).get('version')=='1.1' and not c.get('human_result'):
+                next_step=t['next_exhausted_human']
             lines += ['',t['next']+'：'+next_step]
     lines += ['', '## '+t['details'], '']
     for c in data['cases']:
@@ -331,8 +354,10 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
                   '',t['component']+'：'+md(domain.get('component','—')), '']
         if c.get('edit'):
             edit = c['edit']
-            change = edit.get('replacement', edit.get('color', '—'))
+            change = t['prop_remove'] if edit.get('prop_action') == 'remove' else edit.get('replacement', edit.get('color', '—'))
             lines += [t['edit_definition']+'：'+t[edit['edit_type']]+' · '+md(edit['target'])+' → '+md(change), '']
+            if edit.get('prop_action'):
+                lines += [t['prop_action']+'：'+t['prop_'+edit['prop_action']], '']
             if edit.get('outfit_components'):
                 lines += ['**'+t['outfit_components']+'**', '']
                 lines += ['- '+md(item['source'])+' → '+md(item['replacement']) for item in edit['outfit_components']]
@@ -347,6 +372,11 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             if requested.get('failure'):
                 lines += ['- '+md(requested['failure']), '']
         if c.get('candidate_pool'):
+            pool = c['candidate_pool']
+            lines += [t['attempt_budget']+'：'+str(len(pool['attempts']))+' / '+str(pool['budget']), '']
+            for attempt in pool['attempts']:
+                if attempt['status'] == 'failed':
+                    lines += ['- '+t['round']+' '+str(attempt['number'])+' · '+t['tool_failure']+'：'+md(attempt['failure']), '']
             feedback = c.get('human_feedback')
             lines += [t['human']+'：'+(md(t.get(feedback['decision'],feedback['decision'])+' · '+feedback['note']) if feedback else t['human_review']), '']
             result = c.get('human_result')
@@ -364,7 +394,7 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
                   '|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|---|']
         for r in c['history']:
             dims = [str(r['dimensions'].get(k,{}).get('score','—')) for k in ('target','identity','protection','integration','rendering')]
-            fidelity = t.get(r['fidelity_status'],r['fidelity_status']) if c['kind'] in ('garment_recolor','garment_replace','outfit_replace') else t['not_applicable']
+            fidelity = t.get(r['fidelity_status'],r['fidelity_status']) if c['kind'] in ('garment_recolor','garment_replace','outfit_replace','prop_edit') else t['not_applicable']
             lines.append('| '+' | '.join([str(r['round']),md(r['asset_id']),t[r['strategy']],*dims,score_text(r,t),t.get(r['quality_status'],r['quality_status']),fidelity,md(blocking_summary(r,t))])+' |')
         lines += ['', '**'+t['domain']+'**', '', '| '+t['check']+' | '+t['status']+' | '+t['evidence']+' |', '|---|---|---|']
         for key,finding in domain.get('checks',{}).items():
@@ -447,9 +477,11 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
             if slot in slots:
                 raise core.StudioError('INVALID_REPORT_SCOPE','Each case may appear once; a tracked asset selects its whole refinement case.')
             slots.add(slot)
-            records=[round_record(core,root,state,a,i+1) for i,a in enumerate(history)]
+            attempt_numbers={a['asset_id']:a['number'] for a in pool['attempts'] if a['status']=='imported'} if pool_id else {}
+            records=[round_record(core,root,state,a,attempt_numbers.get(a['id'],i+1)) for i,a in enumerate(history)]
             last=records[-1]
-            action=plan['action'] if plan else ('review' if last['quality_status'] in ('pending','unrecorded') or last['fidelity_status']=='pending' else 'failed')
+            internal_plan = core.workflow_call('pool_status',root,pool_id) if pool_id and pool['version']=='1.1' else None
+            action=internal_plan['action'] if internal_plan else plan['action'] if plan else ('review' if last['quality_status'] in ('pending','unrecorded') or last['fidelity_status']=='pending' else 'failed')
             delivered=None; error=None
             try:
                 delivery=core.delivery_assets(root,[asset['id']])['delivery'][0]
@@ -457,7 +489,7 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                 action='passed'
             except core.StudioError as exc:
                 error={'code':exc.code,'message':exc.message}
-                if exc.code=='HUMAN_REVIEW_REQUIRED':
+                if exc.code=='HUMAN_REVIEW_REQUIRED' and not internal_plan:
                     action='human_review'
                 elif plan and action=='deliver':
                     action='blocked'
@@ -478,11 +510,12 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
             cases.append({'project':str(root),'character':state['character_key'],'case_id':pool_id or case_id or asset['id'],'kind':core.quality_domain(state,asset),
                           'requested_revision':requested_revision,
                           'human_revision':state.get('human_revisions',{}).get(asset.get('human_revision')),
-                          'revision_parent_image':str(core.contained(root,core.get_asset(state,asset['parent_asset_id'])['path'])) if asset.get('human_revision') else None,
+                          'revision_parent_image':str(core.contained(root,core.get_asset(state,state['human_revisions'][asset['human_revision']]['parent_asset'])['path'])) if asset.get('human_revision') else None,
                           'human_feedback':feedback or asset.get('human_feedback'), 'human_result':human_result,
                           'assessed_asset_id':asset['id'], 'candidate_pool':state.get('candidate_pools',{}).get(pool_id),
-                          'label':label_for(core,asset,labels,language),'status':action,'max_rounds':plan['max_rounds'] if plan else None,
-                          'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','outfit_components','edit_brief') if key in asset} if 'outfit_id' in asset else None,
+                          'label':label_for(core,asset,labels,language),'status':action,'max_rounds':pool['budget'] if pool_id else plan['max_rounds'] if plan else None,
+                          'attempt_count':len(pool['attempts']) if pool_id else len(records),
+                          'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','outfit_components','prop_action','edit_brief') if key in asset} if 'outfit_id' in asset else None,
                           'source':str(core.contained(root,state['source'])),'source_sha256':state['source_sha256'],
                           'source_canvas':state['canvas'],'history':records,'final':delivered,'delivery_error':error})
         if state['source_sha256'] not in {s['sha256'] for s in sources}:

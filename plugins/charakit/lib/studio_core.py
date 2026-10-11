@@ -46,6 +46,7 @@ QUALITY_INSPECTIONS = ("full_image", "target_detail", "protected_details", "norm
 QUALITY_VERSION = "1.0"
 RUBRIC_THRESHOLDS = {"1.0": 85, "1.1": 80, "1.2": 80}
 QUALITY_WEIGHTS_V12 = {"target": 25, "identity": 20, "protection": 25, "integration": 15, "rendering": 15}
+PROP_ACTIONS = ("add", "remove", "replace")
 MAX_REFINEMENT_ROUNDS = 3
 DOMAIN_CHECKS = {
     "expression": ("emotion", "face_design", "nonface_protection", "rendering"),
@@ -53,6 +54,7 @@ DOMAIN_CHECKS = {
     "garment_recolor": ("target_color", "garment_invariants", "interfaces", "face_expression", "non_target_protection", "rendering"),
     "garment_replace": ("target_garment", "fit_interfaces", "coverage_anatomy", "face_expression", "non_target_protection", "rendering"),
     "outfit_replace": ("outfit_design", "component_completion", "ensemble_coherence", "fit_interfaces", "coverage_anatomy", "face_expression", "non_target_protection", "rendering"),
+    "prop_edit": ("target_object", "placement_contacts", "occlusion_reconstruction", "anatomy_pose", "face_expression", "non_target_protection", "rendering"),
 }
 
 
@@ -149,10 +151,10 @@ def read_state(root: Path) -> dict:
 
     try:
         state = json.loads((root / "run.json").read_text(encoding="utf-8"))
-        require(state["schema_version"] in ("1.0", "1.1", "1.2", "1.3", "1.4"))
+        require(state["schema_version"] in ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5"))
         module = state.get("module", "expressions")
         require(module in ("expressions", "outfits"))
-        require((module == "outfits") == (state["schema_version"] in ("1.2", "1.3", "1.4")))
+        require((module == "outfits") == (state["schema_version"] in ("1.2", "1.3", "1.4", "1.5")))
         require(bool(re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", state["character_key"])))
         require(state["background_mode"] in MODES)
         require(isinstance(state["assets"], list) and isinstance(state["selected"], dict))
@@ -171,9 +173,10 @@ def read_state(root: Path) -> dict:
                 require("expression" not in asset and "mouth_state" not in asset)
                 require(valid_outfit_id(asset["outfit_id"]))
                 require(valid_outfit_definition(asset))
-                require(asset["edit_type"] == "recolor" or state["schema_version"] in ("1.3", "1.4"))
-                require(asset["edit_type"] != "outfit_replace" or state["schema_version"] == "1.4")
-                if asset["edit_type"] in ("replace", "outfit_replace"):
+                require(asset["edit_type"] == "recolor" or state["schema_version"] in ("1.3", "1.4", "1.5"))
+                require(asset["edit_type"] != "outfit_replace" or state["schema_version"] in ("1.4", "1.5"))
+                require(asset["edit_type"] != "prop_edit" or state["schema_version"] == "1.5")
+                if asset["edit_type"] in ("replace", "outfit_replace", "prop_edit"):
                     require("edit_brief" in asset and "prompt_path" in asset and asset.get("quality_required") == QUALITY_VERSION)
                 definition = outfit_definition(asset)
                 require(outfit_targets.setdefault(asset["outfit_id"], definition) == definition)
@@ -259,6 +262,8 @@ def valid_edit_text(value, limit: int) -> bool:
 def outfit_definition(value: dict) -> tuple:
     mode = value.get("edit_type", "recolor")
     definition = (mode, value.get("target"), value.get("color" if mode == "recolor" else "replacement"))
+    if mode == "prop_edit":
+        return definition + (value.get("prop_action"),)
     return definition + (value.get("outfit_components"),) if mode == "outfit_replace" else definition
 
 
@@ -285,19 +290,33 @@ def load_outfit_components(path: Path | None):
 
 def valid_outfit_definition(value: dict) -> bool:
     mode = value.get("edit_type", "recolor")
+    if mode == "prop_edit":
+        action = value.get("prop_action")
+        return (action in PROP_ACTIONS and valid_edit_text(value.get("target"), 200)
+                and "color" not in value and "outfit_components" not in value
+                and ("replacement" not in value if action == "remove"
+                     else valid_edit_text(value.get("replacement"), 600)))
     return (mode in ("recolor", "replace", "outfit_replace") and valid_edit_text(value.get("target"), 200)
             and valid_edit_text(value.get("color" if mode == "recolor" else "replacement"),
                                 2000 if mode == "outfit_replace" else (600 if mode == "replace" else 120))
             and ("replacement" not in value if mode == "recolor" else "color" not in value)
+            and "prop_action" not in value
             and (valid_outfit_components(value.get("outfit_components")) if mode == "outfit_replace" else "outfit_components" not in value))
 
 
 def outfit_fields(outfit_id: str, target: str, color: str | None,
-                  edit_type: str, replacement: str | None, outfit_components=None) -> dict:
+                  edit_type: str, replacement: str | None, outfit_components=None, prop_action=None) -> dict:
     fields = {"outfit_id": outfit_id, "edit_type": edit_type, "target": target}
     if outfit_components is not None:
         fields["outfit_components"] = copy.deepcopy(outfit_components)
-    if edit_type in ("replace", "outfit_replace"):
+    if prop_action is not None:
+        fields["prop_action"] = prop_action
+    if edit_type == "prop_edit":
+        if color is not None or (prop_action == "remove" and replacement is not None):
+            raise StudioError("INVALID_PROP_EDIT", "Props use --prop-action; add/replace require --replacement, while remove omits it and --color.")
+        if replacement is not None:
+            fields["replacement"] = replacement
+    elif edit_type in ("replace", "outfit_replace"):
         fields["replacement"] = replacement
         if color is not None:
             raise StudioError("INVALID_REPLACEMENT", "Describe replacement color/material inside --replacement; do not use --color.")
@@ -306,7 +325,7 @@ def outfit_fields(outfit_id: str, target: str, color: str | None,
         if replacement is not None:
             raise StudioError("INVALID_RECOLOR", "Use --edit-type replace for a new garment design.")
     if not valid_outfit_definition(fields):
-        raise StudioError("INVALID_OUTFIT_COMPONENTS" if edit_type == "outfit_replace" else ("INVALID_REPLACEMENT" if edit_type == "replace" else "INVALID_RECOLOR"),
+        raise StudioError("INVALID_PROP_EDIT" if edit_type == "prop_edit" else ("INVALID_OUTFIT_COMPONENTS" if edit_type == "outfit_replace" else ("INVALID_REPLACEMENT" if edit_type == "replace" else "INVALID_RECOLOR")),
                           "Specify the mode's target and requested result; full outfits require an explicit clothing component inventory.")
     return fields
 
@@ -327,10 +346,11 @@ def valid_source_box(box, canvas: dict) -> bool:
 
 def validate_edit_brief(root: Path, state: dict, brief: dict, check_reference: bool = True) -> None:
     try:
-        valid = (isinstance(brief, dict) and brief["schema_version"] in ("1.0", "1.1", "1.2")
+        valid = (isinstance(brief, dict) and brief["schema_version"] in ("1.0", "1.1", "1.2", "1.3")
                  and (brief.get("edit_type", "recolor") == "recolor"
                       or (brief.get("edit_type") == "replace" and brief["schema_version"] in ("1.1", "1.2"))
-                      or (brief.get("edit_type") == "outfit_replace" and brief["schema_version"] == "1.2"))
+                      or (brief.get("edit_type") == "outfit_replace" and brief["schema_version"] == "1.2")
+                      or (brief.get("edit_type") == "prop_edit" and brief["schema_version"] == "1.3"))
                  and brief["source_sha256"] == state["source_sha256"]
                  and valid_outfit_id(brief["outfit_id"])
                  and valid_outfit_definition(brief)
@@ -351,13 +371,13 @@ def validate_edit_brief(root: Path, state: dict, brief: dict, check_reference: b
 
 def prepare_outfit(root: Path, outfit_id: str, target: str, color: str | None, boundary: str,
                    protected_regions: list[str], target_box: list[int],
-                   edit_type: str = "recolor", replacement: str | None = None, outfit_components=None) -> dict:
+                   edit_type: str = "recolor", replacement: str | None = None, outfit_components=None, prop_action=None) -> dict:
     """Save a scope brief and source-only detail reference; never edits a candidate."""
     state = read_state(root)
     require_module(state, "outfits")
     if not valid_outfit_id(outfit_id):
         raise StudioError("INVALID_OUTFIT_ID", "Use a lowercase filename key.")
-    fields = outfit_fields(outfit_id, target, color, edit_type, replacement, outfit_components)
+    fields = outfit_fields(outfit_id, target, color, edit_type, replacement, outfit_components, prop_action)
     if not (valid_edit_text(boundary, 1000) and isinstance(protected_regions, list)
             and 1 <= len(protected_regions) <= 20
             and all(valid_edit_text(region, 200) for region in protected_regions)):
@@ -379,7 +399,7 @@ def prepare_outfit(root: Path, outfit_id: str, target: str, color: str | None, b
     reference_path.parent.mkdir(parents=True, exist_ok=True)
     with reference_path.open("xb") as stream:
         detail.save(stream, format="PNG")
-    brief = {"schema_version": {"recolor": "1.0", "replace": "1.1", "outfit_replace": "1.2"}[edit_type], **fields,
+    brief = {"schema_version": {"recolor": "1.0", "replace": "1.1", "outfit_replace": "1.2", "prop_edit": "1.3"}[edit_type], **fields,
              "boundary": boundary, "protected_regions": protected_regions, "target_box": target_box,
              "source_sha256": state["source_sha256"],
              "reference": {"path": reference_path.relative_to(root).as_posix(), "sha256": digest(reference_path)},
@@ -435,6 +455,8 @@ def record_fidelity(root: Path, asset_id: str, target_check: str, protection_che
 
 def quality_domain(state: dict, asset: dict) -> str:
     if state.get("module", "expressions") == "outfits":
+        if asset.get("edit_type") == "prop_edit":
+            return "prop_edit"
         if asset.get("edit_type") == "outfit_replace":
             return "outfit_replace"
         return "garment_replace" if asset.get("edit_type") == "replace" else "garment_recolor"
@@ -452,6 +474,8 @@ def validate_domain_review(domain: dict, expected: str | None = None) -> None:
         if not valid:
             raise ValueError("Invalid domain.")
         findings = list(domain["checks"].values())
+        if kind == "prop_edit" and domain.get("prop_action") not in PROP_ACTIONS:
+            raise ValueError("Record the prop operation being inspected.")
         if kind == "outfit_replace":
             components = domain["component_checks"]
             if not (isinstance(components, dict) and 1 <= len(components) <= 12
@@ -467,6 +491,12 @@ def validate_domain_review(domain: dict, expected: str | None = None) -> None:
 
 
 def validate_outfit_component_review(asset: dict, review: dict) -> None:
+    if asset.get("edit_type") == "prop_edit":
+        domain = review.get("domain_review", {})
+        if (review.get("rubric_version") != "1.2" or domain.get("kind") != "prop_edit"
+                or domain.get("prop_action") != asset["prop_action"]):
+            raise StudioError("INVALID_DOMAIN_REVIEW", "Props require rubric 1.2 and the checklist for their actual add/remove/replace operation.")
+        return
     if asset.get("edit_type") != "outfit_replace":
         return
     domain = review.get("domain_review", {})
@@ -603,8 +633,8 @@ def record_quality(root: Path, asset_id: str, assessment: dict, comparisons: lis
         raise StudioError("DOMAIN_REVIEW_REQUIRED", "Inspect and record the active module/state's specific checks, not only a global score.")
     validate_domain_review(assessment["domain_review"], quality_domain(state, asset))
     validate_outfit_component_review(asset, assessment)
-    if asset.get("edit_type") == "outfit_replace" and "candidate_pool" not in asset:
-        raise StudioError("POOL_IMPORT_REQUIRED", "Start a candidate pool before assessing a full outfit.")
+    if asset.get("edit_type") in ("outfit_replace", "prop_edit") and "candidate_pool" not in asset:
+        raise StudioError("POOL_IMPORT_REQUIRED", "Start a candidate pool before assessing a full outfit or prop edit.")
     if "candidate_pool" in asset:
         workflow_call("check_pool_assessment", root, state, asset, assessment)
     report = check_asset(root, state, asset)
@@ -696,7 +726,7 @@ def start_refinement(root: Path, asset_id: str, max_rounds: int = MAX_REFINEMENT
     """Explicit bounded authorization: initial candidate is round one."""
     state = read_state(root)
     asset = get_asset(state, asset_id)
-    if "candidate_pool" in asset or asset.get("edit_type") == "outfit_replace":
+    if "candidate_pool" in asset or asset.get("edit_type") in ("outfit_replace", "prop_edit"):
         raise StudioError("POOL_IMPORT_REQUIRED", "Use this candidate's existing pool and fixed budget.")
     if type(max_rounds) is not int or not 1 <= max_rounds <= MAX_REFINEMENT_ROUNDS:
         raise StudioError("INVALID_REFINEMENT_BUDGET", "Use one to three total rounds, including the initial image.")
@@ -977,7 +1007,7 @@ def add_asset(root: Path, image: Path, expression: str, prompt_file: Path | None
 
 def add_outfit(root: Path, image: Path, outfit_id: str, target: str, color: str | None = None,
                prompt_file: Path | None = None, brief_file: Path | None = None,
-               edit_type: str | None = None, replacement: str | None = None, outfit_components=None) -> dict:
+               edit_type: str | None = None, replacement: str | None = None, outfit_components=None, prop_action=None) -> dict:
     state = read_state(root)
     require_module(state, "outfits")
     if not valid_outfit_id(outfit_id):
@@ -993,10 +1023,12 @@ def add_outfit(root: Path, image: Path, outfit_id: str, target: str, color: str 
     edit_type = edit_type or (previous[-1]["edit_type"] if previous else (brief["edit_type"] if brief else "recolor"))
     if edit_type == "outfit_replace" and outfit_components is None:
         outfit_components = brief.get("outfit_components") if brief else (previous[-1].get("outfit_components") if previous else None)
+    if edit_type == "prop_edit" and prop_action is None:
+        prop_action = brief.get("prop_action") if brief else (previous[-1].get("prop_action") if previous else None)
     target = target.strip() if isinstance(target, str) else target
     color = color.strip() if isinstance(color, str) else color
     replacement = replacement.strip() if isinstance(replacement, str) else replacement
-    fields = outfit_fields(outfit_id, target, color, edit_type, replacement, outfit_components)
+    fields = outfit_fields(outfit_id, target, color, edit_type, replacement, outfit_components, prop_action)
     if any(outfit_definition(a) != outfit_definition(fields) for a in previous):
         raise StudioError("OUTFIT_DEFINITION_CHANGED", "Use a new outfit ID when changing the target, mode or requested result.")
     report = validate_image(image, state["canvas"], state["background_mode"])
@@ -1005,13 +1037,13 @@ def add_outfit(root: Path, image: Path, outfit_id: str, target: str, color: str 
         if brief["outfit_id"] != outfit_id or outfit_definition(brief) != outfit_definition(fields):
             raise StudioError("INVALID_EDIT_BRIEF", "The brief must match this outfit option, target, mode and requested result.")
         fields["edit_brief"] = brief
-    if edit_type in ("replace", "outfit_replace"):
+    if edit_type in ("replace", "outfit_replace", "prop_edit"):
         if "edit_brief" not in fields:
             raise StudioError("EDIT_BRIEF_REQUIRED", "Prepare the replacement boundary and pass --brief-file.")
         if prompt is None or not prompt.strip():
             raise StudioError("REPLACEMENT_PROMPT_REQUIRED", "Save the actual replacement prompt with --prompt-file.")
         fields["quality_required"] = QUALITY_VERSION
-        next_schema = "1.4" if edit_type == "outfit_replace" else "1.3"
+        next_schema = {"replace": "1.3", "outfit_replace": "1.4", "prop_edit": "1.5"}[edit_type]
         if state["schema_version"] < next_schema:
             backup = root / f'run.schema-{state["schema_version"]}.backup.json'
             if backup.exists():
@@ -1049,12 +1081,12 @@ def save_candidate(root: Path, state: dict, image: Path, fields: dict, report: d
         "art_review_status": "unreviewed", "validation": report,
         "model": "unknown", "created_at": timestamp(),
     }
-    if "human_revision" in fields:
+    if "human_revision" in fields and "candidate_pool" not in fields:
         key = fields["human_revision"]
         revision = state["human_revisions"][key]
         asset.update(candidate_pool=asset_id, parent_asset_id=revision["parent_asset"])
         state.setdefault("candidate_pools", {})[asset_id] = {
-            "version": "1.0", "slot": slot, "budget": 1, "contract": copy.deepcopy(revision["contract"]),
+            "version": revision.get("pool_version", "1.0"), "slot": slot, "budget": revision.get("budget", 1), "contract": copy.deepcopy(revision["contract"]),
             "attempts": [{"number": 1, "status": "imported", "strategy": "user_revision", "asset_id": asset_id}],
             "comparisons": [], "human_revision": key, "created_at": timestamp()}
         revision.update(status="imported", asset_id=asset_id)
@@ -1305,7 +1337,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
             sprites[-1]["parent_asset_id"] = asset["parent_asset_id"]
             sprites[-1]["human_revision"] = state["human_revisions"][asset["human_revision"]]
         if is_outfit:
-            sprites[-1].update({key: asset[key] for key in ("outfit_id", "edit_type", "target", "color", "replacement", "outfit_components") if key in asset})
+            sprites[-1].update({key: asset[key] for key in ("outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action") if key in asset})
             if "edit_brief" in asset:
                 sprites[-1]["edit_scope"] = {key: asset["edit_brief"][key] for key in ("boundary", "protected_regions", "target_box")}
             if "fidelity_review" in asset:
@@ -1406,9 +1438,10 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
         prepare.add_argument("--project", required=True, type=Path)
         prepare.add_argument("--outfit", required=True, dest="outfit_id")
         prepare.add_argument("--target", required=True)
-        prepare.add_argument("--edit-type", choices=("recolor", "replace", "outfit_replace"), default="recolor")
+        prepare.add_argument("--edit-type", choices=("recolor", "replace", "outfit_replace", "prop_edit"), default="recolor")
+        prepare.add_argument("--prop-action", choices=PROP_ACTIONS, help="Prop add/remove/replace operation; only valid for prop_edit.")
         prepare.add_argument("--color")
-        prepare.add_argument("--replacement", help="Requested garment or complete outfit design.")
+        prepare.add_argument("--replacement", help="Requested garment, outfit or added/replacement prop design; omit for prop removal.")
         prepare.add_argument("--components-file", type=Path, help="Full outfit component inventory JSON.")
         prepare.add_argument("--boundary", required=True)
         prepare.add_argument("--protect", required=True, action="append", dest="protected_regions")
@@ -1437,10 +1470,11 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
             command.add_argument("--image", required=True, type=Path)
             if module == "outfits":
                 command.add_argument("--outfit", required=True, dest="outfit_id")
-                command.add_argument("--target", required=True, help="Garment or explicit outfit scope, in the user's language.")
-                command.add_argument("--edit-type", choices=("recolor", "replace", "outfit_replace"), help="Defaults to recolor for a new option; existing options retain their mode.")
+                command.add_argument("--target", required=True, help="Garment, outfit scope, object or addition site, in the user's language.")
+                command.add_argument("--edit-type", choices=("recolor", "replace", "outfit_replace", "prop_edit"), help="Defaults to recolor for a new option; existing options retain their mode.")
+                command.add_argument("--prop-action", choices=PROP_ACTIONS, help="Prop operation; defaults to the matching brief or existing definition.")
                 command.add_argument("--color", help="Requested color for recolor mode.")
-                command.add_argument("--replacement", help="Requested garment or complete outfit design.")
+                command.add_argument("--replacement", help="Requested garment, outfit or added/replacement prop design; omit for prop removal.")
                 command.add_argument("--components-file", type=Path, help="Full outfit inventory; defaults to the prepared brief.")
                 command.add_argument("--brief-file", type=Path, help="Prepared edit brief to snapshot with this candidate.")
             else:
@@ -1498,7 +1532,7 @@ def main(module: str = "expressions") -> int:
         elif args.command == "init":
             result = init_project(args.project, args.source, args.character, args.background, module)
         elif args.command == "prepare":
-            result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box, args.edit_type, args.replacement, load_outfit_components(args.components_file))
+            result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action)
         elif args.command == "fidelity":
             result = record_fidelity(args.project, args.asset, args.target_check, args.protection_check, args.note, args.basis)
         elif args.command == "enable-quality":
@@ -1521,7 +1555,7 @@ def main(module: str = "expressions") -> int:
             result = deliver_refinement(args.project, args.case_id)
         elif args.command == "add":
             if module == "outfits":
-                result = add_outfit(args.project, args.image, args.outfit_id, args.target, args.color, args.prompt_file, args.brief_file, args.edit_type, args.replacement, load_outfit_components(args.components_file))
+                result = add_outfit(args.project, args.image, args.outfit_id, args.target, args.color, args.prompt_file, args.brief_file, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action)
             else:
                 result = add_asset(args.project, args.image, args.expression, args.prompt_file, args.mouth_state)
         elif args.command == "status":

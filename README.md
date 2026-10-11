@@ -1,16 +1,16 @@
 # CharaKit
 
-New requests use [candidate selection and human review](plugins/charakit/references/candidate-review.md): authorized independent source sampling, at most one repair of a preferred candidate, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sequential refinement descriptions below apply only to existing `refinements` records. Historical scores remain unchanged; generation-quality gains are not yet established.
+New requests use [candidate selection and human review](plugins/charakit/references/candidate-review.md): default three-attempt internal review/redraw batches per requested result. Total ≥80, every dimension ≥4/5, all domain checks and applicable fidelity/file evidence must pass; otherwise correct recorded failures within the budget. Stop on full passage or exhaustion before anonymous human review. Honor explicit smaller attempt limits. Actual acceptance precedes final PNG/report and requested ZIP delivery. Saved 1.0 pools and legacy refinements keep their existing budgets and verdicts; reduced user revisions remain to be validated.
 
 **English** | [简体中文](README.zh-CN.md)
 
-**CharaKit** is a modular Codex plugin for visual novel character artwork. **CharaKit Expressions** creates full expression variants; **CharaKit Outfits** edits individual garments or replaces a complete clothing ensemble while preserving character identity and unrelated design.
+**CharaKit** is a modular Codex plugin for visual novel character artwork. **CharaKit Expressions** creates full expression variants; **CharaKit Outfits** edits garments, replaces complete outfits, and adds/removes/replaces accessories or props while preserving character identity and unrelated design.
 
 Each module combines a focused Skill with a shared local Python helper. Codex uses its available OpenAI image editing tool to generate images; the helper preserves versions, checks files, creates full-image and detail comparisons, and exports selected resources.
 
-Development version: **0.1.21**.
+Development version: **0.1.24**.
 
-Specific human corrections now continue from the user-chosen candidate through `revision-prepare` and `revision-import`. The helper preserves the original comment, protection checks and parent link, reserves one revision, and requires fresh internal/human review. The review page adds a before-revision reference; reports and exports retain that lineage. See the [human-revision procedure](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction).
+Specific human corrections now continue from the user-chosen candidate through `revision-prepare` and `revision-import`. The helper preserves the original comment, protection checks and parent link, reserves a default three-attempt correction batch, and requires fresh internal/human review. The review page adds a before-revision reference; reports and exports retain that lineage. See the [human-revision procedure](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction).
 
 Review pages now use a separate zoom/pan viewer and match the user's language. Before actual human feedback, reports are labeled internal drafts with no final assets; `report --stage final` requires feedback for every requested pool. The final report includes the user's selected candidate, comments and Codex disposition, including revision and rejection outcomes.
 
@@ -65,7 +65,7 @@ face, expression, mouth state, hair, and pose. Generate two candidates
 and compare them, including enlarged face and jacket regions.
 ```
 
-Outfits supports `recolor` for one garment, `replace` for one garment design and `outfit_replace` for an explicit clothing ensemble; see the [replacement guide](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md). Replacement requires a prepared boundary, actual prompt and its own domain/fidelity review. Workflow support does not establish generated replacement quality. Linked outfit expression sets, accessory additions/removals, clothing on/off states, and automated outfit/expression combinations remain planned. Actual recolor quality needs review of generated images; workflow tests do not prove visual preservation.
+Outfits supports `recolor` for one garment, `replace` for one garment design and `outfit_replace` for an explicit clothing ensemble; see the [replacement guide](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md). Replacement requires a prepared boundary, actual prompt and its own domain/fidelity review. Workflow support does not establish generated replacement quality. Accessories/props use the separate `prop_edit` type described below. Clothing on/off states remain unimplemented; Expressions stays independent and can manually use an output PNG as its source. Actual recolor quality needs review of generated images; workflow tests do not prove visual preservation.
 
 Use a separate outfit project, for example `art-output/my-character/outfits/`, with its own immutable source. The helper records an option ID, existing target, operation and requested color/replacement. Each definition has independent versions and selection. Revisions retain that definition; changing it requires a new ID.
 
@@ -222,4 +222,10 @@ Automatic checks cover file format, canvas dimensions, transparency, and file in
 
 See the [plugin guide](plugins/charakit/README.md) for details.
 
-Full-outfit base workflows are available through `outfit_replace`: explicit clothing mappings, ensemble and per-component review, human-guided revision, and accepted PNG exports. See the [full outfit guide](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md). Real generated-art quality requires visual testing; linked expression sets remain planned.
+Full-outfit base workflows are available through `outfit_replace`: explicit clothing mappings, ensemble and per-component review, human-guided revision, and accepted PNG exports. See the [full outfit guide](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md). Real generated-art quality requires visual testing; users can manually pass an output PNG to Expressions without shared project state.
+
+## Accessories and props
+
+Outfits `prop_edit` supports `add`, `remove` and `replace` through `--prop-action`. It shares candidate selection, actual human feedback, linked revisions and raw PNG export with garment modes, while using its own object, contact, occlusion/reconstruction and anatomy checks. See the [prop edit guide](plugins/charakit/skills/charakit-outfits/references/prop-edit-guide.md). Clothing edits do not implicitly authorize object changes.
+
+Add/replace specify `--replacement`; removal omits it. All require a prepared boundary, actual prompt, rubric 1.2, fresh fidelity observations and a candidate pool. Helper 0.1.22 backs up legacy metadata before the first prop import and upgrades Outfits projects to schema 1.5 without altering existing artwork, selections or historical findings. Workflow tests establish these mechanics; real object-edit quality remains to be evaluated.

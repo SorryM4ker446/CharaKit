@@ -35,6 +35,10 @@ class CandidateReviewTests(unittest.TestCase):
         self.first = studio.add_asset(self.root, self.image, 'happy', self.prompt)['asset']
         self.key = self.first['id']
         self.call('pool_start', self.root, self.key, contract())
+        # Recreate a saved 0.1.22 pool to keep legacy mechanics covered unchanged.
+        state = studio.read_state(self.root)
+        state['candidate_pools'][self.key]['version'] = '1.0'
+        studio.write_state(self.root, state)
 
     def call(self, name, *args, **kwargs):
         return studio.workflow_call(name, *args, **kwargs)
@@ -68,7 +72,7 @@ class CandidateReviewTests(unittest.TestCase):
 
     def compare(self, preferred, repairable=False):
         state = studio.read_state(self.root)
-        ids = [a['id'] for a in state['assets']]
+        ids = [a['id'] for a in state['assets'] if a.get('candidate_pool') == self.key]
         sheet = self.call('review_sheet', self.root, ids, 'assistant')
         packet = studio.read_state(self.root)['review_packets'][sheet['packet']]
         label = next((k for k, v in packet['items'].items() if v['asset_id'] == preferred), None)
@@ -194,7 +198,7 @@ class CandidateReviewTests(unittest.TestCase):
         self.assertNotEqual(child['parent_asset_id'], second['id'])
         self.assertEqual(before['assets'], after['assets'][:-1])
         self.assertEqual(before['candidate_pools'][self.key], after['candidate_pools'][self.key])
-        self.assertEqual(after['candidate_pools'][child['id']]['budget'], 1)
+        self.assertEqual(after['candidate_pools'][child['id']]['budget'], 3)
         self.assertEqual(child['generation_inputs']['strategy'], 'user_revision')
         for path, raw in original.items():
             self.assertEqual((self.root / path).read_bytes(), raw)

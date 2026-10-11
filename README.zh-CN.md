@@ -1,18 +1,18 @@
 # CharaKit
 
-新工作流：[候选择优与人工评图](plugins/charakit/references/candidate-review.md)。按授权预算先从原图独立采样，最多一次修订择优候选；采用五维 rubric 1.2 和生成前确定的检查项。内部评审后显示匿名 A/B 评图页，支持聊天反馈或下载 JSON。实际人工选择后才进入最终 PNG／报告／已请求的 ZIP 交付，旧案例与评分保留原样。
+新工作流：[内部评审、最多三轮重绘与人工评图](plugins/charakit/references/candidate-review.md)。每个请求结果默认最多三次出图（含首图），一张成品不等于一次出图预算；明确指定更少次数时遵守限制。总分达到 80、五维各至少 4/5、专项与适用保真检查全部通过才结束内部修订，否则按实际失败原因继续。通过或用完轮次后再显示匿名人工评图，仍有问题时说明原因。实际人工选择后才交付合格 PNG／最终报告／已请求的 ZIP；旧候选池、预算与评分保持原样。
 
 下文原有三轮连续修订说明仅适用于旧 `refinements` 记录。新流程的通过率收益尚待真实图像测试。
 
 [English](README.md) | **简体中文**
 
-**CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。**CharaKit Expressions** 生成完整表情差分，**CharaKit Outfits** 支持单件衣物改色／替换和整套服装基础图替换。
+**CharaKit** 是面向视觉小说角色美术的模块化 Codex 插件。**CharaKit Expressions** 生成完整表情差分，**CharaKit Outfits** 支持单件衣物改色／替换、整套换装及配饰／道具添加、移除和替换。
 
 两个模块各有独立 Skill，共用本地 Python 文件助手。Codex 使用当前环境提供的 OpenAI 图像编辑工具生成图片；本地助手负责保留版本、检查文件、制作整图与局部对比预览，以及导出选定资源。
 
-开发版本：**0.1.21**。
+开发版本：**0.1.24**。
 
-人工提出具体修改意见后，使用 `revision-prepare` 和 `revision-import` 接续用户选中的候选。助手保留原话、保护约束和前后版本关系，单独记录一次修订，新图重新进行内部检查和人工评审。评图页增加“修订前”对照，报告与导出清单保留修订来源。详见[人工意见到修订流程](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction)。
+人工提出具体修改意见后，使用 `revision-prepare` 和 `revision-import` 接续用户选中的候选。助手保留原话、保护约束和前后版本关系，单独记录默认最多三轮的修订批次，每张新图重新评审，通过或预算耗尽后再人工评图。评图页增加“修订前”对照，报告与导出清单保留修订来源。详见[人工意见到修订流程](plugins/charakit/references/candidate-review.md#continue-a-specific-human-correction)。
 
 评图页使用独立大图窗口，支持缩放、拖动与切换候选，界面语言匹配用户。人工评图前的报告明确标为内部检查草稿，不含成品；`report --stage final` 要求本次所有候选池已记录实际人工意见。最终报告汇总用户选中的候选、意见和 Codex 处理结果，修改或拒绝也有完整记录。
 
@@ -39,7 +39,7 @@
 | 模块 | Skill 标识 | 状态 |
 | --- | --- | --- |
 | CharaKit Expressions | `charakit-expressions` | 已实现：完整表情差分 |
-| CharaKit Outfits | `charakit-outfits` | 已实现：单件衣物改色／替换、整套服装基础图替换及人工修订工作流 |
+| CharaKit Outfits | `charakit-outfits` | 已实现：单件衣物编辑、整套换装、配饰／道具编辑及人工修订工作流 |
 | CharaKit Poses | `charakit-poses` | 计划中：静态动作与姿势编辑 |
 
 插件安装标识为 `charakit`；表情与静态嘴部状态使用 `$charakit-expressions`，指定衣物改色／替换使用 `$charakit-outfits`。姿势模块仍在规划中，尚不能调用。详见[模块定义](plugins/charakit/modules.json)与[模块规划（英文）](plugins/charakit/ROADMAP.md)。
@@ -80,7 +80,7 @@
 同时放大面部与外套区域。
 ```
 
-支持单件衣物改色、`replace` 单件替换，以及 `outfit_replace` 整套服装替换。整套模式先明确服装部件清单和必要的覆盖／交界变化，再检查每件完成度、整套搭配、合身、人体结构和保护区域；详见[整套换装指南](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md)及[单件替换指南](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md)。未列入清单的衣物、鞋袜、装备和配饰保留，人物面部、表情、头发和姿势继续受保护。候选择优后由用户实际评图，具体意见进入一次修订及重新评审，通过且被采用后交付。第一版输出完整的新服装基础图；配套表情组、独立配饰增减、穿脱状态和自动组合管理仍在规划中。工作流测试通过不等于实际生图美术验收。
+支持单件衣物改色、`replace` 单件替换，以及 `outfit_replace` 整套服装替换。整套模式先明确服装部件清单和必要的覆盖／交界变化，再检查每件完成度、整套搭配、合身、人体结构和保护区域；详见[整套换装指南](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md)及[单件替换指南](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md)。未列入清单的衣物、鞋袜、装备和配饰保留，人物面部、表情、头发和姿势继续受保护。内部最多三轮，通过或耗尽后由用户实际评图；具体意见进入新的限轮修订批次，通过且被采用后交付。第一版输出完整的新服装基础图；独立配饰／道具使用下面的 `prop_edit` 类型；穿脱状态未实现。Expressions 保持独立，用户可以手动将输出 PNG 作为新的表情源图，不共享项目状态或自动调用。工作流测试通过不等于实际生图美术验收。
 
 服饰使用独立项目，例如 `art-output/my-character/outfits/`，保留自己的不可变源图。助手记录方案标识、目标衣物、操作类型与颜色／替换款式；每个方案独立保留版本和选择。单张修订沿用原方案定义，改变定义时另建方案标识。
 
@@ -234,3 +234,9 @@ python tools/build_plugin.py --output dist/charakit-0.1.21.zip
 自动检查覆盖文件格式、画布尺寸、透明背景和文件完整性，不评价美术质量或游戏中的表情切换效果。正式导出需要通过技术检查，并在人工检查后确认采用。
 
 更多说明见[插件指南](plugins/charakit/README.md)。
+
+## 配饰与道具
+
+Outfits 新增独立编辑类型 `prop_edit`，通过 `--prop-action add|remove|replace` 添加、移除或替换明确指定的物件，与单件衣物替换并列。它共用候选管理、实际人评、限轮修订和原字节导出流程，独立检查目标物件、佩戴／握持位置、接触、遮挡、移除补全、人体结构和保护范围。详见[配饰／道具编辑指南](plugins/charakit/skills/charakit-outfits/references/prop-edit-guide.md)。换衣服不会自动授予修改武器或发饰的权限。
+
+添加／替换需要 `--replacement` 描述新设计，移除不使用该参数；均要求 prepared brief、实际提示词、候选池、rubric 1.2 与新保真记录。0.1.22 首次导入物件编辑时备份旧元数据并升级 Outfits 项目到 schema 1.5，保留原图、候选、历史评分及选择。没有新增 MCP、蒙版或本地图像修补；工作流测试不代表真实生图质量已通过。

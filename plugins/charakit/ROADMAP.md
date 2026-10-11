@@ -1,15 +1,17 @@
 # CharaKit roadmap
 
+0.1.23: new requests and human-correction batches default to at most three image-tool attempts. Internal failures trigger evidence-directed redraws; full passage or exhaustion precedes human review. Explicit smaller limits, old pools, historical assessments, module independence and final delivery gates remain intact. Workflow validation does not establish lower user revision rates.
+
 New requests use [candidate selection and human review](references/candidate-review.md): authorized independent source sampling, at most one repair of a preferred candidate, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sequential refinement descriptions below apply only to existing `refinements` records. Historical scores remain unchanged; generation-quality gains are not yet established.
 
-CharaKit provides expression editing, single-garment recoloring/replacement, and full-outfit base image workflows. Linked outfit expression sets and pose editing remain planned.
+CharaKit provides expression editing, single-garment editing, full-outfit bases and accessory/prop add/remove/replace workflows. Expressions stays independent: users can manually use an output PNG as a new source without automatic invocation or shared state. Pose editing remains planned.
 
-Helper 0.1.21 adds full-outfit replacement with an explicit clothing inventory, component findings and ensemble checks, reusing candidate selection and human revision. Real outfit generation quality remains to be evaluated. Helper 0.1.20 links a specific correction to the user-chosen candidate, preserves prior constraints and history, and requires fresh internal/human review before delivery. Task recovery and comparisons against direct image-tool conversation are outside this phase; product acceptance concerns this plugin's own behavior and actual user feedback.
+Helper 0.1.22 adds `prop_edit` within Outfits, with explicit add/remove/replace actions, contact/occlusion/reconstruction/anatomy checks, schema 1.5 and the existing human-review/revision flow. Actual object-edit quality still needs visual evaluation. Helper 0.1.21 adds full-outfit replacement with an explicit clothing inventory, component findings and ensemble checks, reusing candidate selection and human revision. Real outfit generation quality remains to be evaluated. Helper 0.1.20 links a specific correction to the user-chosen candidate, preserves prior constraints and history, and requires fresh internal/human review before delivery. Task recovery and comparisons against direct image-tool conversation are outside this phase; product acceptance concerns this plugin's own behavior and actual user feedback.
 
 | Module | Status | Scope |
 | --- | --- | --- |
 | CharaKit Expressions | Available | Twelve fixed expression presets, static mouth-open/closed states, revisions, comparisons, and PNG exports |
-| CharaKit Outfits | Available | Single-garment recoloring/replacement and full-outfit base image workflows, explicit boundaries, component/ensemble checks, human revisions and PNG exports |
+| CharaKit Outfits | Available | Garments, full outfits and accessory/prop edits; explicit boundaries, mode-specific reviews, human revisions and PNG exports |
 | CharaKit Poses | Planned | Static pose and action edits |
 
 Expressions and the recolor/replacement workflows in Outfits are available. Replacement workflow tests do not establish generated-art quality; real replacement preservation still requires validation. Module IDs and availability are listed in [modules.json](modules.json).
@@ -23,7 +25,7 @@ All future development follows the shared [quality-first baseline and internal d
 3. Evaluate quality-focused, domain-specific editing instructions using one complete source by default, optional target references, and enlarged checks of target and protected regions on actual artwork before expanding garment edits.
 4. Validate single-garment replacement on actual artwork, including upper/lower garments, necessary coverage changes and protected equipment. Version 0.1.18 adds compact repair prompts and a source-based third-round strategy after stalled protection checks; legacy cases retain that strategy. Full outfit base workflows are now implemented; validate their actual design adherence and protection.
 5. Introduce simple static pose changes before more complex action poses.
-6. Add expression groups linked to accepted full-outfit bases, then evaluate requested outfit/pose/expression combinations.
+6. Validate accessory/prop design adherence, stable contacts, removal reconstruction and protected-region preservation on actual artwork. Automatic outfit/expression linking is outside the current scope.
 
 Plans may change based on image quality and practical game use. Planned features have no committed release dates and will be marked available only after implementation and validation.
 

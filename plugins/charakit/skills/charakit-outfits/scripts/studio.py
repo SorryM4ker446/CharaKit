@@ -14,9 +14,9 @@ def init_project(root, source, character, mode="auto"):
 
 
 def add_asset(root, image, outfit_id, target, color=None, prompt_file=None, brief_file=None,
-              edit_type=None, replacement=None, outfit_components=None):
+              edit_type=None, replacement=None, outfit_components=None, prop_action=None):
     return _core.add_outfit(root, image, outfit_id, target, color, prompt_file, brief_file,
-                            edit_type, replacement, outfit_components)
+                            edit_type, replacement, outfit_components, prop_action)
 
 
 def main():

@@ -205,7 +205,7 @@ class FullOutfitTests(unittest.TestCase):
         self.assertEqual(child['edit_brief'],parent['edit_brief'])
         self.assertNotIn('quality_review',child)
         self.assertNotIn('human_feedback',child)
-        self.assertEqual(outfits.read_state(self.root)['candidate_pools'][child['id']]['budget'],1)
+        self.assertEqual(outfits.read_state(self.root)['candidate_pools'][child['id']]['budget'],3)
         self.review(child); self.feedback(child)
         exported=outfits.export_pack(self.root)
         record=exported['manifest']['sprites'][0]
@@ -239,9 +239,19 @@ class FullOutfitTests(unittest.TestCase):
         child=self.call('pool_import',self.root,first['id'],attempt['token'],self.raw,self.prompt,
                         [Path(p) for p in attempt['reference_paths']])['asset']
         self.assertEqual(child['outfit_components'],self.components)
-        self.assertIsNone(child['parent_asset_id'])
+        self.assertEqual(child['parent_asset_id'],first['id'])
         self.review(child,lambda data: data['domain_review']['checks']['ensemble_coherence'].update(status='failed'))
         self.code('POOL_NOT_READY',self.call,'pool_reserve',self.root,first['id'])
+
+    def test_component_id_cannot_hide_failed_domain_from_redraw_findings(self):
+        self.components[0]['id']='rendering'
+        first=self.candidate(budget=3)
+        self.review(first,lambda data:data['domain_review']['checks']['rendering'].update(status='failed',evidence='Synthetic rendering defect.'))
+        attempt=self.call('pool_reserve',self.root,first['id'])
+        findings=[x for x in attempt['blocking_findings'] if x['id']=='rendering']
+        self.assertTrue(findings)
+        self.assertEqual(findings[0]['evidence'],'Synthetic rendering defect.')
+        self.assertEqual(self.call('pool_status',self.root,first['id'])['action'],'generate_reserved')
 
     def test_packaged_cli_handles_inventory_bom_and_unicode_outside_repo(self):
         archive=self.folder/'plugin.zip'; builder.build(REPO,archive)
@@ -285,6 +295,11 @@ class FullOutfitTests(unittest.TestCase):
         second=self.call('pool_import',self.root,first['id'],attempt['token'],self.raw,self.prompt,
                          [Path(p) for p in attempt['reference_paths']])['asset']
         self.review(second)
+        internal=self.call('review_sheet',self.root,[first['id'],second['id']],'assistant')
+        state=outfits.read_state(self.root)
+        preferred=next(k for k,v in state['review_packets'][internal['packet']]['items'].items() if v['asset_id']==second['id'])
+        self.call('compare',self.root,first['id'],dict(packet=internal['packet'],basis='assistant',preferred=preferred,
+                  repairable=False,evidence='Synthetic comparison prefers the internally passed candidate.'))
         page=self.call('review_sheet',self.root,[first['id'],second['id']],'user')
         state=outfits.read_state(self.root)
         alias=next(k for k,v in state['review_packets'][page['packet']]['items'].items() if v['asset_id']==first['id'])
