@@ -26,6 +26,8 @@ def valid(c, records):
 
 
 def allowed_scopes(asset):
+    if "pose_id" in asset:
+        return {"pose"}
     if "outfit_id" in asset:
         return {x["id"] for x in asset["outfit_components"]} if asset.get("edit_type") == "outfit_replace" else {"target"}
     return {"expression", "mouth"} if asset.get("mouth_state", "default") != "default" else {"expression"}
@@ -88,7 +90,7 @@ def prepare(c, root, input_file):
     refs = bindings(c, root, state, {"edit_references": records})
     return {"reference_file": str(destination.resolve()), "edit_references": records, "references": refs,
             "reference_paths": [str(c.contained(root, r["path"])) for r in refs],
-            "note": "The source controls identity, pose, style and framing; each other image supplies only its recorded editable scope."}
+            "note": "The source controls identity, protected attributes, style and framing; each other image supplies only its recorded editable scope."}
 
 
 def load(c, root, state, manifest, asset):
@@ -125,20 +127,26 @@ def initial_inputs(c, root, state, fields, submitted):
 
 
 def validate_asset(c, root, state, asset):
-    if "edit_references" not in asset:
+    if "edit_references" not in asset and "pose_id" not in asset:
         return
-    validate(c, asset["edit_references"], asset)
+    if "edit_references" in asset:
+        validate(c, asset["edit_references"], asset)
     inputs = asset.get("generation_inputs", {})
-    require(c, inputs.get("strategy") in ("source_sample", "review_redraw", "user_revision"), "Record reference-aware generation provenance.")
+    require(c, inputs.get("strategy") in ("source_sample", "review_redraw", "source_restart", "user_revision"), "Record reference-aware generation provenance.")
+    if inputs['strategy'] == 'source_restart':
+        pool = state.get('candidate_pools', {}).get(asset.get('candidate_pool'), {})
+        require(c, pool.get('version') == '1.2' and not pool.get('human_revision'),
+                'Source restarts belong to tracked initial-request pools, never human revisions.')
     parent = next((a for a in state["assets"] if a["id"] == asset.get("parent_asset_id")), None) if inputs["strategy"] != "source_sample" else None
     require(c, inputs["strategy"] == "source_sample" or parent is not None, "A redraw/revision needs its recorded parent.")
     # Structural verification only; missing/changed files produce a recoverable stale gate.
     expected = [{"path": state["source"], "sha256": state["source_sha256"], "role": "immutable_source"}]
     if parent:
-        require(c, parent.get("edit_references") == asset["edit_references"], "Revisions retain reference scope and notes.")
-        expected.append({"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"})
+        require(c, parent.get("edit_references") == asset.get("edit_references"), "Revisions retain reference scope and notes.")
+        if inputs['strategy'] != 'source_restart':
+            expected.append({"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"})
     policy = state.get('human_revisions', {}).get(asset.get('human_revision'), {}).get('policy')
     if parent and policy:
         expected.reverse()
-    expected += asset["edit_references"]
+    expected += asset.get("edit_references", [])
     require(c, inputs.get("references") == expected, "Reference paths, order, roles, hashes or scopes differ from the recorded edit.")

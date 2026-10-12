@@ -1,8 +1,8 @@
 # CharaKit
 
-**Edit visual novel character illustrations in Codex.** This plugin provides expression variants, clothing edits, and accessory / prop edits with versioned candidates, human review, and selected PNG exports.
+**Edit visual novel character illustrations in Codex.** This plugin provides expression variants, clothing edits, accessory / prop edits and static dialogue poses with versioned candidates, human review, and selected PNG exports.
 
-Development version **0.1.28** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
+Development version **0.1.30** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
 
 Codex generates artwork through its available image editing tool. The bundled Python helper preserves raw files and manages comparisons, review records, revisions, and packaging.
 
@@ -12,8 +12,9 @@ Codex generates artwork through its available image editing tool. The bundled Py
 | --- | --- |
 | `$charakit-expressions` | Twelve expression presets and static mouth-open / mouth-closed variants |
 | `$charakit-outfits` | `recolor`, `replace`, `outfit_replace`, and `prop_edit` with `add`, `remove`, or `replace` actions |
+| `$charakit-poses` | `natural_standing`, `hand_on_hip`, `wave`, `palm_up`; explicit anatomical sides, static dialogue poses |
 
-The modules use independent projects. To create expressions after changing an outfit, manually use the resulting PNG as a new expression source. Pose editing remains [planned](ROADMAP.md).
+The modules use independent projects. Manually use an exported PNG as another module's source. Four static dialogue poses are available; actual pose generation quality needs validation. Complex poses and object interaction remain [planned](ROADMAP.md). See the [Poses Skill](skills/charakit-poses/SKILL.md) and [pose guide](skills/charakit-poses/references/pose-guide.md).
 
 ## Setup
 
@@ -23,7 +24,7 @@ You need Codex plugin support, an available image editing tool, and Python **3.1
 python -m pip install -r requirements.txt
 ```
 
-Keep the complete plugin directory, including `lib/`, `references/`, and both Skills. Use the Python environment with Pillow installed. For marketplace installation, follow the [repository instructions](https://github.com/SorryM4ker446/CharaKit#install) or the [official packaging guide](https://developers.openai.com/plugins/build/plugins).
+Keep the complete plugin directory, including `lib/`, `references/`, and all three Skills. Use the Python environment with Pillow installed. For marketplace installation, follow the [repository instructions](https://github.com/SorryM4ker446/CharaKit#install) or the [official packaging guide](https://developers.openai.com/plugins/build/plugins).
 
 ## Quick start
 
@@ -68,9 +69,10 @@ Codex uses the helper during the workflow; users can work through chat. To inspe
 ```shell
 python skills/charakit-expressions/scripts/studio.py --help
 python skills/charakit-outfits/scripts/studio.py --help
+python skills/charakit-poses/scripts/studio.py --help
 ```
 
-Outside this directory, use the entrypoint's absolute installed path. Both modules share `lib/studio_core.py`. Commands manage source snapshots, raw candidates, comparisons, assessment records, actual feedback, revisions, and exports. Work sequentially within one project.
+Outside this directory, use the entrypoint's absolute installed path. All modules share `lib/studio_core.py`. Commands manage source snapshots, raw candidates, comparisons, assessment records, actual feedback, revisions, and exports. Poses uses its own schema 3.0 and action/side/anchor brief; its pages default to full images without inheriting a source target crop. Work sequentially within one project.
 
 ## Guides
 
@@ -80,6 +82,7 @@ Outside this directory, use the entrypoint's absolute installed path. Both modul
 | Clothing and object workflow | [Outfits Skill](skills/charakit-outfits/SKILL.md) |
 | Clothing modes | [Recoloring](skills/charakit-outfits/references/recolor-guide.md) · [Single replacement](skills/charakit-outfits/references/replacement-guide.md) · [Full outfits](skills/charakit-outfits/references/full-outfit-guide.md) |
 | Accessories and props | [Prop edits](skills/charakit-outfits/references/prop-edit-guide.md) |
+| Static dialogue poses | [Poses Skill](skills/charakit-poses/SKILL.md) · [Actions and checks](skills/charakit-poses/references/pose-guide.md) |
 | Reference roles and protection | [Scoped references](references/edit-references.md) · [Editing boundaries](references/edit-boundaries.md) |
 | Candidate review and revisions | [Human review and redraws](references/candidate-review.md) · [Quality policy](references/quality-review.md) |
 | Final reports and exports | [Delivery reports](references/delivery-report.md) |

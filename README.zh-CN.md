@@ -1,8 +1,8 @@
 # CharaKit
 
-**用于编辑视觉小说角色立绘的 Codex 插件。** 支持表情差分、服装修改和配饰／道具编辑，将原图、候选版本、评审记录和最终选择保存在同一工作流程中。
+**用于编辑视觉小说角色立绘的 Codex 插件。** 支持表情差分、服装修改、配饰／道具编辑及静态对话姿势，将原图、候选版本、评审记录和最终选择保存在同一工作流程中。
 
-[English](README.md) | **简体中文** · 开发版本 **0.1.28**
+[English](README.md) | **简体中文** · 开发版本 **0.1.30**
 
 上传立绘，说明想改什么，查看结果，再选择采用的版本。CharaKit 使用 Codex 中可用的图像编辑工具生成图片，本地 Python 助手负责文件管理、对照预览、评审记录和导出。
 
@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | Expressions | 十二种表情预设，以及静态张嘴／闭嘴差分 | `$charakit-expressions` |
 | Outfits | 衣物改色、单件替换、整套换装、配饰／道具编辑 | `$charakit-outfits` |
+| Poses | 自然站立、单手叉腰、抬手打招呼、摊手解释 | `$charakit-poses` |
 
 Outfits 包含四种编辑类型：
 
@@ -22,7 +23,7 @@ Outfits 包含四种编辑类型：
 | `outfit_replace` | 替换明确指定的整套服装 | 换成日系制服，同时更换鞋袜 |
 | `prop_edit` | 添加、移除或替换指定配饰／道具 | 添加眼镜、移除武器 |
 
-两个模块均支持限定用途的参考图、限轮重绘、人工评图和指定版本修订。Expressions 与 Outfits 使用独立项目；可以手动将换装后的 PNG 作为生成表情的新原图。姿势编辑仍在[规划中](plugins/charakit/ROADMAP.md)。
+三个模块均支持限定用途的参考图、限轮重绘、人工评图和指定版本修订，使用独立项目；可以手动将导出 PNG 作为另一模块的新原图。Poses 首版支持四种静态对话动作；复杂姿势与持物互动仍在[规划中](plugins/charakit/ROADMAP.md)。真实姿势生成质量仍待验证。
 
 ## 安装
 
@@ -82,7 +83,16 @@ codex plugin add charakit@charakit
 
 移除或替换物件时，也需要明确指出目标。服装修改不会默认授权修改独立配饰或武器。
 
-两个模块都可以附加参考图。请说明每张图用于参考什么，例如只参考夹克版型或眼镜款式；参考图指导这些属性，受保护的人物细节仍以原图为准。
+### 姿势
+
+```text
+使用 $charakit-poses，让角色自身的右手抬到肩部附近、掌心朝外打招呼。
+保持左臂、当前表情、嘴形、服装设计、角色身份和原画风。
+```
+
+左右侧以角色自身为准。Poses 允许动作必要的肢体、关节、衣褶与遮挡变化，保留受保护的设计；姿势参考只指导动作与结构。
+
+三个模块都可以附加参考图。请说明每张图用于参考什么，例如只参考夹克版型、眼镜款式或手掌朝向；参考图指导这些属性，受保护的人物细节仍以原图为准。
 
 回复与预览界面匹配你的语言。产物默认保存在工作区的 `art-output/<character-key>/`。
 
@@ -107,6 +117,7 @@ codex plugin add charakit@charakit
 | 服装编辑 | [衣物改色](plugins/charakit/skills/charakit-outfits/references/recolor-guide.md) · [单件替换](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md) · [整套换装](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md) |
 | 配饰与道具 | [物件编辑](plugins/charakit/skills/charakit-outfits/references/prop-edit-guide.md) |
 | 参考图与保护范围 | [参考图准则](plugins/charakit/references/edit-references.md) · [编辑边界](plugins/charakit/references/edit-boundaries.md) |
+| 静态对话姿势 | [动作、边界与专项检查](plugins/charakit/skills/charakit-poses/references/pose-guide.md) |
 | 评审、重绘与人工修订 | [候选评审](plugins/charakit/references/candidate-review.md) · [质量准则](plugins/charakit/references/quality-review.md) |
 | 报告与导出 | [交付报告](plugins/charakit/references/delivery-report.md) |
 | 助手入口与独立插件使用 | [插件指南](plugins/charakit/README.md) |
@@ -132,4 +143,4 @@ CI 检查 Linux 和 Windows。构建工具拒绝覆盖已有 ZIP，只打包插�
 - 生图依赖宿主提供的图像编辑工具。CharaKit 不自带图像模型、外部图像 API 或 MCP 服务。
 - 编辑可能导致人物设计、姿势、位置或无关细节偏移。评审有助于发现问题，但不能保证像素级保留或减少返修。
 - 最终 PNG 必须匹配原画布，并通过适用的透明度与完整性检查。尺寸不符的图片可用于评图，但阻止正式接受与导出；助手不会缩放或修补候选。
-- 产物是完整静态立绘。动画、口型同步、换装后自动联动表情生成及姿势编辑均未实现。
+- 产物是完整静态立绘。动画、口型同步、跨模块自动生成、大幅朝向变化、坐姿、倚靠和持物互动姿势均未实现。

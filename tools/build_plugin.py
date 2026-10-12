@@ -15,7 +15,9 @@ def build(root: Path, output: Path) -> dict:
                 "lib/edit_references.py", "references/edit-references.md",
                 "skills/charakit-outfits/references/replacement-guide.md",
                 "skills/charakit-outfits/references/full-outfit-guide.md",
-                "skills/charakit-outfits/references/prop-edit-guide.md"}
+                "skills/charakit-outfits/references/prop-edit-guide.md",
+                "skills/charakit-poses/scripts/studio.py",
+                "skills/charakit-poses/references/pose-guide.md"}
     names = {path.relative_to(plugin).as_posix() for path in files}
     if not required.issubset(names):
         raise ValueError("Plugin manifest, module definitions, roadmap, or shared file helper is missing.")

@@ -28,7 +28,7 @@ def revision_checks(language):
         check.update(component='已完成的授权修改', property='修订成果保留',
                      expected='保留当前修订范围之外已完成的成果，不恢复原图中已被替换的特征。')
         source.update(component='最初原图中的受保护区域', property='原图保护区域二次复查',
-                      expected='与最初原图复查仍受保护的区域，排除全部已授权修改及必要交界；记录可见偏移，不恢复已完成的服装、道具或表情替换。')
+                      expected='与最初原图复查仍受保护的区域，排除全部已授权修改及必要交界；记录可见偏移，不恢复已完成的服装、道具、表情或姿势修改。')
     return [check, source]
 
 
@@ -99,6 +99,9 @@ def validate_outfit_contract(c, asset, contract):
     for ref in asset.get("edit_references", []):
         require(c, any(check["dimension"] == "target" and check["component"] == ref["id"] for check in contract),
                 "Include a target check for every reference ID, describing its permitted design/expression cues.")
+    if "pose_id" in asset:
+        require(c, any(check["dimension"] == "target" and check["component"] == asset["target"] for check in contract),
+                "Pose contracts must include a target check for the actual action, anatomical side and hand orientation.")
     if asset.get("edit_type") == "prop_edit":
         require(c, any(check["dimension"] == "target" and check["component"] == asset["target"]
                        for check in contract), "Prop contracts must include a target check for the actual object or addition site.")
@@ -114,7 +117,7 @@ def validate_state(c, state):
     by_id = {a["id"]: a for a in state["assets"]}
     slots = set()
     for key, pool in pools.items():
-        require(c, key in by_id and pool.get("version") in ("1.0", "1.1") and pool.get("slot") == c.asset_slot(by_id[key])
+        require(c, key in by_id and pool.get("version") in ("1.0", "1.1", "1.2") and pool.get("slot") == c.asset_slot(by_id[key])
                 and (pool.get("stopped") or pool["slot"] not in slots), "Invalid pool identity.")
         if not pool.get("stopped"):
             slots.add(pool["slot"])
@@ -125,33 +128,42 @@ def validate_state(c, state):
                 and 1 <= len(attempts) <= pool["budget"] and attempts[0].get("asset_id") == key, "Invalid fixed budget.")
         seen = set()
         for n, attempt in enumerate(attempts, 1):
+            prior = [by_id[a['asset_id']] for a in attempts[:n-1] if a['status'] == 'imported']
+            restart = source_restart_evidence(c, pool, prior) if n > 1 else None
+            expected_strategy = (("user_revision" if pool.get("human_revision") else "source_sample") if n == 1 else
+                                 ("source_restart" if restart else "review_redraw") if pool['version'] in ('1.1', '1.2') else
+                                 ("user_revision" if pool.get("human_revision") else "source_sample" if n == 2 else "repair_best"))
             require(c, attempt["number"] == n and attempt["status"] in ("reserved", "imported", "failed")
-                    and attempt["strategy"] == (("user_revision" if pool.get("human_revision") else "source_sample") if n == 1 else
-                                                ("review_redraw" if pool["version"] == "1.1" else
-                                                 ("user_revision" if pool.get("human_revision") else "source_sample" if n == 2 else "repair_best"))), "Invalid attempt order.")
+                    and attempt["strategy"] == expected_strategy, "Invalid attempt order.")
+            require(c, attempt.get('restart_evidence') == restart, 'Source restarts require unchanged recorded stall evidence.')
+            if restart:
+                require(c, attempt.get('references') == [
+                    {'path': state['source'], 'sha256': state['source_sha256'], 'role': 'immutable_source'}
+                ] + by_id[key].get('edit_references', []), 'Source restarts exclude the failed candidate from image inputs.')
             if attempt["status"] == "imported":
                 aid = attempt["asset_id"]
                 require(c, aid in by_id and aid not in seen and by_id[aid].get("candidate_pool") == key
                         and c.asset_slot(by_id[aid]) == pool["slot"] and "refinement_case" not in by_id[aid], "Invalid pool member.")
                 seen.add(aid)
-            if by_id[key].get("edit_references"):
-                require(c, pool["version"] == "1.1", "Scoped references require the review/redraw workflow.")
+            if by_id[key].get("edit_references") or "pose_id" in by_id[key]:
+                require(c, pool["version"] in ("1.1", "1.2"), "Scoped references require the review/redraw workflow.")
                 expected = copy.deepcopy(by_id[key]["generation_inputs"]["references"])
                 if n > 1:
                     parent = by_id.get(attempt.get("parent"))
                     require(c, parent is not None, "A reference-aware redraw needs its recorded parent.")
-                    expected = [{"path": state["source"], "sha256": state["source_sha256"], "role": "immutable_source"},
-                                {"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"}]
+                    expected = [{"path": state["source"], "sha256": state["source_sha256"], "role": "immutable_source"}]
+                    if not restart:
+                        expected.append({"path": parent["path"], "sha256": parent["sha256"], "role": "edit_target"})
                     if revision_policy(state, by_id[key]):
                         expected.reverse()
-                    expected += copy.deepcopy(by_id[key]["edit_references"])
+                    expected += copy.deepcopy(by_id[key].get("edit_references", []))
                 require(c, attempt.get("references") == expected, "Attempt references must preserve paths, roles, hashes and editable scopes.")
                 if attempt["status"] == "imported":
                     member = by_id[attempt["asset_id"]]
-                    require(c, member.get("edit_references") == by_id[key]["edit_references"]
+                    require(c, member.get("edit_references") == by_id[key].get("edit_references")
                             and member.get("generation_inputs", {}).get("references") == expected
                             and member["generation_inputs"]["strategy"] == attempt["strategy"], "Imported references differ from their reserved attempt.")
-            if pool['version'] == '1.1' and n > 1:
+            if pool['version'] in ('1.1', '1.2') and n > 1:
                 parent = by_id.get(attempt.get('parent'))
                 require(c, parent is not None and parent['id'] in {a.get('asset_id') for a in attempts[:n-1] if a['status']=='imported'}
                         and parent.get('quality_review') is not None
@@ -159,13 +171,19 @@ def validate_state(c, state):
                         and attempt.get('blocking_findings') == redraw_findings(parent)
                         and bool(attempt.get('blocking_findings')),
                         "Redraws must retain the assessed parent's failure evidence.")
-                paths = [parent['path'], state['source']] if revision_policy(state, by_id[key]) else [state['source'], parent['path']]
+                paths = ([state['source']] if restart else
+                         [parent['path'], state['source']] if revision_policy(state, by_id[key]) else [state['source'], parent['path']])
                 require(c, [r['path'] for r in attempt.get('references', [])] == paths + [r['path'] for r in by_id[key].get('edit_references', [])],
                         "Redraws retain their recorded editing baseline and source context.")
                 if revision_policy(state, by_id[key]):
                     require(c, attempt.get('revision_policy') == revision_policy(state, by_id[key]), 'Redraws retain the revision policy.')
                 if attempt['status'] == 'imported':
                     require(c, by_id[attempt['asset_id']]['parent_asset_id'] == parent['id'], "Invalid redraw lineage.")
+                    if pool['version'] == '1.2':
+                        inputs = by_id[attempt['asset_id']].get('generation_inputs', {})
+                        require(c, all(inputs.get(k) == attempt.get(k) for k in
+                                       ('strategy', 'parent', 'references', 'restart_evidence', 'blocking_findings', 'review_sha256')),
+                                'Imported redraw provenance differs from the reserved attempt.')
         require(c, not any(a["status"] == "reserved" for a in attempts[:-1]), "Only the latest attempt can be pending.")
     for asset in state["assets"]:
         if "candidate_pool" in asset:
@@ -206,7 +224,7 @@ def validate_state(c, state):
                     and pools[aid]["budget"] == revision.get("budget", 1) and pools[aid]["contract"] == revision["contract"],
                     "Invalid imported human revision.")
             require(c, all(by_id[aid].get(field) == parent.get(field) for field in
-                          ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references")),
+                          ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references")),
                     "Human revisions retain their chosen parent's edit definition and brief.")
             if revision.get('policy'):
                 require(c, by_id[aid].get('generation_inputs', {}).get('revision_policy') == revision['policy'],
@@ -257,13 +275,13 @@ def revision_plan(c, root, state, key):
     parent = c.get_asset(state, revision["parent_asset"])
     return {"revision": key, "status": revision["status"], "budget": revision.get("budget", 1),
             "parent_asset": parent["id"], "note": revision["note"], "contract": revision["contract"],
-            "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent},
+            "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent},
             "references": copy.deepcopy(revision["references"]),
             "reference_paths": [str(c.contained(root, item["path"])) for item in revision["references"]],
             **({'revision_policy': copy.deepcopy(revision['policy']),
                 'edit_target': str(c.contained(root, parent['path'])),
                 'source_context': str(c.contained(root, state['source'])),
-                'instructions': 'Edit the chosen candidate as the primary baseline. Preserve successful edits outside the correction. Recheck still-protected regions against the source and correct documented unauthorized drift or explicitly named restoration checks. Never restore superseded clothing, objects or expression states.'} if revision.get('policy') else {}),
+                'instructions': 'Edit the chosen candidate as the primary baseline. Preserve successful edits outside the correction. Recheck still-protected regions against the source and correct documented unauthorized drift or explicitly named restoration checks. Never restore superseded clothing, objects, expression states or poses.'} if revision.get('policy') else {}),
             "asset_id": revision.get("asset_id"), "failure": revision.get("failure"),
             "next_action": {"reserved": "generate_revision", "imported": "review", "failed": "stopped", "cancelled": "stopped"}[revision["status"]]}
 
@@ -333,7 +351,7 @@ def revision_import(c, root, key, image, prompt, references, failure=None):
             "Use the returned immutable source, chosen edit target and scoped references in order.", "INVALID_REVISION_REFERENCES")
     actual_prompt = prompt.read_text(encoding="utf-8")
     require(c, bool(actual_prompt.strip()), "Save the actual targeted revision prompt.")
-    fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent}
+    fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent}
     fields.update(human_revision=key, quality_required=c.QUALITY_VERSION,
                   generation_inputs={"strategy": "user_revision", "references": copy.deepcopy(revision["references"]), "packet": key})
     if revision.get('policy'):
@@ -361,10 +379,10 @@ def pool_start(c, root, aid, contract, budget=3):
     asset["candidate_pool"] = aid
     asset["parent_asset_id"] = None
     initial = {"number": 1, "status": "imported", "strategy": "source_sample", "asset_id": aid}
-    if asset.get("edit_references"):
+    if asset.get("edit_references") or "pose_id" in asset:
         initial["references"] = copy.deepcopy(asset["generation_inputs"]["references"])
     state.setdefault("candidate_pools", {})[aid] = {
-        "version": "1.1", "slot": c.asset_slot(asset), "budget": budget, "contract": copy.deepcopy(contract),
+        "version": "1.2", "slot": c.asset_slot(asset), "budget": budget, "contract": copy.deepcopy(contract),
         "attempts": [initial],
         "comparisons": [], "created_at": c.timestamp()}
     c.write_state(root, state)
@@ -404,6 +422,61 @@ def redraw_findings(asset):
     return findings
 
 
+TARGET_DOMAIN_CHECKS = {
+    'expression': ('emotion',), 'mouth_state': ('emotion', 'mouth_state'),
+    'garment_recolor': ('target_color',), 'garment_replace': ('target_garment',),
+    'outfit_replace': ('outfit_design', 'component_completion', 'ensemble_coherence'),
+    'prop_edit': ('target_object',), 'pose_edit': ('target_pose',),
+}
+PROTECTED_DOMAIN_CHECKS = {
+    'face_design': 'identity', 'face_expression': 'identity',
+    'nonface_protection': 'protection', 'non_target_protection': 'protection',
+    'garment_invariants': 'protection', 'framing_anchors': 'protection',
+}
+
+
+def source_restart_evidence(c, pool, assets):
+    """Route from saved observations, not a new visual or similarity judgment."""
+    if pool['version'] != '1.2' or pool.get('human_revision') or len(assets) < 2:
+        return None
+    previous, current = assets[-2:]
+    reviews = [a.get('quality_review', {}) for a in (previous, current)]
+    for asset, review in zip((previous, current), reviews):
+        domain = review.get('domain_review', {})
+        target_checks = TARGET_DOMAIN_CHECKS.get(domain.get('kind'))
+        if (not target_checks or not all(review.get('inspection', {}).values())
+                or review.get('dimensions', {}).get('target', {}).get('score', 0) < 4
+                or not all(x['status'] == 'passed' for x in review.get('criteria', []) if x['dimension'] == 'target')
+                or any(domain.get('checks', {}).get(k, {}).get('status') != 'passed' for k in target_checks)
+                or any(x['status'] != 'passed' for x in domain.get('component_checks', {}).values())
+                or asset.get('fidelity_review', {}).get('target_check', 'passed') != 'passed'):
+            return None
+    before, after = reviews
+    earlier = {x['id']: x for x in before['criteria']}
+    checks = []
+    for item in after['criteria']:
+        old = earlier.get(item['id'], {})
+        if (item['dimension'] in ('identity', 'protection') and item['status'] == old.get('status') == 'failed'
+                and item['score'] <= old['score']):
+            checks.append(dict(kind='criterion', id=item['id'], dimension=item['dimension'],
+                               previous_score=old['score'], current_score=item['score']))
+    for key, dimension in PROTECTED_DOMAIN_CHECKS.items():
+        if (before['domain_review']['checks'].get(key, {}).get('status') == 'failed'
+                and after['domain_review']['checks'].get(key, {}).get('status') == 'failed'
+                and after['dimensions'][dimension]['score'] <= before['dimensions'][dimension]['score']):
+            checks.append(dict(kind='domain', id=key, dimension=dimension,
+                               previous_score=before['dimensions'][dimension]['score'], current_score=after['dimensions'][dimension]['score']))
+    if (all(a.get('fidelity_review', {}).get('protection_check') == 'failed' for a in (previous, current))
+            and after['dimensions']['protection']['score'] <= before['dimensions']['protection']['score']):
+        checks.append(dict(kind='fidelity', id='protection_check', dimension='protection',
+                           previous_score=before['dimensions']['protection']['score'], current_score=after['dimensions']['protection']['score']))
+    if not checks:
+        return None
+    return dict(asset_ids=[a['id'] for a in (previous, current)],
+                review_sha256=[c.review_fingerprint(r) for r in reviews],
+                fidelity_sha256=[c.review_fingerprint(a.get('fidelity_review', {})) for a in (previous, current)], checks=checks)
+
+
 def pool_status(c, root, key):
     state = c.read_state(root)
     require(c, key in state.get("candidate_pools", {}), "Unknown pool.")
@@ -429,7 +502,7 @@ def pool_status(c, root, key):
         action = "human_review"
     elif len(pool["attempts"]) >= pool["budget"]:
         action = "exhausted"
-    elif pool["version"] == "1.1":
+    elif pool["version"] in ("1.1", "1.2"):
         action = "redraw"
     elif len(pool["attempts"]) == 1:
         action = "sample"
@@ -437,12 +510,15 @@ def pool_status(c, root, key):
         action = "repair"
     else:
         action = "exhausted"
+    restart = source_restart_evidence(c, pool, assets) if action == 'redraw' else None
     return {"case_id": key, "action": action, "used": len(pool["attempts"]), "budget": pool["budget"],
             "best_asset": best["id"] if best else None, "passed_assets": [a["id"] for a in passed],
             "preferred_asset": ranking["preferred"] if ranking else (best["id"] if best else None),
             "attempts": pool["attempts"], "contract": pool["contract"],
             "repair_parent": (ranking["preferred"] if ranking and ranking["preferred"] else assets[-1]["id"]) if action in ("repair", "redraw") else None,
             "blocking_findings": {a["id"]: redraw_findings(a) for a in assets if not eligible(c, root, state, a)},
+            "next_strategy": ('source_restart' if restart else 'review_redraw') if action == 'redraw' else None,
+            "restart_evidence": restart,
             "note": "User feedback is required before acceptance/export. Failed candidates remain inspection evidence."}
 
 
@@ -452,27 +528,32 @@ def pool_reserve(c, root, key):
     state = c.read_state(root)
     pool = state["candidate_pools"][key]
     refs = [state["source"]]
-    if plan["repair_parent"]:
+    restart = plan['next_strategy'] == 'source_restart'
+    if plan["repair_parent"] and not restart:
         refs.append(c.get_asset(state, plan["repair_parent"])["path"])
     attempt = {"number": len(pool["attempts"]) + 1, "status": "reserved", "token": secrets.token_hex(12),
-               "strategy": {"sample": "source_sample", "repair": "repair_best", "redraw": "review_redraw"}[plan["action"]],
+               "strategy": plan['next_strategy'] or {"sample": "source_sample", "repair": "repair_best"}[plan["action"]],
                "parent": plan["repair_parent"], "references": [{"path": p, "sha256": c.digest(c.contained(root, p))} for p in refs]}
     original = c.get_asset(state, key)
     policy = revision_policy(state, original)
-    if original.get("edit_references"):
+    if original.get("edit_references") or "pose_id" in original or restart:
         parent = c.get_asset(state, plan["repair_parent"]) if plan["repair_parent"] else None
-        attempt["references"] = planned_references(c, root, state, original, parent, policy)
+        attempt["references"] = planned_references(c, root, state, original, None if restart else parent, policy)
         refs = [r["path"] for r in attempt["references"]]
     elif policy:
         attempt['references'] = planned_references(c, root, state, original, c.get_asset(state, plan['repair_parent']), policy)
         refs = [r['path'] for r in attempt['references']]
     if policy:
         attempt['revision_policy'] = copy.deepcopy(policy)
+    if restart:
+        attempt['restart_evidence'] = copy.deepcopy(plan['restart_evidence'])
     if plan["repair_parent"]:
         attempt["repair_plan"] = (pool["comparisons"][-1]["repair_plan"] if plan["action"] == "repair" else
-                                  "Correct the attached failed checks; retain the fixed contract and successful edits. The immutable source controls identity, pose and framing; do not copy failed properties from the candidate.")
+                                  "Correct the attached failed checks; retain the fixed contract and successful edits. The immutable source controls identity, protected attributes and framing; do not copy failed properties from the candidate.")
         if policy:
             attempt['repair_plan'] = 'Correct the recorded failures on the named edit target. Retain successful changes relative to the user-chosen baseline. Use source context to repair documented drift in still-protected regions or explicitly named restoration checks; never reintroduce superseded source features.'
+        if restart:
+            attempt['repair_plan'] = 'Reapply the fixed requested edit to the immutable source using the contract, brief and all scoped references. Preserve the successful target through its recorded action/design requirements. The failed parent is review evidence only and is not an image input; do not attach it or reproduce its identity/protection drift.'
         attempt["blocking_findings"] = plan["blocking_findings"][plan["repair_parent"]]
         attempt["review_sha256"] = c.review_fingerprint(c.get_asset(state, plan["repair_parent"])["quality_review"])
     pool["attempts"].append(attempt)
@@ -499,7 +580,7 @@ def pool_import(c, root, key, token, image, prompt, references, failure=None):
     actual_prompt = prompt.read_text(encoding="utf-8")
     require(c, bool(actual_prompt.strip()), "Save the actual submitted prompt.")
     original = c.get_asset(state, key)
-    fields = {k: copy.deepcopy(original[k]) for k in ("expression", "mouth_state", "outfit_id", "target", "color", "replacement", "edit_type", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in original}
+    fields = {k: copy.deepcopy(original[k]) for k in ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "outfit_id", "target", "color", "replacement", "edit_type", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in original}
     fields.update(candidate_pool=key, repair_parent=attempt["parent"], generation_inputs=copy.deepcopy(attempt))
     if pool.get("human_revision"):
         fields["human_revision"] = pool["human_revision"]
@@ -564,7 +645,7 @@ def user_review_candidates(c, root, state, requested, selection_note):
     require(c, bool(visible), "No unchanged, readable candidates can be shown.")
     require(c, all("quality_review" in a and c.quality_status(root, state, a) != "stale" for a in visible),
             "Complete internal assessment before human review.")
-    if pool and pool.get("version") == "1.1":
+    if pool and pool.get("version") in ("1.1", "1.2"):
         action = pool_status(c, root, key)["action"]
         finished = action in ("human_review", "exhausted", "export", "stopped")
         if action == "blocked" and any(x["reason"] == "unavailable_file" for x in omissions):
@@ -616,7 +697,7 @@ def inspection_regions(c, state, assets, face_box, detail_box, requested=None):
         require(c, face_box is None and detail_box is None, 'Use an inspection plan or individual boxes, not both.', 'INVALID_REVIEW_BOX')
         validate_regions(c, requested, state['canvas'])
         return copy.deepcopy(requested)
-    if detail_box is None:
+    if detail_box is None and state.get('module') != 'poses':
         boxes = [a.get('edit_brief', {}).get('target_box') for a in assets]
         if boxes and boxes[0] and all(box == boxes[0] for box in boxes):
             detail_box = boxes[0]
@@ -1271,8 +1352,8 @@ def validate_blind_record(c, root, state, asset, review):
 
 def require_user_feedback(c, root, state, asset):
     if "candidate_pool" not in asset:
-        require(c, asset.get("edit_type") not in ("outfit_replace", "prop_edit") and "edit_references" not in asset,
-                "Full outfits and prop edits require a candidate pool and actual user acceptance.", "HUMAN_REVIEW_REQUIRED")
+        require(c, asset.get("edit_type") not in ("outfit_replace", "prop_edit", "pose_edit") and "edit_references" not in asset,
+                "Full outfits, prop edits and pose edits require a candidate pool and actual user acceptance.", "HUMAN_REVIEW_REQUIRED")
         return
     feedback = asset.get("human_feedback", {})
     require(c, feedback.get("decision") == "accept" and feedback.get("basis") == "user"

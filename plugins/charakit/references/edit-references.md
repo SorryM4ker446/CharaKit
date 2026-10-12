@@ -14,8 +14,9 @@ Scopes for current modules:
 | Expressions, explicit mouth state | `expression`, `mouth` | Authorized expression/mouth movement only; a mouth-only request protects established emotion |
 | Outfits recolor, replace, prop_edit | `target` | Only the named garment color/design or object; removal references describe the intended clean result |
 | Outfits outfit_replace | Exact editable inventory component IDs | The relevant design, material, color and construction for each listed component |
+| Poses | `pose` | Requested static action and structural relationships only; preserve source identity, expression, designs and style |
 
-Scopes describe the maximum possible use, not permission to change everything they name. Stay inside the user's actual request. Future modules must define their editable attributes and reference scopes before release: a future pose editor may explicitly reference pose while protecting identity; current Outfits does not authorize pose edits.
+Scopes describe the maximum possible use, not permission to change everything they name. Stay inside the user's actual request. Future modules must define their editable attributes and reference scopes before release. Poses explicitly permits the requested movement while protecting identity; Outfits does not authorize pose edits. See the [pose guide](../skills/charakit-poses/references/pose-guide.md).
 
 ## Snapshot and use actual inputs
 
@@ -25,7 +26,7 @@ Create a UTF-8 input JSON in the user's output directory, with one to three dist
 [{"id":"design_ref","path":"reference.png","scope":["target"],"notes":"Use only the requested garment design and color; preserve the source character."}]
 ```
 
-Run either module's helper:
+Run the active module's helper:
 
 ```text
 python <skill>/scripts/studio.py reference-prepare --project <project> --references-file <input.json>
@@ -43,7 +44,7 @@ Define the normal five-dimension contract plus a **target criterion whose `compo
 
 Inspect source, candidate and every applicable reference. Record actual visible adherence and deviation for each reference criterion. Reference adherence belongs to target completion and applicable domain checks; source preservation remains independent. A reference image is not evidence that the generated result passed. Any failed/uncertain required reference criterion, dimension, domain, fidelity or critical-defect check blocks passage, even above 80. Apply the shared [candidate review](candidate-review.md) budget: normally three total attempts including the first; honor a smaller explicit cap, stop as soon as all gates pass, otherwise redraw within the remaining budget and reassess every required check.
 
-Use every `pool-reserve` or `revision-prepare` returned `reference_paths` **without changing order**. New human revisions and their internal redraws use the chosen/recorded edit target first, immutable source second, then all scoped references; ordinary initial-request redraws and saved legacy plans retain their recorded strategy. Follow the shared [revision baseline and inspection rules](candidate-review.md#revision-baselines-and-task-based-inspection): preserve successful edits relative to the chosen baseline and separately recheck still-protected regions against the source. Restore only explicitly named protected properties; do not reintroduce superseded source features. Imports bind actual inputs and parent lineage; new images never inherit scores or acceptance. Tool failures consume their reserved attempt. At exhaustion explain unresolved findings, then ask for actual human feedback; no fourth attempt.
+Use every `pool-reserve` or `revision-prepare` returned `reference_paths` **without changing order**. New human revisions and their internal redraws use the recorded edit target first, immutable source second, then all scoped references. Initial-request `source_restart` plans use only the source followed by all already-bound scoped references: the failed parent is review evidence, never submitted to the image tool. Other redraws and saved legacy plans retain their recorded strategy. Follow the shared [revision baseline and inspection rules](candidate-review.md#revision-baselines-and-task-based-inspection): preserve successful edits relative to the chosen baseline and separately recheck protected regions against the source. Restore only explicitly named protected properties; do not reintroduce superseded source features. Imports bind actual inputs and parent lineage; new images never inherit scores or acceptance. Tool failures consume their reserved attempt. At exhaustion explain unresolved findings and request actual human feedback; no fourth attempt.
 
 Human corrections preserve the chosen parent, the user's original comment and the same reference records through their new bounded review/redraw batch. A new reference or changed scope/design is a new explicitly requested edit, not a way to reset an old budget or reuse a passed assessment. Unreferenced old projects retain their original strategy and history without automatic migration.
 

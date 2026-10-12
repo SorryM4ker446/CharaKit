@@ -1,8 +1,8 @@
 # CharaKit
 
-**A Codex plugin for editing visual novel character illustrations.** Create expression variants, change clothing, and edit accessories or props through a workflow that keeps the source, candidates, review findings, and your chosen version together.
+**A Codex plugin for editing visual novel character illustrations.** Create expression variants, change clothing, edit accessories or props, and adjust static dialogue poses through a workflow that keeps the source, candidates, review findings, and your chosen version together.
 
-**English** | [简体中文](README.zh-CN.md) · Development version **0.1.28**
+**English** | [简体中文](README.zh-CN.md) · Development version **0.1.30**
 
 Attach an illustration, describe the change, review the results, and choose what to keep. CharaKit uses the image editing tool available in Codex; its local Python helper manages files, comparisons, review records, and exports.
 
@@ -12,6 +12,7 @@ Attach an illustration, describe the change, review the results, and choose what
 | --- | --- | --- |
 | Expressions | Twelve expression presets and static mouth-open / mouth-closed variants | `$charakit-expressions` |
 | Outfits | Garment recoloring, single-garment replacement, full-outfit replacement, and accessory / prop editing | `$charakit-outfits` |
+| Poses | Natural standing, one hand on hip, raised-hand greeting, and palm-up explanation | `$charakit-poses` |
 
 Outfits has four edit types:
 
@@ -22,7 +23,7 @@ Outfits has four edit types:
 | `outfit_replace` | Replace an explicitly defined clothing ensemble | Change into a Japanese school uniform, including socks and shoes |
 | `prop_edit` | Add, remove, or replace a scoped accessory or prop | Add glasses or remove a weapon |
 
-Both modules support scoped reference images, bounded redraws, human feedback, and revisions of a chosen candidate. Expressions and Outfits use independent projects; you can manually use an exported outfit image as the source for new expressions. Pose editing is [planned](plugins/charakit/ROADMAP.md).
+All three modules support scoped reference images, bounded redraws, human feedback, and revisions of a chosen candidate. Each uses an independent project; you can manually use an exported PNG as another module's source. Poses supports four static dialogue actions; complex poses and object manipulation remain [planned](plugins/charakit/ROADMAP.md). Real pose generation quality still needs validation.
 
 ## Install
 
@@ -82,7 +83,17 @@ Keep the expression, facial features, hair, clothing, and pose.
 
 To remove or replace an object, name it explicitly. A clothing request alone does not authorize changes to separate accessories or weapons.
 
-You may attach additional reference images to either module. Describe what each should guide—for example, only the jacket cut or the glasses design. References guide those attributes while the source illustration governs the protected character details.
+### Poses
+
+```text
+Use $charakit-poses to raise this character's own right hand near shoulder height,
+palm outward, for a greeting. Preserve the left arm, current expression,
+mouth state, clothing design, character identity, and original style.
+```
+
+Left and right refer to the character's anatomical side. Poses permits necessary limb, joint, fold and overlap changes while preserving protected designs. Pose references guide only the action and structure.
+
+You may attach additional reference images to any module. Describe what each should guide—for example, only the jacket cut, glasses design or palm orientation. References guide those attributes while the source illustration governs the protected character details.
 
 Responses and preview labels follow your language. Outputs default to `art-output/<character-key>/` in your workspace.
 
@@ -106,6 +117,7 @@ Scores are Codex's evidence-based visual judgments; the helper validates records
 | Static dialogue mouth states | [Mouth states](plugins/charakit/skills/charakit-expressions/references/mouth-states.md) |
 | Clothing edits | [Recoloring](plugins/charakit/skills/charakit-outfits/references/recolor-guide.md) · [Single replacement](plugins/charakit/skills/charakit-outfits/references/replacement-guide.md) · [Full outfits](plugins/charakit/skills/charakit-outfits/references/full-outfit-guide.md) |
 | Accessories and props | [Prop edits](plugins/charakit/skills/charakit-outfits/references/prop-edit-guide.md) |
+| Static dialogue poses | [Pose actions, boundaries and checks](plugins/charakit/skills/charakit-poses/references/pose-guide.md) |
 | Reference images and protected scope | [Scoped references](plugins/charakit/references/edit-references.md) · [Editing boundaries](plugins/charakit/references/edit-boundaries.md) |
 | Review, redraws, and user revisions | [Candidate review](plugins/charakit/references/candidate-review.md) · [Quality policy](plugins/charakit/references/quality-review.md) |
 | Reports and exports | [Delivery reports](plugins/charakit/references/delivery-report.md) |
@@ -132,4 +144,4 @@ CI checks Linux and Windows. The builder refuses to overwrite an existing ZIP an
 - Image generation depends on the host's editing tool. CharaKit does not bundle an image model, external image API, or MCP service.
 - Edits can drift in identity, pose, framing, or unrelated details. Review helps detect these defects but does not guarantee pixel preservation or fewer revisions.
 - Final PNGs must match the source canvas and pass applicable transparency and integrity checks. Canvas mismatch can remain visible in review, but blocks formal acceptance and export; the helper does not resize or repair candidates.
-- Outputs are complete static illustrations. Animation, lip synchronization, automatic expression generation from an outfit, and pose editing are outside the implemented feature set.
+- Outputs are complete static illustrations. Animation, lip synchronization, automatic cross-module generation, larger viewpoint changes, sitting, leaning and object interaction poses are outside the implemented feature set.

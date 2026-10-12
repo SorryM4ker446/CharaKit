@@ -38,6 +38,14 @@ MOUTH_PRESETS = {
     "open": {"name": "Mouth open", "direction": "A small natural speaking opening suited to the emotion; not surprise, shouting, or a phoneme sequence."},
 }
 MOUTH_STATES = tuple(MOUTH_PRESETS)
+POSE_PRESETS = {
+    "natural_standing": {"name": "Natural standing", "direction": "Relaxed standing with both arms naturally lowered; reuse an already matching source."},
+    "hand_on_hip": {"name": "One hand on hip", "direction": "Place the specified hand at the waist with natural palm contact and shoulder/elbow alignment; preserve the other arm unless requested."},
+    "wave": {"name": "Raised hand greeting", "direction": "Raise the specified hand near shoulder height, palm outward, with natural fingers and wrist; a static greeting, not animation."},
+    "palm_up": {"name": "Palm-up explanation", "direction": "Extend the specified hand slightly forward with palm upward and restrained perspective; preserve the other arm unless requested."},
+}
+POSES = tuple(POSE_PRESETS)
+POSE_SIDES = ("none", "left", "right")  # Character's anatomical side, never screen side.
 MODES = ("transparent_sprite", "preserve_background")
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PIXELS = 40_000_000
@@ -55,6 +63,7 @@ DOMAIN_CHECKS = {
     "garment_replace": ("target_garment", "fit_interfaces", "coverage_anatomy", "face_expression", "non_target_protection", "rendering"),
     "outfit_replace": ("outfit_design", "component_completion", "ensemble_coherence", "fit_interfaces", "coverage_anatomy", "face_expression", "non_target_protection", "rendering"),
     "prop_edit": ("target_object", "placement_contacts", "occlusion_reconstruction", "anatomy_pose", "face_expression", "non_target_protection", "rendering"),
+    "pose_edit": ("target_pose", "limbs_joints", "balance_support", "contacts", "occlusion_clothing", "face_expression", "non_target_protection", "framing_anchors", "rendering"),
 }
 
 
@@ -138,6 +147,8 @@ def contained(root: Path, relative: str) -> Path:
 
 def asset_slot(asset: dict) -> str:
     """Keep legacy keys stable; explicit mouth states are independent resources."""
+    if "pose_id" in asset:
+        return asset["pose_id"]
     if "outfit_id" in asset:
         return asset["outfit_id"]
     mouth = asset.get("mouth_state", "default")
@@ -151,9 +162,10 @@ def read_state(root: Path) -> dict:
 
     try:
         state = json.loads((root / "run.json").read_text(encoding="utf-8"))
-        require(state["schema_version"] in ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2.0"))
+        require(state["schema_version"] in ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2.0", "3.0"))
         module = state.get("module", "expressions")
-        require(module in ("expressions", "outfits"))
+        require(module in ("expressions", "outfits", "poses"))
+        require((module == "poses") == (state["schema_version"] == "3.0"))
         require((module == "outfits") == (state["schema_version"] in ("1.2", "1.3", "1.4", "1.5", "1.6")))
         require(bool(re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", state["character_key"])))
         require(state["background_mode"] in MODES)
@@ -168,8 +180,29 @@ def read_state(root: Path) -> dict:
             require(type(state["canvas"][dimension]) is int and state["canvas"][dimension] > 0)
         ids = set()
         outfit_targets = {}
+        pose_targets = {}
         for asset in state["assets"]:
-            if module == "outfits":
+            if module == "poses":
+                require("expression" not in asset and "mouth_state" not in asset and "outfit_id" not in asset)
+                require(valid_pose_definition(asset) and valid_outfit_id(asset["pose_id"]))
+                require("edit_brief" in asset and "prompt_path" in asset and asset.get("quality_required") == QUALITY_VERSION)
+                definition = pose_definition(asset)
+                require(pose_targets.setdefault(asset["pose_id"], definition) == definition)
+                try:
+                    validate_pose_brief(root, state, asset["edit_brief"], check_reference=False)
+                    reference_call("validate_asset", root, state, asset)
+                except StudioError as exc:
+                    raise ValueError("Invalid pose brief or generation provenance.") from exc
+                require(asset["edit_brief"]["pose_id"] == asset["pose_id"] and pose_definition(asset["edit_brief"]) == definition)
+                require(asset.get("edit_references") == asset["edit_brief"].get("edit_references"))
+                if "fidelity_review" in asset:
+                    review = asset["fidelity_review"]
+                    require(isinstance(review, dict) and review["target_check"] in FIDELITY_CHECKS
+                            and review["protection_check"] in FIDELITY_CHECKS
+                            and review["basis"] in ("assistant", "user") and valid_edit_text(review["note"], 1000)
+                            and review["asset_sha256"] == asset["sha256"] and review["source_sha256"] == state["source_sha256"])
+            elif module == "outfits":
+                require("pose_id" not in asset)
                 require("expression" not in asset and "mouth_state" not in asset)
                 require(valid_outfit_id(asset["outfit_id"]))
                 require(valid_outfit_definition(asset))
@@ -193,12 +226,12 @@ def read_state(root: Path) -> dict:
                     require(review["basis"] in ("assistant", "user") and valid_edit_text(review["note"], 1000))
                     require(review["asset_sha256"] == asset["sha256"] and review["source_sha256"] == state["source_sha256"])
             else:
-                require("outfit_id" not in asset)
+                require("outfit_id" not in asset and "pose_id" not in asset)
                 require(asset["expression"] in EXPRESSIONS)
                 require(asset.get("mouth_state", "default") in MOUTH_STATES)
                 require(state["schema_version"] in ("1.1", "2.0") or asset.get("mouth_state", "default") == "default")
             if "edit_references" in asset:
-                require(state["schema_version"] == ("1.6" if module == "outfits" else "2.0"))
+                require(state["schema_version"] == {"outfits": "1.6", "expressions": "2.0", "poses": "3.0"}[module])
                 try:
                     reference_call("validate_asset", root, state, asset)
                 except StudioError as exc:
@@ -357,6 +390,106 @@ def valid_source_box(box, canvas: dict) -> bool:
             and 0 <= box[1] < box[3] <= canvas["height"])
 
 
+def valid_pose_definition(value: dict) -> bool:
+    return (value.get("edit_type") == "pose_edit" and value.get("pose") in POSES
+            and value.get("side") in POSE_SIDES
+            and (value["side"] == "none") == (value["pose"] == "natural_standing")
+            and valid_edit_text(value.get("target"), 500)
+            and isinstance(value.get("anchors"), list) and len(value["anchors"]) <= 10
+            and all(valid_edit_text(x, 200) for x in value["anchors"]))
+
+
+def pose_definition(value: dict) -> tuple:
+    return (value["pose"], value["side"], value["target"], tuple(value["anchors"]))
+
+
+def validate_pose_brief(root: Path, state: dict, brief: dict, check_reference: bool = True) -> None:
+    try:
+        valid = (isinstance(brief, dict) and brief["schema_version"] == "pose-1.0"
+                 and brief["source_sha256"] == state["source_sha256"]
+                 and valid_outfit_id(brief["pose_id"]) and valid_pose_definition(brief)
+                 and valid_edit_text(brief["boundary"], 1000)
+                 and isinstance(brief["protected_regions"], list) and 1 <= len(brief["protected_regions"]) <= 20
+                 and all(valid_edit_text(x, 200) for x in brief["protected_regions"])
+                 and valid_source_box(brief["target_box"], state["canvas"]))
+        if not valid:
+            raise ValueError("Invalid pose scope.")
+        path = contained(root, brief["reference"]["path"])
+        if not re.fullmatch(r"[0-9a-f]{64}", brief["reference"]["sha256"]):
+            raise ValueError("Invalid source detail fingerprint.")
+        if "edit_references" in brief:
+            reference_call("validate", brief["edit_references"], brief)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise StudioError("INVALID_EDIT_BRIEF", "Prepare a pose brief with explicit action, side, boundaries and protection.") from exc
+    if check_reference:
+        if not path.is_file() or digest(path) != brief["reference"]["sha256"]:
+            raise StudioError("REFERENCE_CHANGED", "The prepared source detail changed or is missing.")
+        reference_call("check_files", root, brief.get("edit_references", []))
+
+
+def prepare_pose(root: Path, pose_id: str, pose: str, side: str, target: str, boundary: str,
+                 protected_regions: list[str], target_box: list[int], anchors: list[str] | None = None,
+                 reference_file: Path | None = None) -> dict:
+    state = read_state(root)
+    require_module(state, "poses")
+    fields = {"pose_id": pose_id, "edit_type": "pose_edit", "pose": pose, "side": side,
+              "target": target, "anchors": anchors if anchors is not None else []}
+    if not valid_outfit_id(pose_id) or not valid_pose_definition(fields):
+        raise StudioError("INVALID_POSE", "Use a supported pose, a unique lowercase option ID, explicit anatomical side, target and optional anchors.")
+    if any(pose_definition(a) != pose_definition(fields) for a in state["assets"] if a["pose_id"] == pose_id):
+        raise StudioError("POSE_DEFINITION_CHANGED", "Use a new pose ID when changing the action, side, target or anchors.")
+    if reference_file is not None:
+        fields["edit_references"] = reference_call("load", root, state, reference_file, fields)
+    version = 1
+    while (root / "briefs" / f"{pose_id}_v{version:03d}.json").exists() or (root / "references" / f"{pose_id}_target_v{version:03d}.png").exists():
+        version += 1
+    brief_path = root / "briefs" / f"{pose_id}_v{version:03d}.json"
+    detail_path = root / "references" / f"{pose_id}_target_v{version:03d}.png"
+    brief = {"schema_version": "pose-1.0", **fields, "source_sha256": state["source_sha256"],
+             "boundary": boundary, "protected_regions": protected_regions, "target_box": target_box,
+             "reference": {"path": detail_path.relative_to(root).as_posix(), "sha256": "0" * 64},
+             "created_at": timestamp()}
+    validate_pose_brief(root, state, brief, check_reference=False)
+    with Image.open(contained(root, state["source"])) as source:
+        detail = source.convert("RGBA").crop(tuple(target_box))
+    detail_path.parent.mkdir(parents=True, exist_ok=True)
+    with detail_path.open("xb") as stream:
+        detail.save(stream, format="PNG")
+    brief["reference"]["sha256"] = digest(detail_path)
+    brief_path.parent.mkdir(parents=True, exist_ok=True)
+    with brief_path.open("x", encoding="utf-8") as stream:
+        json.dump(brief, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+    refs = reference_call("bindings", root, state, fields)
+    return {"brief_file": str(brief_path.resolve()), "edit_brief": brief,
+            "source_reference": str(contained(root, state["source"])), "detail_reference": str(detail_path.resolve()),
+            "generation_references": refs, "reference_paths": [str(contained(root, r["path"])) for r in refs],
+            "note": "Pose references guide action/structure only. Source controls identity, expression, designs, style and canvas. Detail crops are inspection aids, never masks."}
+
+
+def add_pose(root: Path, image: Path, pose_id: str, prompt_file: Path, brief_file: Path,
+             references: list[Path]) -> dict:
+    state = read_state(root)
+    require_module(state, "poses")
+    try:
+        brief = json.loads(brief_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError, AttributeError) as exc:
+        raise StudioError("INVALID_EDIT_BRIEF", "Pass the prepared pose brief.") from exc
+    validate_pose_brief(root, state, brief)
+    if brief["pose_id"] != pose_id:
+        raise StudioError("INVALID_EDIT_BRIEF", "The brief must match the pose option ID.")
+    if any(pose_definition(a) != pose_definition(brief) for a in state["assets"] if a["pose_id"] == pose_id):
+        raise StudioError("POSE_DEFINITION_CHANGED", "Use a new pose ID for a different action, side, target or anchors.")
+    fields = {key: copy.deepcopy(brief[key]) for key in ("pose_id", "pose", "side", "target", "anchors", "edit_type", "edit_references") if key in brief}
+    fields.update(edit_brief=copy.deepcopy(brief), quality_required=QUALITY_VERSION)
+    fields["generation_inputs"] = reference_call("initial_inputs", root, state, fields, references)
+    prompt = prompt_file.read_text(encoding="utf-8") if prompt_file else None
+    if not prompt or not prompt.strip():
+        raise StudioError("POSE_PROMPT_REQUIRED", "Save the actual pose-edit prompt.")
+    report = validate_image(image, state["canvas"], state["background_mode"])
+    return save_candidate(root, state, image, fields, report, prompt)
+
+
 def validate_edit_brief(root: Path, state: dict, brief: dict, check_reference: bool = True) -> None:
     try:
         reference_brief = isinstance(brief, dict) and brief.get("schema_version") == "1.4" and bool(brief.get("edit_references"))
@@ -455,7 +588,8 @@ def require_fidelity(asset: dict) -> None:
 def record_fidelity(root: Path, asset_id: str, target_check: str, protection_check: str,
                     note: str, basis: str = "assistant") -> dict:
     state = read_state(root)
-    require_module(state, "outfits")
+    if state.get("module") not in ("outfits", "poses"):
+        raise StudioError("WRONG_MODULE", "Fidelity observations apply to Outfits and Poses projects.")
     asset = get_asset(state, asset_id)
     if ("refinement_case" in asset or "candidate_pool" in asset) and "fidelity_review" in asset:
         raise StudioError("REFINEMENT_ALREADY_REVIEWED", "A refinement round's fidelity findings are recorded once; improve a new image instead of rewriting its verdict.")
@@ -477,6 +611,8 @@ def record_fidelity(root: Path, asset_id: str, target_check: str, protection_che
 
 
 def quality_domain(state: dict, asset: dict) -> str:
+    if state.get("module") == "poses":
+        return "pose_edit"
     if state.get("module", "expressions") == "outfits":
         if asset.get("edit_type") == "prop_edit":
             return "prop_edit"
@@ -514,6 +650,12 @@ def validate_domain_review(domain: dict, expected: str | None = None) -> None:
 
 
 def validate_outfit_component_review(asset: dict, review: dict) -> None:
+    if "pose_id" in asset:
+        domain = review.get("domain_review", {})
+        if (review.get("rubric_version") != "1.2" or domain.get("kind") != "pose_edit"
+                or domain.get("pose") != asset["pose"] or domain.get("side") != asset["side"]):
+            raise StudioError("INVALID_DOMAIN_REVIEW", "Poses require rubric 1.2 and findings for the actual pose and anatomical side.")
+        return
     if asset.get("edit_type") == "prop_edit":
         domain = review.get("domain_review", {})
         if (review.get("rubric_version") != "1.2" or domain.get("kind") != "prop_edit"
@@ -660,8 +802,8 @@ def record_quality(root: Path, asset_id: str, assessment: dict, comparisons: lis
         raise StudioError("DOMAIN_REVIEW_REQUIRED", "Inspect and record the active module/state's specific checks, not only a global score.")
     validate_domain_review(assessment["domain_review"], quality_domain(state, asset))
     validate_outfit_component_review(asset, assessment)
-    if (asset.get("edit_type") in ("outfit_replace", "prop_edit") or asset.get("edit_references")) and "candidate_pool" not in asset:
-        raise StudioError("POOL_IMPORT_REQUIRED", "Start a candidate pool before assessing a full outfit, prop or reference-guided edit.")
+    if (asset.get("edit_type") in ("outfit_replace", "prop_edit", "pose_edit") or asset.get("edit_references")) and "candidate_pool" not in asset:
+        raise StudioError("POOL_IMPORT_REQUIRED", "Start a candidate pool before assessing a full outfit, prop, pose or reference-guided edit.")
     if "candidate_pool" in asset:
         workflow_call("check_pool_assessment", root, state, asset, assessment)
     report = check_asset(root, state, asset)
@@ -753,7 +895,7 @@ def start_refinement(root: Path, asset_id: str, max_rounds: int = MAX_REFINEMENT
     """Explicit bounded authorization: initial candidate is round one."""
     state = read_state(root)
     asset = get_asset(state, asset_id)
-    if "candidate_pool" in asset or asset.get("edit_references") or asset.get("edit_type") in ("outfit_replace", "prop_edit"):
+    if "candidate_pool" in asset or asset.get("edit_references") or asset.get("edit_type") in ("outfit_replace", "prop_edit", "pose_edit"):
         raise StudioError("POOL_IMPORT_REQUIRED", "Use this candidate's existing pool and fixed budget.")
     if type(max_rounds) is not int or not 1 <= max_rounds <= MAX_REFINEMENT_ROUNDS:
         raise StudioError("INVALID_REFINEMENT_BUDGET", "Use one to three total rounds, including the initial image.")
@@ -955,8 +1097,8 @@ def delivery_assets(root: Path, ids: list[str] | None = None) -> dict:
 
 def init_project(root: Path, source: Path, character: str, mode: str = "auto",
                  module: str = "expressions") -> dict:
-    if module not in ("expressions", "outfits"):
-        raise StudioError("INVALID_MODULE", "Use expressions or outfits.")
+    if module not in ("expressions", "outfits", "poses"):
+        raise StudioError("INVALID_MODULE", "Use expressions, outfits or poses.")
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", character):
         raise StudioError("INVALID_CHARACTER_KEY", "Use a lowercase filename key, e.g. angelina.")
     info = image_info(source)
@@ -982,6 +1124,8 @@ def init_project(root: Path, source: Path, character: str, mode: str = "auto",
     }
     if module == "outfits":
         state.update({"schema_version": "1.2", "module": "outfits"})
+    elif module == "poses":
+        state.update({"schema_version": "3.0", "module": "poses"})
     write_state(root, state)
     return {"project": str(root.resolve()), "canvas": state["canvas"], "background_mode": mode}
 
@@ -1142,7 +1286,7 @@ def save_candidate(root: Path, state: dict, image: Path, fields: dict, report: d
             "version": revision.get("pool_version", "1.0"), "slot": slot, "budget": revision.get("budget", 1), "contract": copy.deepcopy(revision["contract"]),
             "attempts": [{"number": 1, "status": "imported", "strategy": "user_revision", "asset_id": asset_id}],
             "comparisons": [], "human_revision": key, "created_at": timestamp()}
-        if fields.get("edit_references"):
+        if fields.get("edit_references") or "pose_id" in fields:
             state["candidate_pools"][asset_id]["attempts"][0]["references"] = copy.deepcopy(fields["generation_inputs"]["references"])
         revision.update(status="imported", asset_id=asset_id)
     if "candidate_pool" in fields:
@@ -1299,6 +1443,8 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
         title = entry["id"]
         if entry["id"] == "SOURCE":
             title = labels.get("source", title)
+        elif "pose_id" in entry:
+            title = f'{labels.get(entry["pose_id"], entry["target"])} v{entry["version"]:03d}'
         elif "outfit_id" in entry:
             title = f'{labels.get(entry["outfit_id"], entry["outfit_id"])} v{entry["version"]:03d}'
         elif entry.get("mouth_state", "default") != "default":
@@ -1357,6 +1503,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
                 preview: Path | None = None) -> dict:
     state = read_state(root)
     is_outfit = state.get("module", "expressions") == "outfits"
+    is_pose = state.get("module") == "poses"
     chosen = ids if ids is not None else list(state["selected"].values())
     if not chosen:
         raise StudioError("NO_SELECTED_ASSETS", "Accept and select at least one candidate before export.")
@@ -1366,7 +1513,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         asset = get_asset(state, asset_id)
         slot = asset_slot(asset)
         if slot in seen:
-            code = "DUPLICATE_OUTFIT" if is_outfit else ("DUPLICATE_EXPRESSION" if asset.get("mouth_state", "default") == "default" else "DUPLICATE_STATE")
+            code = "DUPLICATE_POSE" if is_pose else "DUPLICATE_OUTFIT" if is_outfit else ("DUPLICATE_EXPRESSION" if asset.get("mouth_state", "default") == "default" else "DUPLICATE_STATE")
             raise StudioError(code, "Choose exactly one version per resource.")
         if asset["art_review_status"] != "accepted":
             raise StudioError("ART_REVIEW_REQUIRED", f"User has not accepted {asset_id}.")
@@ -1379,7 +1526,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         data = contained(root, asset["path"]).read_bytes()
         if hashlib.sha256(data).hexdigest() != asset["sha256"]:
             raise StudioError("ASSET_CHANGED", f"File changed during export: {asset_id}")
-        archive_path = f'sprites/{state["character_key"]}/' + (f'outfits/{slot}.png' if is_outfit else f'{slot}.png')
+        archive_path = f'sprites/{state["character_key"]}/' + (f'poses/{slot}.png' if is_pose else f'outfits/{slot}.png' if is_outfit else f'{slot}.png')
         payloads[archive_path] = data
         sprites.append({"path": archive_path, "asset_id": asset_id,
                         "source_version": asset["version"], "sha256": asset["sha256"],
@@ -1391,7 +1538,12 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         if "human_revision" in asset:
             sprites[-1]["parent_asset_id"] = asset["parent_asset_id"]
             sprites[-1]["human_revision"] = state["human_revisions"][asset["human_revision"]]
-        if is_outfit:
+        if is_pose:
+            sprites[-1].update({key: asset[key] for key in ("pose_id", "pose", "side", "target", "anchors", "edit_type")})
+            sprites[-1]["generation_inputs"] = asset["generation_inputs"]
+            sprites[-1]["edit_scope"] = {key: asset["edit_brief"][key] for key in ("boundary", "protected_regions", "target_box")}
+            sprites[-1]["fidelity_review"] = asset["fidelity_review"]
+        elif is_outfit:
             sprites[-1].update({key: asset[key] for key in ("outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action") if key in asset})
             if "edit_brief" in asset:
                 sprites[-1]["edit_scope"] = {key: asset["edit_brief"][key] for key in ("boundary", "protected_regions", "target_box")}
@@ -1407,8 +1559,8 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         if has_mouth_states:
             sprites[-1]["mouth_state"] = asset.get("mouth_state", "default")
         seen.add(slot)
-    manifest = {"schema_version": state["schema_version"] if is_outfit or state["schema_version"] == "2.0" else ("1.1" if has_mouth_states else "1.0"), "character_key": state["character_key"],
-                "asset_kind": "full_character_outfit" if is_outfit else "full_character_expression", "background_mode": state["background_mode"],
+    manifest = {"schema_version": state["schema_version"] if is_pose or is_outfit or state["schema_version"] == "2.0" else ("1.1" if has_mouth_states else "1.0"), "character_key": state["character_key"],
+                "asset_kind": "full_character_pose" if is_pose else "full_character_outfit" if is_outfit else "full_character_expression", "background_mode": state["background_mode"],
                 "canvas": state["canvas"], "sprites": sprites}
     payloads["manifest.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     if preview:
@@ -1417,7 +1569,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         payloads["preview/contact-sheet.png"] = preview.read_bytes()
     if output is None:
         version = 1
-        suffix = "outfits" if is_outfit else "expressions"
+        suffix = "poses" if is_pose else "outfits" if is_outfit else "expressions"
         output = root / "exports" / f'{state["character_key"]}-{suffix}-v{version:03d}.zip'
         while output.exists():
             version += 1
@@ -1514,8 +1666,20 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
             command.add_argument("--prompt-file", required=True, type=Path)
             command.add_argument("--reference", required=True, action="append", type=Path, dest="references")
             command.add_argument("--strategy", choices=("continue_previous", "source_rebase"), default="continue_previous")
-    if module == "expressions":
-        commands.add_parser("presets", help="List supported expression IDs and starting directions; no project required.")
+    if module in ("expressions", "poses"):
+        commands.add_parser("presets", help="List supported presets and starting directions; no project required.")
+    if module == "poses":
+        prepare = commands.add_parser("prepare", help="Define static pose permissions and source inspection scope.")
+        prepare.add_argument("--project", required=True, type=Path)
+        prepare.add_argument("--pose-id", required=True)
+        prepare.add_argument("--pose", required=True, choices=POSES)
+        prepare.add_argument("--side", required=True, choices=POSE_SIDES, help="Character's anatomical side; none for natural standing.")
+        prepare.add_argument("--target", required=True, help="Concrete action, hand shape/amplitude and unchanged other arm.")
+        prepare.add_argument("--boundary", required=True)
+        prepare.add_argument("--protect", required=True, action="append", dest="protected_regions")
+        prepare.add_argument("--target-box", required=True, nargs=4, type=int)
+        prepare.add_argument("--anchor", action="append", dest="anchors", help="User-specified game anchor to inspect; no automatic alignment.")
+        prepare.add_argument("--reference-file", type=Path)
     if module == "outfits":
         prepare = commands.add_parser("prepare", help="Save edit boundaries and a source-only detail reference; does not generate art.")
         prepare.add_argument("--project", required=True, type=Path)
@@ -1530,6 +1694,7 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
         prepare.add_argument("--boundary", required=True)
         prepare.add_argument("--protect", required=True, action="append", dest="protected_regions")
         prepare.add_argument("--target-box", required=True, nargs=4, type=int)
+    if module in ("outfits", "poses"):
         fidelity = commands.add_parser("fidelity", help="Record manual target/protection observations separately from user acceptance.")
         fidelity.add_argument("--project", required=True, type=Path)
         fidelity.add_argument("--asset", required=True)
@@ -1562,6 +1727,9 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
                 command.add_argument("--replacement", help="Requested garment, outfit or added/replacement prop design; omit for prop removal.")
                 command.add_argument("--components-file", type=Path, help="Full outfit inventory; defaults to the prepared brief.")
                 command.add_argument("--brief-file", type=Path, help="Prepared edit brief to snapshot with this candidate.")
+            elif module == "poses":
+                command.add_argument("--pose-id", required=True)
+                command.add_argument("--brief-file", required=True, type=Path)
             else:
                 command.add_argument("--expression", choices=EXPRESSIONS, required=True)
                 command.add_argument("--mouth-state", choices=MOUTH_STATES, default="default")
@@ -1579,9 +1747,11 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
                 if module == "outfits":
                     command.add_argument("--outfit", dest="outfit_id", help="Compare versions of one garment option.")
                     command.add_argument("--detail-box", type=int, nargs=4, help="Source coordinates of the garment inspection region.")
-                else:
+                elif module == "expressions":
                     command.add_argument("--expression", choices=EXPRESSIONS, help="Show only this expression, retaining all versions and mouth states.")
                     command.add_argument("--mouth-state", choices=MOUTH_STATES, help="Show only this mouth state.")
+                else:
+                    command.add_argument("--detail-box", type=int, nargs=4, help="Observed common-canvas region containing moved parts in every compared image.")
                 command.add_argument("--face-box", type=int, nargs=4)
                 command.add_argument("--background", choices=("checker", "light", "dark"), default="checker")
                 command.add_argument("--labels-file", type=Path, help="UTF-8 JSON label overrides in the user's language.")
@@ -1610,8 +1780,12 @@ def main(module: str = "expressions") -> int:
                                      title=args.title, labels=load_preview_labels(args.labels_file),
                                      face_box=args.face_box, background=args.background, stage=args.stage)
         elif args.command == "presets":
-            result = {"presets": [{"id": key, **preset} for key, preset in EXPRESSION_PRESETS.items()],
-                      "mouth_states": [{"id": key, **preset} for key, preset in MOUTH_PRESETS.items()]}
+            if module == "poses":
+                result = {"presets": [{"id": key, **preset} for key, preset in POSE_PRESETS.items()],
+                          "sides": list(POSE_SIDES), "side_basis": "character_anatomical"}
+            else:
+                result = {"presets": [{"id": key, **preset} for key, preset in EXPRESSION_PRESETS.items()],
+                          "mouth_states": [{"id": key, **preset} for key, preset in MOUTH_PRESETS.items()]}
         elif args.command == "inspect":
             result = image_info(args.image)
         elif args.command == "validate":
@@ -1620,7 +1794,11 @@ def main(module: str = "expressions") -> int:
         elif args.command == "init":
             result = init_project(args.project, args.source, args.character, args.background, module)
         elif args.command == "prepare":
-            result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action, args.reference_file)
+            if module == "poses":
+                result = prepare_pose(args.project, args.pose_id, args.pose, args.side, args.target, args.boundary,
+                                      args.protected_regions, args.target_box, args.anchors, args.reference_file)
+            else:
+                result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action, args.reference_file)
         elif args.command == "fidelity":
             result = record_fidelity(args.project, args.asset, args.target_check, args.protection_check, args.note, args.basis)
         elif args.command == "enable-quality":
@@ -1644,6 +1822,8 @@ def main(module: str = "expressions") -> int:
         elif args.command == "add":
             if module == "outfits":
                 result = add_outfit(args.project, args.image, args.outfit_id, args.target, args.color, args.prompt_file, args.brief_file, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action, args.references)
+            elif module == "poses":
+                result = add_pose(args.project, args.image, args.pose_id, args.prompt_file, args.brief_file, args.references)
             else:
                 result = add_asset(args.project, args.image, args.expression, args.prompt_file, args.mouth_state, args.reference_file, args.references)
         elif args.command == "status":
@@ -1653,7 +1833,7 @@ def main(module: str = "expressions") -> int:
                       "selected": state["selected"], "assets": [
                           {**asset, "current_validation": check_asset(args.project, state, asset),
                            "quality_status": quality_status(args.project, state, asset),
-                           **({"fidelity_status": fidelity_status(asset)} if module == "outfits" else {})} for asset in state["assets"]]}
+                           **({"fidelity_status": fidelity_status(asset)} if module in ("outfits", "poses") else {})} for asset in state["assets"]]}
         elif args.command == "review":
             result = review_asset(args.project, args.asset, args.status, args.note)
         elif args.command == "select":

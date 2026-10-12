@@ -11,6 +11,10 @@ from PIL import Image, ImageDraw
 
 
 ZH = {
+    'pose_edit': '静态姿势编辑', 'pose': '姿势', 'side': '角色自身侧别', 'anchors': '游戏锚点',
+    'left': '左侧', 'right': '右侧', 'target_pose': '动作达成', 'limbs_joints': '肢体与关节',
+    'balance_support': '重心与支撑', 'contacts': '接触关系', 'occlusion_clothing': '遮挡与衣物响应',
+    'framing_anchors': '构图与游戏锚点',
     'detail_preview': '最终采用版局部对照', 'face_region': '整脸', 'target_region': '目标部位',
     'edit_references': '参考图与适用范围',
     'prop_edit': '配饰／道具编辑', 'prop_action': '物件操作', 'prop_add': '添加', 'prop_remove': '移除', 'prop_replace': '替换',
@@ -38,7 +42,7 @@ ZH = {
     'expression': '表情', 'mouth_state': 'mouth', 'garment_recolor': 'outfits · 改色', 'garment_replace': 'outfits · 替换',
     'details': '评审与修订记录', 'round': '轮次', 'asset': '版本', 'quality': '质量',
     'target': '需求达成', 'identity': '角色一致性', 'protection': '非目标保留', 'integration': '结构与衔接', 'rendering': '画面完成度',
-    'source_sample': '原图独立采样', 'repair_best': '修订择优候选', 'review_redraw': '按内部失败项重绘', 'redraw': '内部修订待生成', 'human_review': '等待人工评图',
+    'source_sample': '原图独立采样', 'repair_best': '修订择优候选', 'review_redraw': '按内部失败项重绘', 'source_restart': '从原图重新生成（失败候选仅作评审证据）', 'redraw': '内部修订待生成', 'human_review': '等待人工评图',
     'next_redraw': '按本轮失败项在剩余轮次内重绘，重新检查全部五维及专项；通过或用完预算后再进入人工评图。',
     'compare': '内部候选比较待完成', 'generate_reserved': '已计次，等待本轮生成',
     'tool_failure': '出图调用失败', 'attempt_budget': '已用调用／上限',
@@ -75,6 +79,10 @@ ZH = {
     'strategy': '生成策略', 'initial': '首版', 'continue_previous': '修订上一版', 'source_rebase': '从原图重做目标衣物',
 }
 EN = {
+    'pose_edit': 'Static pose editing', 'pose': 'Pose', 'side': 'Character anatomical side', 'anchors': 'Game anchors',
+    'left': 'Left', 'right': 'Right', 'target_pose': 'Action adherence', 'limbs_joints': 'Limbs and joints',
+    'balance_support': 'Balance and support', 'contacts': 'Contacts', 'occlusion_clothing': 'Occlusion and clothing response',
+    'framing_anchors': 'Framing and game anchors',
     'detail_preview': 'Final selected version: detail comparisons', 'face_region': 'Whole face', 'target_region': 'Target region',
     'edit_references': 'Edit references and permitted scopes',
     'prop_edit': 'Accessory/prop editing', 'prop_action': 'Object operation', 'prop_add': 'Add', 'prop_remove': 'Remove', 'prop_replace': 'Replace',
@@ -102,7 +110,7 @@ EN = {
     'expression': 'Expressions', 'mouth_state': 'Mouth', 'garment_recolor': 'Outfits',
     'details': 'Review and revision history', 'round': 'Round', 'asset': 'Version', 'quality': 'Quality',
     'target': 'Target', 'identity': 'Identity', 'protection': 'Protection', 'integration': 'Integration', 'rendering': 'Rendering',
-    'source_sample': 'Independent source sample', 'repair_best': 'Repair preferred candidate', 'review_redraw': 'Redraw from internal findings', 'redraw': 'Internal redraw pending', 'human_review': 'Human review pending',
+    'source_sample': 'Independent source sample', 'repair_best': 'Repair preferred candidate', 'review_redraw': 'Redraw from internal findings', 'source_restart': 'Restart from source (failed candidate is review evidence only)', 'redraw': 'Internal redraw pending', 'human_review': 'Human review pending',
     'next_redraw': 'Correct recorded failures within the remaining rounds and reassess all five dimensions and domain checks before human review.',
     'compare': 'Internal comparison pending', 'generate_reserved': 'Attempt reserved; generation pending',
     'tool_failure': 'Image-tool failure', 'attempt_budget': 'Attempts used / limit',
@@ -159,6 +167,8 @@ def link(label: str, path: str | Path) -> str:
 
 
 def label_for(core, asset: dict, labels: dict, language: str) -> str:
+    if 'pose_id' in asset:
+        return labels.get(asset['pose_id'], asset['target'])
     if 'outfit_id' in asset:
         if asset['edit_type'] == 'prop_edit':
             t = ZH if language == 'zh-CN' else EN
@@ -374,7 +384,7 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             if not issues and c.get('delivery_error'):
                 lines.append('- '+md(c['delivery_error']['code']))
             next_step = ('按实际人工意见处理修订请求；本报告不自动新增生成次数。' if data['language']=='zh-CN' else 'Handle the actual revision request; this report does not authorize additional generation.') if (c.get('human_result') or {}).get('next_action')=='revision_request' and c['status']!='revision_failed' else t.get('next_'+c['status'],t['next_failed'])
-            if c['status']=='exhausted' and (c.get('candidate_pool') or {}).get('version')=='1.1' and not c.get('human_result'):
+            if c['status']=='exhausted' and (c.get('candidate_pool') or {}).get('version') in ('1.1', '1.2') and not c.get('human_result'):
                 next_step=t['next_exhausted_human']
             lines += ['',t['next']+'：'+next_step]
     lines += ['', '## '+t['details'], '']
@@ -386,8 +396,14 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
                   '',t['component']+'：'+md(domain.get('component','—')), '']
         if c.get('edit'):
             edit = c['edit']
-            change = t['prop_remove'] if edit.get('prop_action') == 'remove' else edit.get('replacement', edit.get('color', '—'))
-            lines += [t['edit_definition']+'：'+t[edit['edit_type']]+' · '+md(edit['target'])+' → '+md(change), '']
+            if edit['edit_type'] == 'pose_edit':
+                lines += [t['edit_definition']+'：'+t['pose_edit']+' · '+md(edit['target']), '',
+                          t['pose']+'：'+md(edit['pose'])+' · '+t['side']+'：'+t.get(edit['side'], edit['side']), '']
+                if edit['anchors']:
+                    lines += [t['anchors']+'：'+md('; '.join(edit['anchors'])), '']
+            else:
+                change = t['prop_remove'] if edit.get('prop_action') == 'remove' else edit.get('replacement', edit.get('color', '—'))
+                lines += [t['edit_definition']+'：'+t[edit['edit_type']]+' · '+md(edit['target'])+' → '+md(change), '']
             if edit.get('prop_action'):
                 lines += [t['prop_action']+'：'+t['prop_'+edit['prop_action']], '']
             if edit.get('outfit_components'):
@@ -516,7 +532,7 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
             attempt_numbers={a['asset_id']:a['number'] for a in pool['attempts'] if a['status']=='imported'} if pool_id else {}
             records=[round_record(core,root,state,a,attempt_numbers.get(a['id'],i+1)) for i,a in enumerate(history)]
             last=records[-1]
-            internal_plan = core.workflow_call('pool_status',root,pool_id) if pool_id and pool['version']=='1.1' else None
+            internal_plan = core.workflow_call('pool_status',root,pool_id) if pool_id and pool['version'] in ('1.1', '1.2') else None
             action=internal_plan['action'] if internal_plan else plan['action'] if plan else ('review' if last['quality_status'] in ('pending','unrecorded') or last['fidelity_status']=='pending' else 'failed')
             delivered=None; error=None
             try:
@@ -561,7 +577,7 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                           'assessed_asset_id':asset['id'], 'candidate_pool':state.get('candidate_pools',{}).get(pool_id),
                           'label':label_for(core,asset,labels,language),'status':action,'max_rounds':pool['budget'] if pool_id else plan['max_rounds'] if plan else None,
                           'attempt_count':len(pool['attempts']) if pool_id else len(records),
-                          'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','outfit_components','prop_action','edit_brief') if key in asset} if 'outfit_id' in asset else None,
+                          'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','outfit_components','prop_action','edit_brief','pose_id','pose','side','anchors') if key in asset} if 'outfit_id' in asset or 'pose_id' in asset else None,
                           'edit_references':[{**ref,'image':str(core.contained(root,ref['path']))} for ref in asset.get('edit_references',[])],
                           'source':str(core.contained(root,state['source'])),'source_sha256':state['source_sha256'],
                           'source_canvas':state['canvas'],'history':records,'final':delivered,'delivery_error':error})

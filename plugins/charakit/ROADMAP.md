@@ -1,5 +1,9 @@
 # CharaKit roadmap
 
+0.1.30: Initial pools can restart their third attempt from the source after two target-achieving candidates repeat non-improving identity/protection failures. Failed candidate images are excluded from that call while failure evidence, action/design definitions and all scoped references remain bound. Existing pools and human revisions keep their baseline strategies. Real-image improvement still needs validation.
+
+0.1.29: Poses adds four static dialogue presets: natural standing, one hand on hip, raised-hand greeting and palm-up explanation. Independent schema 3.0 projects bind explicit anatomical sides, action permissions, protected designs, optional game anchors and pose-only references. Pose-specific anatomy/support/contact/occlusion/framing checks reuse the five dimensions, fixed redraw budget, actual human decisions, revision continuity/source recheck and raw PNG delivery. Human pages default to full images; focused common-canvas inspection boxes must be chosen from actual moved positions. Workflow validation does not establish real generated-pose quality or game switching stability; those remain to be evaluated.
+
 0.1.28: shared human-revision baselines preserve successful edits on the chosen version and separately recheck still-protected regions against the immutable source. New plans bind edit-target-first inputs, explicit restoration scopes and two evidence-backed protection criteria. Human revision previews default to before/after comparison with switchable original context and task-based localized detail regions. These rules apply to all current editing types and future modules; legacy budgets/history stay unchanged. No automatic similarity model, mask or module coupling is added.
 
 0.1.27: full-canvas human overviews remain visible alongside optional whole-face/target detail comparisons. The viewer starts fitted, supports synchronized source comparison and preserves feedback while inspecting versions. Candidate-level actions fill drafts; copying feedback supplements JSON downloads without automatic submission. Recorded inspection regions follow human corrections and appear as separate source-versus-accepted detail PNGs in final reports. Old packets and custom-language interfaces remain compatible; no PDF, generation backend or module coupling is added.
@@ -12,7 +16,7 @@
 
 New requests use [candidate selection and human review](references/candidate-review.md): normally at most three total attempts, evidence-directed redraws until all required gates pass or the budget is spent, rubric 1.2 with five evidence-linked dimensions, and an anonymous review page with chat/JSON feedback. Actual user acceptance precedes final PNG/report and requested ZIP packaging. Legacy sampling/refinement descriptions below apply only to existing historical records. Historical scores remain unchanged; generation-quality gains are not yet established.
 
-CharaKit provides expression editing, single-garment editing, full-outfit bases and accessory/prop add/remove/replace workflows. Expressions stays independent: users can manually use an output PNG as a new source without automatic invocation or shared state. Pose editing remains planned.
+CharaKit provides expression editing, garment and full-outfit editing, accessory/prop workflows and four static dialogue poses. Modules stay independent: users can manually use an output PNG as a new source without automatic invocation or shared state. Complex poses and object manipulation remain planned.
 
 Helper 0.1.22 adds `prop_edit` within Outfits, with explicit add/remove/replace actions, contact/occlusion/reconstruction/anatomy checks, schema 1.5 and the existing human-review/revision flow. Actual object-edit quality still needs visual evaluation. Helper 0.1.21 adds full-outfit replacement with an explicit clothing inventory, component findings and ensemble checks, reusing candidate selection and human revision. Real outfit generation quality remains to be evaluated. Helper 0.1.20 links a specific correction to the user-chosen candidate, preserves prior constraints and history, and requires fresh internal/human review before delivery. Task recovery and comparisons against direct image-tool conversation are outside this phase; product acceptance concerns this plugin's own behavior and actual user feedback.
 
@@ -20,7 +24,7 @@ Helper 0.1.22 adds `prop_edit` within Outfits, with explicit add/remove/replace 
 | --- | --- | --- |
 | CharaKit Expressions | Available | Twelve fixed expression presets, static mouth-open/closed states, revisions, comparisons, and PNG exports |
 | CharaKit Outfits | Available | Garments, full outfits and accessory/prop edits; explicit boundaries, mode-specific reviews, human revisions and PNG exports |
-| CharaKit Poses | Planned | Static pose and action edits |
+| CharaKit Poses | Available | Four static dialogue poses, scoped references, bounded redraws, human revisions and PNG exports; real art quality pending validation |
 
 Expressions and the recolor/replacement workflows in Outfits are available. Replacement workflow tests do not establish generated-art quality; real replacement preservation still requires validation. Module IDs and availability are listed in [modules.json](modules.json).
 
@@ -32,7 +36,7 @@ All future development follows the shared [quality-first baseline and internal d
 2. Validate expression and static mouth-state quality on actual artwork. Independent gaze states are deferred while Outfits is the current development priority.
 3. Evaluate quality-focused, domain-specific editing instructions using one complete source by default, optional target references, and enlarged checks of target and protected regions on actual artwork before expanding garment edits.
 4. Validate single-garment replacement on actual artwork, including upper/lower garments, necessary coverage changes and protected equipment. Version 0.1.18 adds compact repair prompts and a source-based third-round strategy after stalled protection checks; legacy cases retain that strategy. Full outfit base workflows are now implemented; validate their actual design adherence and protection.
-5. Introduce simple static pose changes before more complex action poses.
+5. Validate the four implemented static dialogue poses on actual artwork before expanding to clasped hands, crossed arms, larger turns, sitting, leaning or object interaction. Check anatomy, protected design continuity and game anchors with real human feedback.
 6. Validate accessory/prop design adherence, stable contacts, removal reconstruction and protected-region preservation on actual artwork. Automatic outfit/expression linking is outside the current scope.
 
 Plans may change based on image quality and practical game use. Planned features have no committed release dates and will be marked available only after implementation and validation.

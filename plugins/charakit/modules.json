@@ -18,8 +18,9 @@
     {
       "id": "poses",
       "display_name": "CharaKit Poses",
-      "status": "planned",
-      "skill_id": "charakit-poses"
+      "status": "available",
+      "skill_id": "charakit-poses",
+      "skill_path": "skills/charakit-poses/SKILL.md"
     }
   ]
 }
