@@ -64,7 +64,7 @@ class SourceRestartTests(unittest.TestCase):
         self.assertEqual(plan['number'], 3)
         self.assertEqual(plan['strategy'], 'source_restart')
         self.assertEqual(plan['parent'], other['id'])
-        self.assertEqual(plan['reference_paths'], [str(self.root/'source.png')])
+        self.assertEqual(plan['reference_paths'], [str((self.root/'source.png').resolve())])
         self.assertEqual(plan['restart_evidence']['asset_ids'], [self.key, other['id']])
         self.assertIn('protection', [x['id'] for x in plan['restart_evidence']['checks']])
         child = self.call('pool_import', self.root, self.key, plan['token'], self.image, self.prompt,
@@ -168,7 +168,8 @@ class SourceRestartTests(unittest.TestCase):
         self.compare(second['id'], False)
         plan = self.call('pool_reserve', self.root, self.key)
         self.assertEqual(plan['strategy'], 'review_redraw')
-        self.assertEqual(plan['reference_paths'], [str(self.root/second['path']), str(self.root/'source.png')])
+        self.assertEqual(plan['reference_paths'], [str((self.root/second['path']).resolve()),
+                                                  str((self.root/'source.png').resolve())])
         self.assertEqual(plan['revision_policy']['baseline_asset'], self.first['id'])
 
 
@@ -204,7 +205,7 @@ class PoseSourceRestartTests(unittest.TestCase):
         self.assertEqual(plan['strategy'], 'source_restart')
         self.assertEqual([r['role'] for r in plan['references']], ['immutable_source', 'edit_reference'])
         self.assertEqual(plan['references'][1], first['edit_references'][0])
-        self.assertNotIn(str(self.root/second['path']), plan['reference_paths'])
+        self.assertNotIn(str((self.root/second['path']).resolve()), plan['reference_paths'])
         before = (self.root/'run.json').read_bytes()
         self.code('INVALID_CANDIDATE_REVIEW', self.call, 'pool_import', self.root, first['id'], plan['token'],
                   self.raw, self.prompt, [Path(p) for p in plan['reference_paths']] + [self.root/second['path']])
