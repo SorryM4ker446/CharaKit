@@ -2,7 +2,7 @@
 
 **Edit visual novel character illustrations in Codex.** This plugin provides expression variants, clothing edits, accessory / prop edits and static dialogue poses with versioned candidates, human review, and selected PNG exports.
 
-Development version **0.1.30** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
+Development version **0.1.31** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
 
 Codex generates artwork through its available image editing tool. The bundled Python helper preserves raw files and manages comparisons, review records, revisions, and packaging.
 
@@ -12,9 +12,9 @@ Codex generates artwork through its available image editing tool. The bundled Py
 | --- | --- |
 | `$charakit-expressions` | Twelve expression presets and static mouth-open / mouth-closed variants |
 | `$charakit-outfits` | `recolor`, `replace`, `outfit_replace`, and `prop_edit` with `add`, `remove`, or `replace` actions |
-| `$charakit-poses` | `natural_standing`, `hand_on_hip`, `wave`, `palm_up`; explicit anatomical sides, static dialogue poses |
+| `$charakit-poses` | `natural_standing`, `hand_on_hip`, `wave`, `palm_up`, `hand_on_chest`, `hands_clasped`, `hands_behind_back`, `arms_crossed`; explicit anatomical sides and arm/contact/overlap requirements |
 
-The modules use independent projects. Manually use an exported PNG as another module's source. Four static dialogue poses are available; actual pose generation quality needs validation. Complex poses and object interaction remain [planned](ROADMAP.md). See the [Poses Skill](skills/charakit-poses/SKILL.md) and [pose guide](skills/charakit-poses/references/pose-guide.md).
+The modules use independent projects. Manually use an exported PNG as another module's source. Eight static dialogue poses are available; actual pose generation quality needs validation. Complex poses and object interaction remain [planned](ROADMAP.md). See the [Poses Skill](skills/charakit-poses/SKILL.md) and [pose guide](skills/charakit-poses/references/pose-guide.md).
 
 ## Setup
 
@@ -72,7 +72,7 @@ python skills/charakit-outfits/scripts/studio.py --help
 python skills/charakit-poses/scripts/studio.py --help
 ```
 
-Outside this directory, use the entrypoint's absolute installed path. All modules share `lib/studio_core.py`. Commands manage source snapshots, raw candidates, comparisons, assessment records, actual feedback, revisions, and exports. Poses uses its own schema 3.0 and action/side/anchor brief; its pages default to full images without inheriting a source target crop. Work sequentially within one project.
+Outside this directory, use the entrypoint's absolute installed path. All modules share `lib/studio_core.py`. Commands manage source snapshots, raw candidates, comparisons, assessment records, actual feedback, revisions, and exports. Poses uses its own schema 3.0 and action/side/anchor brief; new contact/two-arm actions require `--interaction-file` and return criteria for both arms, contacts and overlaps. Its pages default to full images without inheriting a source target crop. Work sequentially within one project.
 
 ## Guides
 

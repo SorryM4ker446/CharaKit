@@ -102,6 +102,10 @@ def validate_outfit_contract(c, asset, contract):
     if "pose_id" in asset:
         require(c, any(check["dimension"] == "target" and check["component"] == asset["target"] for check in contract),
                 "Pose contracts must include a target check for the actual action, anatomical side and hand orientation.")
+        for required in c.pose_interaction_criteria(asset):
+            require(c, any(all(check[key] == required[key] for key in ("dimension", "component", "expected"))
+                           for check in contract),
+                    "Pose contracts must inspect each recorded arm, contact and occlusion requirement.")
     if asset.get("edit_type") == "prop_edit":
         require(c, any(check["dimension"] == "target" and check["component"] == asset["target"]
                        for check in contract), "Prop contracts must include a target check for the actual object or addition site.")
@@ -224,7 +228,7 @@ def validate_state(c, state):
                     and pools[aid]["budget"] == revision.get("budget", 1) and pools[aid]["contract"] == revision["contract"],
                     "Invalid imported human revision.")
             require(c, all(by_id[aid].get(field) == parent.get(field) for field in
-                          ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references")),
+                          ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "pose_interaction", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references")),
                     "Human revisions retain their chosen parent's edit definition and brief.")
             if revision.get('policy'):
                 require(c, by_id[aid].get('generation_inputs', {}).get('revision_policy') == revision['policy'],
@@ -275,7 +279,7 @@ def revision_plan(c, root, state, key):
     parent = c.get_asset(state, revision["parent_asset"])
     return {"revision": key, "status": revision["status"], "budget": revision.get("budget", 1),
             "parent_asset": parent["id"], "note": revision["note"], "contract": revision["contract"],
-            "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent},
+            "edit": {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "pose_interaction", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent},
             "references": copy.deepcopy(revision["references"]),
             "reference_paths": [str(c.contained(root, item["path"])) for item in revision["references"]],
             **({'revision_policy': copy.deepcopy(revision['policy']),
@@ -351,7 +355,7 @@ def revision_import(c, root, key, image, prompt, references, failure=None):
             "Use the returned immutable source, chosen edit target and scoped references in order.", "INVALID_REVISION_REFERENCES")
     actual_prompt = prompt.read_text(encoding="utf-8")
     require(c, bool(actual_prompt.strip()), "Save the actual targeted revision prompt.")
-    fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent}
+    fields = {k: copy.deepcopy(parent[k]) for k in ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "pose_interaction", "outfit_id", "edit_type", "target", "color", "replacement", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in parent}
     fields.update(human_revision=key, quality_required=c.QUALITY_VERSION,
                   generation_inputs={"strategy": "user_revision", "references": copy.deepcopy(revision["references"]), "packet": key})
     if revision.get('policy'):
@@ -580,7 +584,7 @@ def pool_import(c, root, key, token, image, prompt, references, failure=None):
     actual_prompt = prompt.read_text(encoding="utf-8")
     require(c, bool(actual_prompt.strip()), "Save the actual submitted prompt.")
     original = c.get_asset(state, key)
-    fields = {k: copy.deepcopy(original[k]) for k in ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "outfit_id", "target", "color", "replacement", "edit_type", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in original}
+    fields = {k: copy.deepcopy(original[k]) for k in ("expression", "mouth_state", "pose_id", "pose", "side", "anchors", "pose_interaction", "outfit_id", "target", "color", "replacement", "edit_type", "outfit_components", "prop_action", "edit_brief", "edit_references") if k in original}
     fields.update(candidate_pool=key, repair_parent=attempt["parent"], generation_inputs=copy.deepcopy(attempt))
     if pool.get("human_revision"):
         fields["human_revision"] = pool["human_revision"]

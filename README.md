@@ -2,7 +2,7 @@
 
 **A Codex plugin for editing visual novel character illustrations.** Create expression variants, change clothing, edit accessories or props, and adjust static dialogue poses through a workflow that keeps the source, candidates, review findings, and your chosen version together.
 
-**English** | [简体中文](README.zh-CN.md) · Development version **0.1.30**
+**English** | [简体中文](README.zh-CN.md) · Development version **0.1.31**
 
 Attach an illustration, describe the change, review the results, and choose what to keep. CharaKit uses the image editing tool available in Codex; its local Python helper manages files, comparisons, review records, and exports.
 
@@ -12,7 +12,7 @@ Attach an illustration, describe the change, review the results, and choose what
 | --- | --- | --- |
 | Expressions | Twelve expression presets and static mouth-open / mouth-closed variants | `$charakit-expressions` |
 | Outfits | Garment recoloring, single-garment replacement, full-outfit replacement, and accessory / prop editing | `$charakit-outfits` |
-| Poses | Natural standing, one hand on hip, raised-hand greeting, and palm-up explanation | `$charakit-poses` |
+| Poses | Natural standing, hand on hip, greeting, palm-up explanation, hand on chest, clasped hands, hands behind the back, and crossed arms | `$charakit-poses` |
 
 Outfits has four edit types:
 
@@ -23,7 +23,7 @@ Outfits has four edit types:
 | `outfit_replace` | Replace an explicitly defined clothing ensemble | Change into a Japanese school uniform, including socks and shoes |
 | `prop_edit` | Add, remove, or replace a scoped accessory or prop | Add glasses or remove a weapon |
 
-All three modules support scoped reference images, bounded redraws, human feedback, and revisions of a chosen candidate. Each uses an independent project; you can manually use an exported PNG as another module's source. Poses supports four static dialogue actions; complex poses and object manipulation remain [planned](plugins/charakit/ROADMAP.md). Real pose generation quality still needs validation.
+All three modules support scoped reference images, bounded redraws, human feedback, and revisions of a chosen candidate. Each uses an independent project; you can manually use an exported PNG as another module's source. Poses supports eight static dialogue actions; complex poses and object manipulation remain [planned](plugins/charakit/ROADMAP.md). Real pose generation quality still needs validation.
 
 ## Install
 
@@ -92,6 +92,8 @@ mouth state, clothing design, character identity, and original style.
 ```
 
 Left and right refer to the character's anatomical side. Poses permits necessary limb, joint, fold and overlap changes while preserving protected designs. Pose references guide only the action and structure.
+
+Clasped hands, hands behind the back and crossed arms use both arms. These actions and hand on chest record each arm's placement, contacts and front/back overlaps, retaining those requirements through redraws and revisions. Hidden hands stay hidden when the action requires it; an action does not automatically change the expression.
 
 You may attach additional reference images to any module. Describe what each should guide—for example, only the jacket cut, glasses design or palm orientation. References guide those attributes while the source illustration governs the protected character details.
 

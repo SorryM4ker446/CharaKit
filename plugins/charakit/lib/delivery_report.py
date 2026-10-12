@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 ZH = {
     'pose_edit': '静态姿势编辑', 'pose': '姿势', 'side': '角色自身侧别', 'anchors': '游戏锚点',
     'left': '左侧', 'right': '右侧', 'target_pose': '动作达成', 'limbs_joints': '肢体与关节',
+    'both': '双侧', 'pose_interaction': '双臂与接触定义', 'left_arm': '左臂', 'right_arm': '右臂', 'occlusion': '前后遮挡',
     'balance_support': '重心与支撑', 'contacts': '接触关系', 'occlusion_clothing': '遮挡与衣物响应',
     'framing_anchors': '构图与游戏锚点',
     'detail_preview': '最终采用版局部对照', 'face_region': '整脸', 'target_region': '目标部位',
@@ -81,6 +82,7 @@ ZH = {
 EN = {
     'pose_edit': 'Static pose editing', 'pose': 'Pose', 'side': 'Character anatomical side', 'anchors': 'Game anchors',
     'left': 'Left', 'right': 'Right', 'target_pose': 'Action adherence', 'limbs_joints': 'Limbs and joints',
+    'both': 'Both', 'pose_interaction': 'Arms and contact definition', 'left_arm': 'Left arm', 'right_arm': 'Right arm', 'occlusion': 'Front/back overlaps',
     'balance_support': 'Balance and support', 'contacts': 'Contacts', 'occlusion_clothing': 'Occlusion and clothing response',
     'framing_anchors': 'Framing and game anchors',
     'detail_preview': 'Final selected version: detail comparisons', 'face_region': 'Whole face', 'target_region': 'Target region',
@@ -401,6 +403,10 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
                           t['pose']+'：'+md(edit['pose'])+' · '+t['side']+'：'+t.get(edit['side'], edit['side']), '']
                 if edit['anchors']:
                     lines += [t['anchors']+'：'+md('; '.join(edit['anchors'])), '']
+                if edit.get('pose_interaction'):
+                    lines += ['**'+t['pose_interaction']+'**', '']
+                    lines += ['- '+t[key]+'：'+md(value) for key, value in edit['pose_interaction'].items()]
+                    lines.append('')
             else:
                 change = t['prop_remove'] if edit.get('prop_action') == 'remove' else edit.get('replacement', edit.get('color', '—'))
                 lines += [t['edit_definition']+'：'+t[edit['edit_type']]+' · '+md(edit['target'])+' → '+md(change), '']
@@ -577,7 +583,7 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                           'assessed_asset_id':asset['id'], 'candidate_pool':state.get('candidate_pools',{}).get(pool_id),
                           'label':label_for(core,asset,labels,language),'status':action,'max_rounds':pool['budget'] if pool_id else plan['max_rounds'] if plan else None,
                           'attempt_count':len(pool['attempts']) if pool_id else len(records),
-                          'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','outfit_components','prop_action','edit_brief','pose_id','pose','side','anchors') if key in asset} if 'outfit_id' in asset or 'pose_id' in asset else None,
+                          'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','outfit_components','prop_action','edit_brief','pose_id','pose','side','anchors','pose_interaction') if key in asset} if 'outfit_id' in asset or 'pose_id' in asset else None,
                           'edit_references':[{**ref,'image':str(core.contained(root,ref['path']))} for ref in asset.get('edit_references',[])],
                           'source':str(core.contained(root,state['source'])),'source_sha256':state['source_sha256'],
                           'source_canvas':state['canvas'],'history':records,'final':delivered,'delivery_error':error})

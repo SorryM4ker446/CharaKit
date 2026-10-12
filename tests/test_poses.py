@@ -20,6 +20,32 @@ poses = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(poses)
 
 
+def interaction(preset, side='both'):
+    definitions = {
+        'hands_clasped': dict(left_arm='Left forearm reaches the abdomen; left palm supports the right hand.',
+                              right_arm='Right forearm reaches the abdomen; right fingers rest over the left hand.',
+                              contacts='Hands touch gently; each visible finger belongs to its own hand.',
+                              occlusion='Right fingers in front of the left palm; sleeves remain on their respective arms.'),
+        'hands_behind_back': dict(left_arm='Left arm relaxed behind the left torso edge.',
+                                  right_arm='Right arm relaxed behind the right torso edge.',
+                                  contacts='Hands may meet behind the back; hidden contact is not claimed as visibly verified.',
+                                  occlusion='Torso hides hands; preserve plausible arm contours without exposing hidden fingers.'),
+        'arms_crossed': dict(left_arm='Left forearm across the chest, in front of the right forearm.',
+                            right_arm='Right forearm across the chest, behind the left forearm.',
+                            contacts='Hands rest against the opposite upper arms without interpenetration.',
+                            occlusion='Left forearm in front; sleeves and torso retain their correct ownership.'),
+        'hand_on_chest': dict(left_arm='Left hand lightly rests near the chest.', right_arm='Right arm keeps its source action.',
+                              contacts='Left hand touches the clothing without covering or replacing the chest ornament.',
+                              occlusion='Left hand in front of the chest clothing; the right sleeve remains unchanged.'),
+    }
+    result = copy.deepcopy(definitions[preset])
+    if preset == 'hand_on_chest' and side == 'right':
+        result = dict(left_arm='Left arm keeps its source action.', right_arm='Right hand lightly rests near the chest.',
+                      contacts='Right hand touches clothing without replacing the chest ornament.',
+                      occlusion='Right hand in front of chest clothing; the left sleeve remains unchanged.')
+    return result
+
+
 class PoseTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -45,18 +71,21 @@ class PoseTests(unittest.TestCase):
 
     def prepare(self, preset='wave', side='right', option=None, **kwargs):
         option = option or preset + '_' + side
+        if preset in poses.INTERACTION_POSES and 'pose_interaction' not in kwargs:
+            kwargs['pose_interaction'] = interaction(preset, side)
         return poses.prepare_pose(self.root, option, preset, side,
                                   '自然站立' if preset == 'natural_standing' else '角色自身' + side + '手的' + preset,
                                   '手臂动作及必要衣褶、关节、接触、遮挡；其余设计保留',
                                   ['五官表情、嘴形、服装设计、道具、原画风、画布'],
                                   [10, 30, 85, 120], **kwargs)
 
-    def candidate(self, preset='wave', side='right', option=None, budget=1, reference_file=None, image=None):
-        brief = self.prepare(preset, side, option, reference_file=reference_file, anchors=['保持脚底基线'])
+    def candidate(self, preset='wave', side='right', option=None, budget=1, reference_file=None, image=None, **kwargs):
+        brief = self.prepare(preset, side, option, reference_file=reference_file, anchors=['保持脚底基线'], **kwargs)
         asset = poses.add_asset(self.root, image or self.raw, brief['edit_brief']['pose_id'], self.prompt,
                                 Path(brief['brief_file']), [Path(p) for p in brief['reference_paths']])['asset']
         checks = contract()
         checks[0].update(component=asset['target'], expected='按已记录侧别、手形和幅度完成动作')
+        checks.extend(brief['interaction_criteria'])
         for ref in asset.get('edit_references', []):
             checks.append(dict(id='ref_'+ref['id'], dimension='target', component=ref['id'],
                                property='动作结构', expected=ref['notes'], view='target_detail'))
@@ -71,6 +100,8 @@ class PoseTests(unittest.TestCase):
         data.update(rubric_version='1.2', criteria=copy.deepcopy(state['candidate_pools'][current['candidate_pool']]['contract']),
                     normal_display_height=420, blind_packet=page['packet'])
         data['domain_review'].update(pose=asset['pose'], side=asset['side'], component=asset['target'])
+        if 'pose_interaction' in asset:
+            data['domain_review']['pose_interaction'] = copy.deepcopy(asset['pose_interaction'])
         for check in data['criteria']:
             check.update(observed='Synthetic fixture observation only.', status='passed', score=5)
         preview = self.root / 'preview' / (asset['id']+'.png')
@@ -110,7 +141,7 @@ class PoseTests(unittest.TestCase):
 
     def test_all_presets_and_both_sides_end_to_end_raw_exports_and_bilingual_reports(self):
         for preset in poses.POSES:
-            for side in (('none',) if preset == 'natural_standing' else ('left', 'right')):
+            for side in poses.pose_sides(preset):
                 with self.subTest(preset=preset, side=side):
                     asset = self.candidate(preset, side)
                     self.review(asset)
@@ -125,6 +156,7 @@ class PoseTests(unittest.TestCase):
                     self.assertEqual(export['manifest']['schema_version'], '3.0')
                     sprite = export['manifest']['sprites'][0]
                     self.assertEqual((sprite['pose'], sprite['side']), (preset, side))
+                    self.assertEqual(sprite.get('pose_interaction'), asset.get('pose_interaction'))
                     self.assertEqual(sprite['generation_inputs']['references'][0]['role'], 'immutable_source')
                     self.assertIn('/poses/', sprite['path'])
                     with zipfile.ZipFile(export['export']) as archive:
@@ -135,6 +167,10 @@ class PoseTests(unittest.TestCase):
                         text = Path(report['report']).read_text(encoding='utf-8')
                         self.assertIn('肢体与关节' if language == 'zh-CN' else 'Limbs and joints', text)
                         self.assertIn('脚底基线', text)
+                        if 'pose_interaction' in asset:
+                            self.assertIn(asset['pose_interaction']['occlusion'], text)
+                            manifest = json.loads(Path(report['manifest']).read_text(encoding='utf-8'))
+                            self.assertEqual(manifest['cases'][0]['edit']['pose_interaction'], asset['pose_interaction'])
 
     def test_scope_side_and_coordinates_fail_before_writing(self):
         before = (self.root / 'run.json').read_bytes()
@@ -328,6 +364,137 @@ class PoseTests(unittest.TestCase):
         poses.write_state(self.root, state)
         self.assertEqual(poses.read_state(self.root)['assets'][0]['id'], asset['id'])
 
+    def test_new_pose_sides_and_interaction_fail_before_writing(self):
+        before = (self.root/'run.json').read_bytes()
+        for preset, side in [('hand_on_chest', 'both'), ('hands_clasped', 'left'),
+                             ('hands_behind_back', 'none'), ('arms_crossed', 'right'), ('wave', 'both')]:
+            self.code('INVALID_POSE', self.prepare, preset, side)
+        for preset in poses.INTERACTION_POSES:
+            side = 'left' if preset == 'hand_on_chest' else 'both'
+            for value in (None, {}, [], dict(left_arm='Only one arm'),
+                          {**interaction(preset), 'contacts': ''}, {**interaction(preset), 'extra': 'unbound'}):
+                self.code('INVALID_POSE', self.prepare, preset, side, pose_interaction=value)
+        self.assertFalse((self.root/'briefs').exists())
+        self.assertEqual(before, (self.root/'run.json').read_bytes())
+
+    def test_interaction_contract_requires_each_arm_contact_and_occlusion(self):
+        brief = self.prepare('arms_crossed', 'both')
+        asset = poses.add_asset(self.root, self.raw, 'arms_crossed_both', self.prompt,
+                                Path(brief['brief_file']), [Path(p) for p in brief['reference_paths']])['asset']
+        checks = contract()
+        checks[0]['component'] = asset['target']
+        checks.extend(brief['interaction_criteria'])
+        before = (self.root/'run.json').read_bytes()
+        for field in poses.POSE_INTERACTION_FIELDS:
+            component = 'pose_interaction.'+field
+            incomplete = [c for c in checks if c['component'] != component]
+            self.code('INVALID_CANDIDATE_REVIEW', self.call, 'pool_start', self.root, asset['id'], incomplete)
+            changed = copy.deepcopy(checks)
+            next(c for c in changed if c['component'] == component)['expected'] = 'A different unbound requirement.'
+            self.code('INVALID_CANDIDATE_REVIEW', self.call, 'pool_start', self.root, asset['id'], changed)
+        self.assertEqual(before, (self.root/'run.json').read_bytes())
+        self.call('pool_start', self.root, asset['id'], checks, 1)
+
+    def test_changed_interaction_cannot_reuse_option_or_tamper_with_asset(self):
+        asset = self.candidate('arms_crossed', 'both')
+        changed = interaction('arms_crossed')
+        changed['occlusion'] = 'Right forearm in front of the left forearm.'
+        self.code('POSE_DEFINITION_CHANGED', self.prepare, 'arms_crossed', 'both', pose_interaction=changed)
+        state = poses.read_state(self.root)
+        for field in poses.POSE_INTERACTION_FIELDS:
+            modified = copy.deepcopy(state)
+            modified['assets'][0]['pose_interaction'][field] = 'Changed frozen requirement.'
+            poses.write_state(self.root, modified)
+            self.code('INVALID_PROJECT', poses.read_state, self.root)
+        poses.write_state(self.root, state)
+        alternate = self.candidate('arms_crossed', 'both', option='crossed_right_front', pose_interaction=changed)
+        self.assertEqual(alternate['pose_interaction']['occlusion'], changed['occlusion'])
+
+    def test_new_pose_review_must_bind_the_actual_interaction(self):
+        asset = self.candidate('hands_clasped', 'both')
+        original, preview = self.evidence(asset)
+        before = (self.root/'run.json').read_bytes()
+        for field in (None, *poses.POSE_INTERACTION_FIELDS):
+            data = copy.deepcopy(original)
+            if field is None:
+                data['domain_review'].pop('pose_interaction')
+            else:
+                data['domain_review']['pose_interaction'][field] = 'Different action relationships.'
+            self.code('INVALID_DOMAIN_REVIEW', poses.record_quality, self.root, asset['id'], data, [preview])
+        self.assertEqual(before, (self.root/'run.json').read_bytes())
+
+    def test_new_pose_contact_and_occlusion_failures_block_acceptance(self):
+        for preset in poses.INTERACTION_POSES:
+            side = 'right' if preset == 'hand_on_chest' else 'both'
+            for check in ('contacts', 'occlusion_clothing'):
+                for status in ('failed', 'uncertain'):
+                    asset = self.candidate(preset, side, option=preset+'_'+check+'_'+status)
+                    result = self.review(asset, lambda data: data['domain_review']['checks'][check].update(status=status))
+                    self.assertEqual(result['score']['total'], 100)
+                    self.assertNotEqual(result['quality_status'], 'passed')
+                    _, feedback = self.feedback(asset)
+                    self.assertEqual(feedback['next_action'], 'blocked')
+                    self.assertNotIn(asset['pose_id'], poses.read_state(self.root)['selected'])
+
+    def test_new_pose_restart_keeps_interaction_and_scoped_references(self):
+        for preset in poses.INTERACTION_POSES:
+            side = 'left' if preset == 'hand_on_chest' else 'both'
+            first = self.candidate(preset, side, budget=3, reference_file=self.reference())
+            fail = lambda data: data['domain_review']['checks']['non_target_protection'].update(status='failed')
+            self.review(first, fail, protection='failed')
+            plan = self.call('pool_reserve', self.root, first['id'])
+            second = self.call('pool_import', self.root, first['id'], plan['token'], self.raw, self.prompt,
+                               [Path(p) for p in plan['reference_paths']])['asset']
+            self.assertEqual(second['pose_interaction'], first['pose_interaction'])
+            self.review(second, fail, protection='failed')
+            self.compare(first['id'], second['id'])
+            plan = self.call('pool_reserve', self.root, first['id'])
+            self.assertEqual(plan['strategy'], 'source_restart')
+            self.assertEqual([r['role'] for r in plan['references']], ['immutable_source', 'edit_reference'])
+            self.assertNotIn(str((self.root/second['path']).resolve()), plan['reference_paths'])
+            third = self.call('pool_import', self.root, first['id'], plan['token'], self.raw, self.prompt,
+                              [Path(p) for p in plan['reference_paths']])['asset']
+            self.assertEqual(third['pose_interaction'], first['pose_interaction'])
+            self.assertEqual(third['edit_brief'], first['edit_brief'])
+            self.review(third)
+            self.compare(first['id'], third['id'])
+            page, feedback = self.feedback(third)
+            self.assertEqual(len(page['candidates']), 3)
+            self.assertEqual(feedback['next_action'], 'export')
+
+    def test_two_arm_human_revision_and_redraw_preserve_interaction(self):
+        asset = self.candidate('arms_crossed', 'both', reference_file=self.reference())
+        self.review(asset)
+        page, _ = self.feedback(asset, 'revise')
+        original = poses.read_state(self.root)['candidate_pools'][asset['id']]
+        revision = self.call('revision_prepare', self.root, page['packet'], original['contract'], 2)
+        self.assertEqual(revision['edit']['pose_interaction'], asset['pose_interaction'])
+        child = self.call('revision_import', self.root, page['packet'], self.raw, self.prompt,
+                          [Path(p) for p in revision['reference_paths']])['asset']
+        self.assertEqual(child['pose_interaction'], asset['pose_interaction'])
+        self.review(child, lambda data: data['domain_review']['checks']['contacts'].update(status='failed'))
+        plan = self.call('pool_reserve', self.root, child['id'])
+        fixed = self.call('pool_import', self.root, child['id'], plan['token'], self.raw, self.prompt,
+                          [Path(p) for p in plan['reference_paths']])['asset']
+        self.assertEqual(fixed['pose_interaction'], asset['pose_interaction'])
+        self.review(fixed)
+        self.compare(child['id'], fixed['id'])
+        _, feedback = self.feedback(fixed)
+        self.assertEqual(feedback['next_action'], 'export')
+        pack = poses.export_pack(self.root, ids=[fixed['id']])
+        self.assertEqual(pack['manifest']['sprites'][0]['pose_interaction'], asset['pose_interaction'])
+
+    def test_original_pose_brief_and_history_stay_unchanged(self):
+        old = self.candidate('wave', 'left')
+        self.assertEqual(old['edit_brief']['schema_version'], 'pose-1.0')
+        self.assertNotIn('pose_interaction', old)
+        old = poses.get_asset(poses.read_state(self.root), old['id'])
+        brief_path = next((self.root/'briefs').glob('wave_left_*.json'))
+        before = brief_path.read_bytes()
+        self.candidate('hands_behind_back', 'both')
+        self.assertEqual(poses.get_asset(poses.read_state(self.root), old['id']), old)
+        self.assertEqual(brief_path.read_bytes(), before)
+
     def test_packaged_entrypoint_operates_away_from_repository(self):
         archive = self.folder / 'plugin.zip'
         builder.build(REPO, archive)
@@ -339,7 +506,9 @@ class PoseTests(unittest.TestCase):
             result = subprocess.run([sys.executable, str(script), *map(str,args)], cwd=self.folder, capture_output=True, encoding='utf-8')
             self.assertEqual(result.returncode, 0, result.stderr)
             return json.loads(result.stdout)
-        self.assertEqual(len(run('presets')['presets']), 4)
+        presets = {p['id']: p for p in run('presets')['presets']}
+        self.assertEqual(len(presets), 8)
+        self.assertEqual(presets['arms_crossed']['sides'], ['both'])
         root = self.folder / 'CLI 项目'
         run('init','--project',root,'--source',self.source,'--character','test_character')
         brief = run('prepare','--project',root,'--pose-id','wave_right','--pose','wave','--side','right',
@@ -348,6 +517,26 @@ class PoseTests(unittest.TestCase):
                     '--brief-file',brief['brief_file'],'--reference',root/'source.png')
         self.assertEqual(added['asset']['pose'], 'wave')
         self.assertEqual(run('status','--project',root)['assets'][0]['fidelity_status'], 'pending')
+        interaction_path = self.folder/'interaction.json'
+        interaction_path.write_text(json.dumps(interaction('arms_crossed')), encoding='utf-8')
+        crossed = run('prepare', '--project', root, '--pose-id', 'crossed', '--pose', 'arms_crossed', '--side', 'both',
+                      '--target', '双臂抱胸', '--boundary', '手臂及遮挡', '--protect', '五官服装设计',
+                      '--target-box', 10, 30, 85, 120, '--interaction-file', interaction_path)
+        self.assertEqual(crossed['edit_brief']['schema_version'], 'pose-1.1')
+        self.assertEqual(len(crossed['interaction_criteria']), 4)
+        imported = run('add', '--project', root, '--pose-id', 'crossed', '--image', self.raw,
+                       '--prompt-file', self.prompt, '--brief-file', crossed['brief_file'], '--reference', root/'source.png')
+        self.assertEqual(imported['asset']['pose_interaction'], interaction('arms_crossed'))
+        for contents in ('{bad JSON', '[]', '{"left_arm": "only one arm"}'):
+            interaction_path.write_text(contents, encoding='utf-8')
+            invalid = subprocess.run([sys.executable, str(script), 'prepare', '--project', str(root),
+                                      '--pose-id', 'invalid', '--pose', 'arms_crossed', '--side', 'both',
+                                      '--target', 'cross arms', '--boundary', 'arms', '--protect', 'face',
+                                      '--target-box', '10', '30', '85', '120', '--interaction-file', str(interaction_path)],
+                                     cwd=self.folder, capture_output=True, encoding='utf-8')
+            self.assertEqual(invalid.returncode, 2)
+            self.assertEqual(json.loads(invalid.stderr)['error']['code'], 'INVALID_POSE')
+            self.assertFalse(list((root/'briefs').glob('invalid_*.json')))
 
 
 if __name__ == '__main__':

@@ -43,9 +43,16 @@ POSE_PRESETS = {
     "hand_on_hip": {"name": "One hand on hip", "direction": "Place the specified hand at the waist with natural palm contact and shoulder/elbow alignment; preserve the other arm unless requested."},
     "wave": {"name": "Raised hand greeting", "direction": "Raise the specified hand near shoulder height, palm outward, with natural fingers and wrist; a static greeting, not animation."},
     "palm_up": {"name": "Palm-up explanation", "direction": "Extend the specified hand slightly forward with palm upward and restrained perspective; preserve the other arm unless requested."},
+    "hand_on_chest": {"name": "Hand on chest", "direction": "Rest the specified hand lightly near the chest; define the other arm and preserve clothing, ornaments and expression."},
+    "hands_clasped": {"name": "Hands clasped in front", "direction": "Gently clasp both hands near the abdomen; define each hand's placement, finger ownership and contact without fused fingers."},
+    "hands_behind_back": {"name": "Hands behind back", "direction": "Move both arms behind the body with relaxed shoulders; define hidden contacts and plausible visible arm contours without inventing visible fingers."},
+    "arms_crossed": {"name": "Arms crossed", "direction": "Cross both arms in front of the chest; specify the front arm, hand placement and sleeve/body overlaps without changing emotion."},
 }
 POSES = tuple(POSE_PRESETS)
-POSE_SIDES = ("none", "left", "right")  # Character's anatomical side, never screen side.
+POSE_SIDES = ("none", "left", "right", "both")  # Character's anatomical side, never screen side.
+TWO_ARM_POSES = ("hands_clasped", "hands_behind_back", "arms_crossed")
+INTERACTION_POSES = ("hand_on_chest", *TWO_ARM_POSES)
+POSE_INTERACTION_FIELDS = ("left_arm", "right_arm", "contacts", "occlusion")
 MODES = ("transparent_sprite", "preserve_background")
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PIXELS = 40_000_000
@@ -390,22 +397,57 @@ def valid_source_box(box, canvas: dict) -> bool:
             and 0 <= box[1] < box[3] <= canvas["height"])
 
 
+def pose_sides(pose: str) -> tuple:
+    if pose == "natural_standing":
+        return ("none",)
+    return ("both",) if pose in TWO_ARM_POSES else ("left", "right")
+
+
+def valid_pose_interaction(value) -> bool:
+    return (isinstance(value, dict) and set(value) == set(POSE_INTERACTION_FIELDS)
+            and all(valid_edit_text(value[key], 1000) for key in POSE_INTERACTION_FIELDS))
+
+
+def load_pose_interaction(path: Path | None) -> dict | None:
+    if path is None:
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise StudioError("INVALID_POSE", "Cannot read the pose interaction JSON.") from exc
+    if not valid_pose_interaction(value):
+        raise StudioError("INVALID_POSE", "Define left_arm, right_arm, contacts and occlusion as nonempty descriptions.")
+    return value
+
+
+def pose_interaction_criteria(value: dict) -> list[dict]:
+    interaction = value.get("pose_interaction", {})
+    return [{"id": "pose_" + key, "dimension": "target" if key.endswith("_arm") else "integration",
+             "component": "pose_interaction." + key, "property": key,
+             "expected": interaction[key], "view": "full_image"}
+            for key in POSE_INTERACTION_FIELDS if key in interaction]
+
+
 def valid_pose_definition(value: dict) -> bool:
     return (value.get("edit_type") == "pose_edit" and value.get("pose") in POSES
-            and value.get("side") in POSE_SIDES
-            and (value["side"] == "none") == (value["pose"] == "natural_standing")
+            and value.get("side") in pose_sides(value["pose"])
+            and ("pose_interaction" in value or value["pose"] not in INTERACTION_POSES)
+            and ("pose_interaction" not in value or valid_pose_interaction(value["pose_interaction"]))
             and valid_edit_text(value.get("target"), 500)
             and isinstance(value.get("anchors"), list) and len(value["anchors"]) <= 10
             and all(valid_edit_text(x, 200) for x in value["anchors"]))
 
 
 def pose_definition(value: dict) -> tuple:
-    return (value["pose"], value["side"], value["target"], tuple(value["anchors"]))
+    interaction = value.get("pose_interaction")
+    return (value["pose"], value["side"], value["target"], tuple(value["anchors"]),
+            tuple(interaction[key] for key in POSE_INTERACTION_FIELDS) if interaction is not None else None)
 
 
 def validate_pose_brief(root: Path, state: dict, brief: dict, check_reference: bool = True) -> None:
     try:
-        valid = (isinstance(brief, dict) and brief["schema_version"] == "pose-1.0"
+        valid = (isinstance(brief, dict) and brief["schema_version"] == (
+                    "pose-1.1" if "pose_interaction" in brief else "pose-1.0")
                  and brief["source_sha256"] == state["source_sha256"]
                  and valid_outfit_id(brief["pose_id"]) and valid_pose_definition(brief)
                  and valid_edit_text(brief["boundary"], 1000)
@@ -429,15 +471,17 @@ def validate_pose_brief(root: Path, state: dict, brief: dict, check_reference: b
 
 def prepare_pose(root: Path, pose_id: str, pose: str, side: str, target: str, boundary: str,
                  protected_regions: list[str], target_box: list[int], anchors: list[str] | None = None,
-                 reference_file: Path | None = None) -> dict:
+                 reference_file: Path | None = None, pose_interaction: dict | None = None) -> dict:
     state = read_state(root)
     require_module(state, "poses")
     fields = {"pose_id": pose_id, "edit_type": "pose_edit", "pose": pose, "side": side,
               "target": target, "anchors": anchors if anchors is not None else []}
+    if pose_interaction is not None:
+        fields["pose_interaction"] = copy.deepcopy(pose_interaction)
     if not valid_outfit_id(pose_id) or not valid_pose_definition(fields):
-        raise StudioError("INVALID_POSE", "Use a supported pose, a unique lowercase option ID, explicit anatomical side, target and optional anchors.")
+        raise StudioError("INVALID_POSE", "Use a supported pose, its allowed side and target; new contact/two-arm poses require left_arm, right_arm, contacts and occlusion descriptions.")
     if any(pose_definition(a) != pose_definition(fields) for a in state["assets"] if a["pose_id"] == pose_id):
-        raise StudioError("POSE_DEFINITION_CHANGED", "Use a new pose ID when changing the action, side, target or anchors.")
+        raise StudioError("POSE_DEFINITION_CHANGED", "Use a new pose ID when changing the action, side, target, anchors or interaction.")
     if reference_file is not None:
         fields["edit_references"] = reference_call("load", root, state, reference_file, fields)
     version = 1
@@ -445,7 +489,7 @@ def prepare_pose(root: Path, pose_id: str, pose: str, side: str, target: str, bo
         version += 1
     brief_path = root / "briefs" / f"{pose_id}_v{version:03d}.json"
     detail_path = root / "references" / f"{pose_id}_target_v{version:03d}.png"
-    brief = {"schema_version": "pose-1.0", **fields, "source_sha256": state["source_sha256"],
+    brief = {"schema_version": "pose-1.1" if "pose_interaction" in fields else "pose-1.0", **fields, "source_sha256": state["source_sha256"],
              "boundary": boundary, "protected_regions": protected_regions, "target_box": target_box,
              "reference": {"path": detail_path.relative_to(root).as_posix(), "sha256": "0" * 64},
              "created_at": timestamp()}
@@ -464,6 +508,7 @@ def prepare_pose(root: Path, pose_id: str, pose: str, side: str, target: str, bo
     return {"brief_file": str(brief_path.resolve()), "edit_brief": brief,
             "source_reference": str(contained(root, state["source"])), "detail_reference": str(detail_path.resolve()),
             "generation_references": refs, "reference_paths": [str(contained(root, r["path"])) for r in refs],
+            "interaction_criteria": pose_interaction_criteria(fields),
             "note": "Pose references guide action/structure only. Source controls identity, expression, designs, style and canvas. Detail crops are inspection aids, never masks."}
 
 
@@ -479,8 +524,8 @@ def add_pose(root: Path, image: Path, pose_id: str, prompt_file: Path, brief_fil
     if brief["pose_id"] != pose_id:
         raise StudioError("INVALID_EDIT_BRIEF", "The brief must match the pose option ID.")
     if any(pose_definition(a) != pose_definition(brief) for a in state["assets"] if a["pose_id"] == pose_id):
-        raise StudioError("POSE_DEFINITION_CHANGED", "Use a new pose ID for a different action, side, target or anchors.")
-    fields = {key: copy.deepcopy(brief[key]) for key in ("pose_id", "pose", "side", "target", "anchors", "edit_type", "edit_references") if key in brief}
+        raise StudioError("POSE_DEFINITION_CHANGED", "Use a new pose ID for a different action, side, target, anchors or interaction.")
+    fields = {key: copy.deepcopy(brief[key]) for key in ("pose_id", "pose", "side", "target", "anchors", "pose_interaction", "edit_type", "edit_references") if key in brief}
     fields.update(edit_brief=copy.deepcopy(brief), quality_required=QUALITY_VERSION)
     fields["generation_inputs"] = reference_call("initial_inputs", root, state, fields, references)
     prompt = prompt_file.read_text(encoding="utf-8") if prompt_file else None
@@ -653,8 +698,9 @@ def validate_outfit_component_review(asset: dict, review: dict) -> None:
     if "pose_id" in asset:
         domain = review.get("domain_review", {})
         if (review.get("rubric_version") != "1.2" or domain.get("kind") != "pose_edit"
-                or domain.get("pose") != asset["pose"] or domain.get("side") != asset["side"]):
-            raise StudioError("INVALID_DOMAIN_REVIEW", "Poses require rubric 1.2 and findings for the actual pose and anatomical side.")
+                or domain.get("pose") != asset["pose"] or domain.get("side") != asset["side"]
+                or domain.get("pose_interaction") != asset.get("pose_interaction")):
+            raise StudioError("INVALID_DOMAIN_REVIEW", "Poses require rubric 1.2 and findings for the actual pose, side and recorded arm/contact/occlusion interaction.")
         return
     if asset.get("edit_type") == "prop_edit":
         domain = review.get("domain_review", {})
@@ -1540,6 +1586,8 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
             sprites[-1]["human_revision"] = state["human_revisions"][asset["human_revision"]]
         if is_pose:
             sprites[-1].update({key: asset[key] for key in ("pose_id", "pose", "side", "target", "anchors", "edit_type")})
+            if "pose_interaction" in asset:
+                sprites[-1]["pose_interaction"] = copy.deepcopy(asset["pose_interaction"])
             sprites[-1]["generation_inputs"] = asset["generation_inputs"]
             sprites[-1]["edit_scope"] = {key: asset["edit_brief"][key] for key in ("boundary", "protected_regions", "target_box")}
             sprites[-1]["fidelity_review"] = asset["fidelity_review"]
@@ -1673,7 +1721,8 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
         prepare.add_argument("--project", required=True, type=Path)
         prepare.add_argument("--pose-id", required=True)
         prepare.add_argument("--pose", required=True, choices=POSES)
-        prepare.add_argument("--side", required=True, choices=POSE_SIDES, help="Character's anatomical side; none for natural standing.")
+        prepare.add_argument("--side", required=True, choices=POSE_SIDES, help="Character's anatomical side; none for standing, both for two-arm poses.")
+        prepare.add_argument("--interaction-file", type=Path, help="JSON object: left_arm, right_arm, contacts, occlusion; required for new contact/two-arm poses.")
         prepare.add_argument("--target", required=True, help="Concrete action, hand shape/amplitude and unchanged other arm.")
         prepare.add_argument("--boundary", required=True)
         prepare.add_argument("--protect", required=True, action="append", dest="protected_regions")
@@ -1781,7 +1830,8 @@ def main(module: str = "expressions") -> int:
                                      face_box=args.face_box, background=args.background, stage=args.stage)
         elif args.command == "presets":
             if module == "poses":
-                result = {"presets": [{"id": key, **preset} for key, preset in POSE_PRESETS.items()],
+                result = {"presets": [{"id": key, **preset, "sides": list(pose_sides(key)),
+                                       "interaction_required": key in INTERACTION_POSES} for key, preset in POSE_PRESETS.items()],
                           "sides": list(POSE_SIDES), "side_basis": "character_anatomical"}
             else:
                 result = {"presets": [{"id": key, **preset} for key, preset in EXPRESSION_PRESETS.items()],
@@ -1796,7 +1846,8 @@ def main(module: str = "expressions") -> int:
         elif args.command == "prepare":
             if module == "poses":
                 result = prepare_pose(args.project, args.pose_id, args.pose, args.side, args.target, args.boundary,
-                                      args.protected_regions, args.target_box, args.anchors, args.reference_file)
+                                      args.protected_regions, args.target_box, args.anchors, args.reference_file,
+                                      load_pose_interaction(args.interaction_file))
             else:
                 result = prepare_outfit(args.project, args.outfit_id, args.target, args.color, args.boundary, args.protected_regions, args.target_box, args.edit_type, args.replacement, load_outfit_components(args.components_file), args.prop_action, args.reference_file)
         elif args.command == "fidelity":

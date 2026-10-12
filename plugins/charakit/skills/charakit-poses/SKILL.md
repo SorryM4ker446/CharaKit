@@ -1,21 +1,23 @@
 ---
 name: charakit-poses
-description: Edit a single visual novel character into natural standing, one hand on hip, a raised-hand greeting or a palm-up explanation while preserving identity, expression, clothing design and original style. Use for these static dialogue poses, pose references, human-guided revisions, review previews and PNG exports.
+description: Edit a single visual novel character into static dialogue poses, including one-hand gestures, clasped hands, hands behind the back and crossed arms, while preserving identity, expression, clothing design and original style. Use for pose references, human-guided revisions, review previews and PNG exports.
 ---
 
 # CharaKit Poses
 
-Create a complete static illustration from an existing single-character source. The first version supports `natural_standing`, `hand_on_hip`, `wave` and `palm_up`. Read the [pose guide](references/pose-guide.md) to define the action and distinguish permitted movement from protected design. Larger turns, sitting, leaning, object manipulation, combat, animation and rigging remain deferred. Pure clothing/object edits use [Outfits](../charakit-outfits/SKILL.md); expression changes use [Expressions](../charakit-expressions/SKILL.md). Keep projects and state independent; users can manually use an exported PNG as another module's source.
+Create a complete static illustration from an existing single-character source. Supports `natural_standing`, `hand_on_hip`, `wave`, `palm_up`, `hand_on_chest`, `hands_clasped`, `hands_behind_back` and `arms_crossed`. Read the [pose guide](references/pose-guide.md) to define the action and distinguish permitted movement from protected design. Larger turns, sitting, leaning, object manipulation, combat, animation and rigging remain deferred. Pure clothing/object edits use [Outfits](../charakit-outfits/SKILL.md); expression changes use [Expressions](../charakit-expressions/SKILL.md). Keep projects and state independent; users can manually use an exported PNG as another module's source.
 
 ## Define and prepare
 
-Inspect the actual full source and any references before defining permissions. Resolve the requested side, hand orientation, amplitude, other arm, existing asymmetry and visible contacts from the request and source. `left` and `right` always mean the character's anatomical side, not the viewer's side; use `none` for natural standing. Clarify only meaningful unresolved choices or conflicts, such as a requested free-hand gesture while that hand holds an object. The first version preserves objects and does not silently remove, replace or add them.
+Inspect the actual full source and any references before defining permissions. Resolve the requested side, hand orientation, amplitude, other arm, existing asymmetry and visible contacts from the request and source. `left` and `right` always mean the character's anatomical side, not the viewer's side; use `none` for natural standing and `both` for clasped hands, hands behind the back or crossed arms. Hand on chest uses `left` or `right`. Clarify only meaningful unresolved choices or conflicts, such as a requested free-hand gesture while that hand holds an object. These poses preserve objects and do not silently remove, replace or add them.
 
 Keep the current emotion, mouth state, gaze and facial design. A greeting does not authorize a smile; a hand on hip does not authorize anger. Preserve hair and clothing designs, equipment, body proportions, rendering, canvas and background. Permit the explicitly requested limb movement and only necessary joint, contact, fabric, hair placement, overlap and newly visible-area changes. Reconstruct revealed areas in the source's design and style without claiming recovery of unknown original pixels. Do not impose an unchanged body silhouette or restore the old pose during protection review.
 
 Follow the shared [editing boundaries](../../references/edit-boundaries.md), [scoped edit references](../../references/edit-references.md), [candidate review](../../references/candidate-review.md) and [quality policy](../../references/quality-review.md). Pose references have only scope `pose`: action and structure, never identity, expression, clothes, color or style. Snapshot optional references with `reference-prepare`, bind them to the prepared brief, include one target criterion per reference ID and retain all actual inputs in redraws and human revisions.
 
 Default to `art-output/<character-key>/poses/`, using a new independent project for a new source. Save a concrete five-dimension contract before generation. Initialize the project and `prepare` the action with an option ID, preset, explicit side, target, boundaries, protected attributes, source inspection box and any user-specified game anchors. Different sides/actions use different option IDs. The prepared source crop locates the initial scope; it is not a mask and does not locate a moved hand in a later image.
+
+For the four new contact/two-arm actions, prepare an `--interaction-file` defining `left_arm`, `right_arm`, `contacts` and `occlusion`. Ground each description in the actual request/source. Include the returned `interaction_criteria` in the contract before the first generation and carry all four descriptions into the prompt, every redraw/restart and human correction. Review data must include the identical `domain_review.pose_interaction`; report actual visible findings through the criteria and nine domain checks. Hidden hands do not require visible fingers or a fabricated contact observation. See the [interaction format and example](references/pose-guide.md#arm-contact-and-occlusion-definition).
 
 ## Generate and review
 
@@ -46,6 +48,9 @@ python <skill>/scripts/studio.py presets
 python <skill>/scripts/studio.py init --project <poses-dir> --source <source.png> --character <key>
 python <skill>/scripts/studio.py prepare --project <poses-dir> --pose-id wave_right --pose wave --side right --target <concrete-action> --boundary <permitted-movement-and-interfaces> --protect <identity-expression-designs-and-remainder> --target-box <left> <top> <right> <bottom>
 # Use optional --reference-file <prepared-set.json> and --anchor <user-specified-anchor>.
+# New contact/two-arm actions additionally use --interaction-file <interaction.json>.
+# Example: prepare --pose-id crossed_left_front --pose arms_crossed --side both ... --interaction-file <interaction.json>
+# Add returned interaction_criteria to the five-dimension contract before generating.
 # Generate with returned reference_paths, save the actual prompt and output.
 python <skill>/scripts/studio.py add --project <poses-dir> --pose-id wave_right --image <raw.png> --prompt-file <prompt.txt> --brief-file <prepared-brief.json> --reference <poses-dir/source.png>
 # Add each optional prepared reference with another --reference in the returned order.
@@ -63,4 +68,4 @@ python <skill>/scripts/studio.py report --project <poses-dir> --output <new-deli
 python <skill>/scripts/studio.py export --project <poses-dir>
 ```
 
-Projects use schema 3.0; each candidate snapshots the immutable action/side/anchor definition, brief, prompt, actual inputs and fresh reviews. Wrong-module operations fail before writing. ZIPs contain unchanged full PNGs at `sprites/<key>/poses/<pose-id>.png` and a `full_character_pose` manifest. No legacy project is migrated into Poses.
+Projects use schema 3.0; each candidate snapshots the immutable action/side/anchor and optional interaction definition, brief, prompt, actual inputs and fresh reviews. New interaction briefs use `pose-1.1`; original `pose-1.0` briefs stay readable without new fields. Change the option ID when changing a recorded arm/contact/overlap requirement. Wrong-module operations fail before writing. ZIPs contain unchanged full PNGs at `sprites/<key>/poses/<pose-id>.png` and a `full_character_pose` manifest, including the interaction when present. No legacy project is migrated into Poses.

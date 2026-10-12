@@ -1,4 +1,4 @@
-# Candidate selection and human review (helper 0.1.30)
+# Candidate selection and human review (helper 0.1.31)
 
 ## Revision baselines and task-based inspection
 
@@ -40,7 +40,9 @@ To update an unanswered older page, use `refresh-review-sheet --project <project
 
 Refresh preserves the packet's existing inspection regions; to add a new region, create a new packet with explicit source coordinates. Older custom-language pages without the new interaction labels retain their prior translated interface rather than receiving untranslated controls. Final reports carry the recorded task-based regions into baseline-versus-selected comparisons only after actual acceptance and all delivery gates; rejected or failed candidates never become final detail assets.
 
-This is the default workflow for new expression, mouth-state, recolor, single-garment replacement, full-outfit and prop-edit requests. It supersedes the sequential revision instructions for **new** work. Existing `refinements` cases keep their saved strategy, reviews and spent budget; never migrate or rescore them to obtain a new allowance. Read [quality review](quality-review.md) and the active mode's boundaries first. This workflow improves selection and accountability; it does not promise more faithful image generation.
+This is the default workflow for new expression, mouth-state, recolor, single-garment replacement, full-outfit, prop-edit and pose-edit requests. It supersedes the sequential revision instructions for **new** work. Existing `refinements` cases keep their saved strategy, reviews and spent budget; never migrate or rescore them to obtain a new allowance. Read [quality review](quality-review.md) and the active mode's boundaries first. This workflow improves selection and accountability; it does not promise more faithful image generation.
+
+For Poses with recorded arm/contact/overlap requirements, include the preparation result's four `interaction_criteria` in the contract before generation. Keep their exact components, dimensions and expected descriptions. Internal redraws, source restarts and human revisions preserve the same `pose_interaction`; a new arrangement uses a new option ID. Follow the [pose interaction definition](../skills/charakit-poses/references/pose-guide.md#arm-contact-and-occlusion-definition) when reviewing visible contacts and legitimately hidden hands.
 
 ## Define the request before generating
 
