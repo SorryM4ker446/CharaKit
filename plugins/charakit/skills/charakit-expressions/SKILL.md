@@ -32,7 +32,7 @@ For a specific correction after human review, follow the [linked human-revision 
 - Write the generation prompt in the user's language unless they request another prompt language.
 - English repository documentation does not set the conversation language. Do not answer in English merely because this Skill is written in English.
 - Keep CLI arguments, JSON keys, expression IDs, filenames, and error/status codes stable. Explain their meaning in the user's language rather than changing machine-readable values.
-- For localized preview labels, create a UTF-8 JSON labels file in the user's output directory and pass it to `preview --labels-file`; see [quality-checklist.md](references/quality-checklist.md). If the installed font cannot display a language, keep usable labels and provide the translated explanation in chat.
+- Pass the same explicit `--language zh-CN|en` to reports, HTML review pages and PNG previews. All default to `zh-CN` and share fixed-text catalogs. Use a partial UTF-8 JSON `--labels-file` for custom names; see [localization.md](../../references/localization.md) and [quality-checklist.md](references/quality-checklist.md). If the installed font cannot display a language, keep usable labels and provide the translated explanation in chat.
 
 ## Generation rules
 

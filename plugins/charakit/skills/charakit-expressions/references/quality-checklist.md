@@ -40,7 +40,7 @@ Use `domain_review.kind = expression` for default-state expression candidates an
 
 ## Localized preview labels
 
-The helper's default labels and raw JSON diagnostics are English. Codex must explain them in the user's language. To localize the preview itself, write a flat UTF-8 JSON object containing short translated labels, then pass `--labels-file <path>`.
+PNG previews use the same built-in fixed-text catalogs as reports and HTML pages. Pass `--language zh-CN|en` consistently to each command; all default to `zh-CN`. Raw machine identifiers remain stable English codes. For custom names, write a flat UTF-8 JSON object and pass `--labels-file <path>`; fixed status translations no longer require a labels file. See [localization.md](../../../references/localization.md).
 
 Optional label keys:
 
@@ -55,7 +55,7 @@ Optional label keys:
 | `quality_pending`, `quality_passed`, `quality_failed`, `quality_uncertain`, `quality_stale` | Internal quality status; evidence scores are separate from user feedback |
 | Error code, such as `CANVAS_MISMATCH` | Short translated problem description |
 
-Partial overrides are supported; omitted labels use their English defaults. Keys and internal records are never translated. Keep values short enough for the preview card. Detailed explanations belong in chat. Font glyph coverage depends on the local environment.
+Partial overrides are supported; omitted labels use the selected language's defaults. Status/error overrides remain compatible but are optional. Keys and internal records are never translated. Keep values short enough for the preview card. Detailed explanations belong in chat. Font glyph coverage depends on the local environment.
 
 Example for a Spanish-language request:
 

@@ -23,7 +23,7 @@ For a specific correction after human review, follow the [linked human-revision 
 
 ## Language and input
 
-Respond and write generation prompts, visible names, explanations, and review notes in the user's current or preferred language. Keep CLI arguments, JSON keys, outfit IDs, filenames, and status/error codes stable English identifiers. Translate preview titles with a flat UTF-8 JSON file whose keys include outfit IDs, `source`, `reference`, review statuses, technical statuses, and error codes; pass it to `preview --labels-file`.
+Respond and write generation prompts, visible names, explanations, and review notes in the user's current or preferred language. Keep CLI arguments, JSON keys, outfit IDs, filenames, and status/error codes stable English identifiers. Pass the same explicit `--language zh-CN|en` to reports, HTML review pages and PNG previews; all default to `zh-CN` and share fixed-text catalogs. A partial flat UTF-8 JSON `preview --labels-file` retains custom outfit/source names and legacy status overrides; fixed status translations do not require it. See [localization.md](../../references/localization.md).
 
 Inspect the actual source first and identify the garment, ensemble or object/addition site, its boundaries, and the requested operation/result. Ask only when these cannot be resolved from the request and artwork. Target descriptions are free text; the helper records them but cannot verify which pixels the model changed.
 

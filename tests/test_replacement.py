@@ -149,7 +149,7 @@ class ReplacementTests(unittest.TestCase):
         report = outfits.generate_report([self.root], self.folder / 'failure')
         self.assertEqual(report['images'], []); self.assertIsNone(report['preview'])
         text = Path(report['report']).read_text(encoding='utf-8')
-        self.assertIn('outfits · 替换', text); self.assertIn('合身与交界', text)
+        self.assertIn('服装 · 替换', text); self.assertIn('合身与交界', text)
         self.assertEqual(list((self.folder / 'failure').rglob('*.png')), [])
 
     def test_successful_revision_retains_definition_and_exports_raw_bytes(self):

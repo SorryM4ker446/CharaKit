@@ -6,6 +6,13 @@ from pathlib import Path
 import secrets
 import string
 
+# Load beside this file so installed entrypoints need no sys.path changes.
+import importlib.util
+
+_locale_spec = importlib.util.spec_from_file_location("charakit_localization", Path(__file__).with_name("localization.py"))
+localization = importlib.util.module_from_spec(_locale_spec)
+_locale_spec.loader.exec_module(localization)
+
 
 def require(c, condition, message, code="INVALID_CANDIDATE_REVIEW"):
     if not condition:
@@ -24,11 +31,12 @@ SOURCE_RECHECK = {'id': 'source_protection_recheck', 'dimension': 'protection',
 
 def revision_checks(language):
     check, source = copy.deepcopy(CONTINUITY_CHECK), copy.deepcopy(SOURCE_RECHECK)
-    if language.lower().startswith('zh'):
-        check.update(component='已完成的授权修改', property='修订成果保留',
-                     expected='保留当前修订范围之外已完成的成果，不恢复原图中已被替换的特征。')
-        source.update(component='最初原图中的受保护区域', property='原图保护区域二次复查',
-                      expected='与最初原图复查仍受保护的区域，排除全部已授权修改及必要交界；记录可见偏移，不恢复已完成的服装、道具、表情或姿势修改。')
+    # Other languages retain the historical English checklist; --ui-file translates controls.
+    localization.validate_language(language)
+    built_in = language if language.lower().split('-')[0] in ('zh', 'en') else 'en'
+    t = localization.texts('revision', built_in)
+    for prefix, item in (('continuity', check), ('source', source)):
+        item.update({field: t[prefix + '_' + field] for field in ('component', 'property', 'expected')})
     return [check, source]
 
 
@@ -739,7 +747,7 @@ def detail_view_paths(folder, inspection):
                      for name in inspection['sizes']} for r in inspection['regions']}
 
 
-def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=None, selection_note=None, face_box=None, detail_box=None, inspection=None):
+def review_sheet(c, root, ids, purpose="user", language=localization.DEFAULT_LANGUAGE, translations=None, selection_note=None, face_box=None, detail_box=None, inspection=None):
     root = root.resolve()
     try:
         ui = preview_text(language, translations)
@@ -789,7 +797,8 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
     contract = state.get("candidate_pools", {}).get(assets[0].get("candidate_pool"), {}).get("contract", [])
     request = assets[0].get("quality_review", {}).get("request") or assets[0].get("replacement") or assets[0].get("color") or assets[0].get("expression", "")
     if assets[0].get("edit_type") == "prop_edit" and not assets[0].get("quality_review"):
-        action = {"add": "添加", "remove": "移除", "replace": "替换"}[assets[0]["prop_action"]] if language == "zh-CN" else assets[0]["prop_action"].capitalize()
+        built_in = language if language.lower().split('-')[0] in ('zh', 'en') else 'en'
+        action = localization.texts('report', built_in)['prop_' + assets[0]['prop_action']]
         request = action + " · " + assets[0]["target"] + (" → " + assets[0]["replacement"] if "replacement" in assets[0] else "")
     revision = None
     if origin:
@@ -837,99 +846,12 @@ def review_sheet(c, root, ids, purpose="user", language="zh-CN", translations=No
             "source": str((folder / "source.png").resolve()), "candidates": {label: str((folder / f"{label}.png").resolve()) for label in items}}
 
 
-PREVIEW_EN = {'CharaKit 评图': 'CharaKit image review',
- '查看效果，再决定是否交付': 'Review the images before delivery',
- '这里是匿名评图材料，不代表已通过或可打包。请先看整体，再看目标部位、人物和未要求修改的细节。': 'These anonymous candidates are inspection materials. Review the '
-                                                   'full image, the requested edit, the character and protected '
-                                                   'details before deciding.',
- '切换明暗底色': 'Toggle light/dark background',
- '放大预览': 'Enlarge preview',
- '本次检查要求': 'Review requirements',
- '你的评审': 'Your review',
- '可以直接在聊天中回复“采用 A”“B 需要修改：……”或“都不采用”，也可以下载反馈文件交给 Codex。': 'Reply in chat with “Accept A”, “Revise B: …” or “Reject '
-                                                          'all”, or download your feedback for Codex.',
- '决定': 'Decision',
- '请选择': 'Choose…',
- '采用': 'Accept',
- '需要修改': 'Request changes',
- '都不采用': 'Reject all',
- '候选': 'Candidate',
- '评审意见': 'Review comments',
- '哪些地方满意或需要修改？请描述部位和希望保留/改变的效果。': 'What works and what needs changing? Describe the part and what to preserve or '
-                                  'change.',
- '需求符合度': 'Request fit',
- '人物与细节保留': 'Character and detail preservation',
- '实际使用意愿': 'Usability',
- '未评价': 'Not rated',
- '满意': 'Satisfied',
- '不满意': 'Unsatisfied',
- '可使用': 'Usable',
- '需要调整': 'Needs changes',
- '下载反馈 JSON': 'Download feedback JSON',
- '将实际反馈交给 Codex 后，才会生成最终评审报告，包含你的意见和处理结果；符合交付条件的作品再进入打包。此页面不会自动提交或打包。': 'After you give Codex your actual feedback, '
-                                                                        'the final review report includes your '
-                                                                        'comments and the disposition. Only eligible '
-                                                                        'accepted images can be packaged. This page '
-                                                                        'does not submit or package anything '
-                                                                        'automatically.',
- '大图预览': 'Large image preview',
- '关闭大图预览': 'Close large image preview',
- '关闭 ×': 'Close ×',
- '上一张': 'Previous image',
- '下一张': 'Next image',
- '查看': 'View',
- '缩小': 'Zoom out',
- '放大比例': 'Zoom level',
- '放大': 'Zoom in',
- '适应窗口': 'Fit to window',
- '拖动或滚动查看细节；切换图片保留放大比例和查看位置。方向键切换，Esc 关闭。': 'Drag or scroll to inspect details. Switching images retains zoom and '
-                                            'position. Arrow keys switch images; Esc closes.',
- '可滚动的大图': 'Scrollable image',
- '原图': 'Source',
- '放大查看': 'Enlarge',
- '加载中…': 'Loading…',
- '图片加载失败，请关闭后重试。': 'Image failed to load. Close and try again.',
- '请选择决定和候选；需要修改时请说明问题。': 'Choose a decision and candidate. Describe the issue when requesting changes.',
- '反馈已下载。将文件交给 Codex 后才会处理，不会在此页面自动打包。': 'Feedback downloaded. Give it to Codex for processing; this page does not '
-                                        'package images automatically.'}
+# Keep the historical key order for numbered template tokens and custom UI files.
+PREVIEW_EN = localization.texts("html", "en")
+SUMMARY_LABELS = localization.SUMMARY_LABELS
+INTERACTION_LABELS = localization.INTERACTION_LABELS
+BASELINE_LABELS = localization.BASELINE_LABELS
 
-# Append labels to preserve the existing template's numbered UI tokens.
-PREVIEW_EN.update({'修订前': 'Before revision', '本次修改': 'Requested correction',
-                  '参考图': 'Edit reference', '仅参考指定修改内容': 'Use only for the specified edit'})
-
-SUMMARY_LABELS = {
-    '推荐与内部检查': 'Recommendation and internal checks',
-    '推荐版本': 'Recommended candidate',
-    '尚未记录推荐': 'No recommendation recorded',
-    '通过全部内部检查': 'Passed all internal checks',
-    '内部检查未通过': 'Internal checks failed',
-    '已生成候选': 'Generated candidates',
-    '已展示候选': 'Displayed candidates',
-    '未展示原因': 'Reasons for omitted candidates',
-    '根据用户要求仅展示指定版本': 'Only the versions explicitly requested by the user are shown',
-    '文件损坏、缺失或变更': 'Image file is invalid, missing or changed',
-    '生成调用失败，未产生候选图': 'Image call failed; no candidate was produced',
-    'A／B／C 是匿名编号，不代表生成顺序。': 'A/B/C are anonymous labels, not generation order.',
-    '你可以评价或要求修订任何展示的候选，包括内部未通过的版本。推荐不代替你的决定；最终交付仍需通过全部门槛。': 'You can evaluate or request changes to any displayed candidate, including failed versions. A recommendation does not replace your decision; delivery still requires every gate to pass.',
-}
-PREVIEW_EN.update(SUMMARY_LABELS)
-
-INTERACTION_LABELS = {
-    '局部对照': 'Detail comparisons', '整脸': 'Whole face', '目标部位': 'Target region',
-    '全图': 'Full canvas', '查看范围': 'Inspection area', '与原图同步对照': 'Compare with source',
-    '局部使用相同原图坐标；尺寸不同时仅按比例映射，不校正位置或修复画布。': 'Details use the same source coordinates. Different sizes are mapped proportionally; position and canvas differences are not corrected.',
-    '采用此版本': 'Use this version', '修改此版本': 'Revise this version',
-    '补充评价（可选）': 'Additional ratings (optional)', '复制评审意见': 'Copy review feedback',
-    '反馈已复制；粘贴到聊天后才会处理。': 'Feedback copied. Paste it into the chat to have it processed.',
-    '无法自动复制，请复制下面的反馈文字。': 'Copy is unavailable. Copy the feedback text below.',
-    '待交回的评审意见': 'Review feedback to return',
-    '切换图片保留比例和位置；拖动查看细节，方向键切换，Esc 关闭。': 'Switching images retains scale and position. Drag to inspect, use arrow keys to switch, and Esc to close.',
-    '原图尺寸': 'Source dimensions', '候选尺寸': 'Candidate dimensions',
-}
-PREVIEW_EN.update(INTERACTION_LABELS)
-
-BASELINE_LABELS = {'对照基准': 'Comparison baseline', '与修订前同步对照': 'Compare with before revision'}
-PREVIEW_EN.update(BASELINE_LABELS)
 
 REVIEW_SHEET_TEMPLATE = r"""<!doctype html>
 <html lang="__LANGUAGE__">
@@ -1104,10 +1026,8 @@ byId('download').onclick=()=>{const data=feedback();if(!data)return;const url=UR
 """
 
 
-def preview_text(language="zh-CN", translations=None, allow_legacy=False):
-    import re
-    if not isinstance(language, str) or not re.fullmatch(r'[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*', language):
-        raise ValueError('Use a language tag such as zh-CN, en or ja.')
+def preview_text(language=localization.DEFAULT_LANGUAGE, translations=None, allow_legacy=False):
+    localization.validate_language(language)
     if translations is not None:
         keys = set(PREVIEW_EN)
         reference_keys = {'参考图', '仅参考指定修改内容'}
@@ -1119,11 +1039,10 @@ def preview_text(language="zh-CN", translations=None, allow_legacy=False):
         if not isinstance(translations, dict) or set(translations) not in accepted or not all(isinstance(v, str) and v.strip() and len(v) <= 2000 for v in translations.values()):
             raise ValueError('Supply a complete text mapping for the preview language.')
         return dict(translations)
-    if language.lower().startswith('zh'):
-        return {key: key for key in PREVIEW_EN}
-    if language.lower().startswith('en'):
-        return dict(PREVIEW_EN)
-    raise ValueError('Supply translated UI text for this language with --ui-file.')
+    try:
+        return localization.texts('html', language)
+    except ValueError as exc:
+        raise ValueError('Supply translated UI text for this language with --ui-file.') from exc
 
 
 def script_json(value):
@@ -1161,7 +1080,7 @@ def render_review_summary(summary, ui):
     return ''.join(lines)
 
 
-def render_sheet(key, labels, request, contract, purpose, language="zh-CN", translations=None, revision=None, edit_references=None, review_summary=None, inspection=None):
+def render_sheet(key, labels, request, contract, purpose, language=localization.DEFAULT_LANGUAGE, translations=None, revision=None, edit_references=None, review_summary=None, inspection=None):
     ui = preview_text(language, translations, allow_legacy=True)
     if revision and not {'修订前', '本次修改'} <= set(ui):
         raise ValueError('Supply revision comparison labels for this page.')
@@ -1241,7 +1160,7 @@ def refresh_review_sheet(c, root, key):
     folder = c.contained(root, first['copy']).parent
     public_path = folder / 'packet.json'
     public = json.loads(public_path.read_text(encoding='utf-8'))
-    language = public.get('language', 'zh-CN')
+    language = public.get('language', localization.DEFAULT_LANGUAGE)
     page_ui = public.get('ui_labels')
     if page_ui and language.lower().split('-')[0] in ('zh', 'en'):
         page_ui = {**preview_text(language), **page_ui}
@@ -1392,7 +1311,7 @@ def add_commands(c, commands):
         if name == "review-sheet":
             p.add_argument("--asset", action="append", required=True)
             p.add_argument("--purpose", choices=("assistant", "user"), default="user")
-            p.add_argument("--language", default="zh-CN", help="Match the user's language; built-in zh-CN/en, or supply --ui-file for another language.")
+            p.add_argument("--language", default=localization.DEFAULT_LANGUAGE, help="Match the user's language; built-in zh-CN/en, or supply --ui-file for another language.")
             p.add_argument("--ui-file", type=Path, help="Complete UTF-8 mapping of preview UI text to the user's language.")
             p.add_argument("--selection-note", help="Only for the user's explicit request to show a subset; otherwise show the entire batch.")
             p.add_argument('--face-box', type=int, nargs=4, help='Whole-face inspection in source-canvas coordinates.')

@@ -17,6 +17,13 @@ import zipfile
 
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
+# Resolve beside the helper, including when skills are installed outside the repo.
+import importlib.util
+
+_locale_spec = importlib.util.spec_from_file_location("charakit_localization", Path(__file__).with_name("localization.py"))
+localization = importlib.util.module_from_spec(_locale_spec)
+_locale_spec.loader.exec_module(localization)
+
 EXPRESSION_PRESETS = {
     "neutral": {"name": "Neutral", "direction": "Calm; reuse the source when it already matches."},
     "happy": {"name": "Happy", "direction": "Relaxed brows, warmer eyes, and visibly lifted mouth corners form a natural moderate smile; distinguish from the baseline, without defaulting to laughter."},
@@ -1433,7 +1440,13 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
                  face_box: list[int] | None = None, background: str = "checker",
                  labels: dict[str, str] | None = None, expression: str | None = None,
                  mouth_state: str | None = None, outfit_id: str | None = None,
-                 detail_box: list[int] | None = None) -> dict:
+                 detail_box: list[int] | None = None, language: str = localization.DEFAULT_LANGUAGE) -> dict:
+    try:
+        language = localization.normalize_language(language)
+        t = localization.texts("png", language)
+        names = localization.texts("names", language)
+    except ValueError as exc:
+        raise StudioError("INVALID_PREVIEW_LANGUAGE", str(exc)) from exc
     state = read_state(root)
     labels = labels or {}
     if outfit_id is not None:
@@ -1488,16 +1501,17 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
         draw = ImageDraw.Draw(sheet)
         title = entry["id"]
         if entry["id"] == "SOURCE":
-            title = labels.get("source", title)
+            title = labels.get("source", names["source"])
         elif "pose_id" in entry:
             title = f'{labels.get(entry["pose_id"], entry["target"])} v{entry["version"]:03d}'
         elif "outfit_id" in entry:
             title = f'{labels.get(entry["outfit_id"], entry["outfit_id"])} v{entry["version"]:03d}'
-        elif entry.get("mouth_state", "default") != "default":
-            mouth_key = f'mouth_{entry["mouth_state"]}'
-            title = f'{labels.get(entry["expression"], entry["expression"])} / {labels.get(mouth_key, entry["mouth_state"])} v{entry["version"]:03d}'
-        elif entry["expression"] in labels:
-            title = f'{labels[entry["expression"]]} v{entry["version"]:03d}'
+        else:
+            title = labels.get(entry["expression"], names[entry["expression"]])
+            if entry.get("mouth_state", "default") != "default":
+                mouth_key = f'mouth_{entry["mouth_state"]}'
+                title += ' / ' + labels.get(mouth_key, names[mouth_key])
+            title = f'{labels.get(asset_slot(entry), title)} v{entry["version"]:03d}'
         title_line = f'{title} | {rgba.width} x {rgba.height}'
         title_font = font(17)
         for size in range(16, 9, -1):
@@ -1505,22 +1519,21 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
                 break
             title_font = font(size)
         draw.text((x + 10, y + picture_height + 7), title_line, fill="#222222", font=title_font)
-        label = labels.get(entry["art_review_status"], entry["art_review_status"])
+        label = labels.get(entry["art_review_status"], t[entry["art_review_status"]])
         if report:
             status_key = "technical_passed" if report["passed"] else "technical_failed"
-            default_status = "technical: passed" if report["passed"] else "technical: FAILED"
-            label += " | " + labels.get(status_key, default_status)
+            label += " | " + labels.get(status_key, t[status_key])
         draw.text((x + 10, y + picture_height + 31), label, fill="#222222", font=font(15))
         if report and report["errors"]:
-            draw.text((x + 10, y + picture_height + 56), ", ".join(labels.get(code, code) for code in report["errors"]), fill="#b42318", font=font(14))
+            draw.text((x + 10, y + picture_height + 56), ", ".join(labels.get(code, t[code]) for code in report["errors"]), fill="#b42318", font=font(14))
         if entry["id"] != "SOURCE" and ("edit_brief" in entry or "fidelity_review" in entry):
             status = fidelity_status(entry)
-            draw.text((x + 10, y + picture_height + 78), labels.get(f"fidelity_{status}", f"fidelity: {status}"),
+            draw.text((x + 10, y + picture_height + 78), labels.get(f"fidelity_{status}", t[f"fidelity_{status}"]),
                       fill="#267048" if status == "passed" else "#b45309", font=font(14))
         if entry["id"] != "SOURCE" and ("quality_required" in entry or "quality_review" in entry):
             status = quality_status(root, state, entry)
             score = entry.get("quality_review", {}).get("result", {}).get("total")
-            text = labels.get(f"quality_{status}", f"internal quality: {status}")
+            text = labels.get(f"quality_{status}", t[f"quality_{status}"])
             if score is not None:
                 text += f" | {score:g}/100"
             draw.text((x + 10, y + picture_height + 99), text,
@@ -1540,9 +1553,9 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
     with output.open("xb") as stream:
         sheet.save(stream, format="PNG")
     return {"preview": str(output.resolve()), "size": list(sheet.size), "face_box": face_box,
-            "detail_box": detail_box,
+            "detail_box": detail_box, "language": language,
             "asset_ids": [a["id"] for a in assets],
-            "note": "Preview is scaled for inspection; this does not correct candidate alignment or dimensions."}
+            "note": t["note"]}
 
 
 def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = None,
@@ -1685,7 +1698,7 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
     report.add_argument("--project", required=True, action="append", type=Path, dest="projects")
     report.add_argument("--output", required=True, type=Path, help="New delivery directory; existing files are never overwritten.")
     report.add_argument("--asset", action="append", dest="ids", help="Restrict one project's cases; tracked assets resolve to the current refinement version.")
-    report.add_argument("--language", choices=("zh-CN", "en"), default="zh-CN")
+    report.add_argument("--language", default=localization.DEFAULT_LANGUAGE, help="Fixed text language: zh-CN or en (regional tags accepted).")
     report.add_argument("--title")
     report.add_argument("--stage", choices=("auto", "final"), default="auto", help="Auto produces an internal draft until pool cases have actual human feedback; final requires that feedback.")
     report.add_argument("--labels-file", type=Path)
@@ -1804,6 +1817,7 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
                 command.add_argument("--face-box", type=int, nargs=4)
                 command.add_argument("--background", choices=("checker", "light", "dark"), default="checker")
                 command.add_argument("--labels-file", type=Path, help="UTF-8 JSON label overrides in the user's language.")
+                command.add_argument("--language", default=localization.DEFAULT_LANGUAGE, help="Fixed text language: zh-CN or en (regional tags accepted).")
             else:
                 command.add_argument("--preview", type=Path)
     return result
@@ -1892,7 +1906,8 @@ def main(module: str = "expressions") -> int:
         elif args.command == "preview":
             result = make_preview(args.project, args.output, args.ids, args.face_box, args.background,
                                   load_preview_labels(args.labels_file), getattr(args, "expression", None),
-                                  getattr(args, "mouth_state", None), getattr(args, "outfit_id", None), getattr(args, "detail_box", None))
+                                  getattr(args, "mouth_state", None), getattr(args, "outfit_id", None), getattr(args, "detail_box", None),
+                                  language=args.language)
         else:
             result = export_pack(args.project, args.output, args.ids, args.preview)
         print(json.dumps(result, ensure_ascii=False, indent=2))

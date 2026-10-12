@@ -11,7 +11,7 @@ def build(root: Path, output: Path) -> dict:
     files = sorted(path for path in plugin.rglob("*") if path.is_file()
                    and "__pycache__" not in path.parts and path.suffix not in (".pyc", ".pyo"))
     required = {"plugin.json", "modules.json", "ROADMAP.md", "lib/studio_core.py",
-                "lib/delivery_report.py", "references/delivery-report.md",
+                "lib/delivery_report.py", "lib/localization.py", "references/delivery-report.md", "references/localization.md",
                 "lib/edit_references.py", "references/edit-references.md",
                 "skills/charakit-outfits/references/replacement-guide.md",
                 "skills/charakit-outfits/references/full-outfit-guide.md",

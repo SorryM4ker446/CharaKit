@@ -10,148 +10,16 @@ import tempfile
 from PIL import Image, ImageDraw
 
 
-ZH = {
-    'pose_edit': '静态姿势编辑', 'pose': '姿势', 'side': '角色自身侧别', 'anchors': '游戏锚点',
-    'left': '左侧', 'right': '右侧', 'target_pose': '动作达成', 'limbs_joints': '肢体与关节',
-    'both': '双侧', 'pose_interaction': '双臂与接触定义', 'left_arm': '左臂', 'right_arm': '右臂', 'occlusion': '前后遮挡',
-    'balance_support': '重心与支撑', 'contacts': '接触关系', 'occlusion_clothing': '遮挡与衣物响应',
-    'framing_anchors': '构图与游戏锚点',
-    'detail_preview': '最终采用版局部对照', 'face_region': '整脸', 'target_region': '目标部位',
-    'edit_references': '参考图与适用范围',
-    'prop_edit': '配饰／道具编辑', 'prop_action': '物件操作', 'prop_add': '添加', 'prop_remove': '移除', 'prop_replace': '替换',
-    'target_object': '目标物件符合度', 'placement_contacts': '位置与接触关系',
-    'occlusion_reconstruction': '遮挡与移除补全', 'anatomy_pose': '人体结构与姿势',
-    'outfit_replace': '整套替换', 'outfit_design': '整套设计符合度', 'component_completion': '部件完成度',
-    'ensemble_coherence': '整套搭配一致性', 'outfit_components': '服装部件清单', 'component_checks': '逐件检查',
-    'user_revision': '按人工意见修订', 'revision_parent': '修订所依据版本', 'revision_note': '原始修改意见',
-    'revision_attempt': '人工修订执行状态', 'revision_failed': '本次人工修订生成失败',
-    'next_revision_failed': '保留失败原因；本次额度已用，新的生成需要具体的新修订请求。',
-    'reserved': '已记录一次修订，待执行', 'imported': '修订图已保存，需重新评审', 'cancelled': '已被新的人工决定取消',
-    'draft_title': '内部检查草稿', 'final_title': '最终评审报告',
-    'draft_note': '尚有情况未完成人工评图。这是内部检查记录，不是最终评审报告，不含成品或打包输出。',
-    'final_note': '本次候选池已记录实际人工意见；以下汇总人工选择、内部检查和 Codex 处理结果。',
-    'awaiting_report': '已完成人评，等待汇总', 'next_awaiting_report': '其余情况完成人评后生成最终报告。',
-    'user_declined': '用户未采用', 'next_user_declined': '保留评审记录，停止本批次，不打包。',
-    'human_action': 'Codex 处理结果', 'accept': '采用', 'reject': '都不采用', 'revision_request': '按人工意见等待修订',
-    'export': '满足交付条件，可打包', 'stopped': '已停止本批次', 'feedback_blocked': '保留人工意见，检查未通过，暂不能交付',
-    'human_facets': '人工评价', 'fit': '需求符合度', 'preservation': '人物与细节保留', 'usability': '实际使用意愿',
-    'title': '角色图像交付报告', 'overview': '结果概览', 'case': '情况', 'module': '模块',
-    'rounds': '轮数', 'scores': '逐轮评分', 'status': '结果', 'final': '成品图',
-    'passed': '通过', 'exhausted': '达到上限，未通过', 'blocked': '记录或文件失效',
-    'review': '待评审', 'revise': '待修订', 'failed': '未通过', 'uncertain': '存在不确定项',
-    'unrecorded': '未记录', 'pending': '待评审', 'stale': '证据失效',
-    'expression': '表情', 'mouth_state': 'mouth', 'garment_recolor': 'outfits · 改色', 'garment_replace': 'outfits · 替换',
-    'details': '评审与修订记录', 'round': '轮次', 'asset': '版本', 'quality': '质量',
-    'target': '需求达成', 'identity': '角色一致性', 'protection': '非目标保留', 'integration': '结构与衔接', 'rendering': '画面完成度',
-    'source_sample': '原图独立采样', 'repair_best': '修订择优候选', 'review_redraw': '按内部失败项重绘', 'source_restart': '从原图重新生成（失败候选仅作评审证据）', 'redraw': '内部修订待生成', 'human_review': '等待人工评图',
-    'next_redraw': '按本轮失败项在剩余轮次内重绘，重新检查全部五维及专项；通过或用完预算后再进入人工评图。',
-    'compare': '内部候选比较待完成', 'generate_reserved': '已计次，等待本轮生成',
-    'tool_failure': '出图调用失败', 'attempt_budget': '已用调用／上限',
-    'next_exhausted_human': '停止生成，说明剩余失败项及调用失败原因，进入人工评图；不合格候选不能作为成品打包。',
-    'human': '人工评审', 'next_human_review': '展示匿名评图页，记录用户采用、修改或拒绝的实际反馈，再处理交付。',
-    'issues': '未通过项', 'component': '编辑部位', 'request': '请求', 'source': '原图',
-    'domain': '最终专项检查', 'check': '检查项', 'evidence': '观察依据',
-    'limits': '检查范围与限制', 'preview': '最终版预览', 'history': '过程证据（供查看）',
-    'prompt': '实际提示词', 'comparison': '对照', 'none': '无', 'report_only': '无合格成品，仅报告',
-    'next': '后续处理', 'next_exhausted': '停止自动生成；根据上述未通过项调整编辑策略，后续尝试需另行明确授权。',
-    'next_blocked': '先检查缺失或变更的文件及评审证据，不能复用失效分数作为通过依据。',
-    'next_review': '完成本轮评审与适用的保真检查；尚未形成合格成品。',
-    'next_revise': '按 refine-status 返回的策略与参考图角色，在剩余授权轮数内修订并重新评审。',
-    'next_failed': '保留当前候选及问题记录；需要修订时另行明确尝试次数。',
-    'note': '分数与观察来自已保存的助手或用户评审；本命令只核对记录和门禁，不进行视觉评分。通过表示可供用户验收，不代表用户已接受。报告仅覆盖所列项目与情况。',
-    'scope_note': '全图、目标细节、保护细节、正常展示和背景边缘的检查完成情况见下方记录；具体展示尺寸以原评审记录为准，本命令不新增游戏内验证。',
-    'canvas_note': '画布差异仅作为预览交付警告；正式验收、选择及ZIP导出仍保留原画布要求。成品PNG按原字节复制，预览缩放仅用于展示。',
-    'snapshot': '报告是生成时的快照；后续项目或文件变化需重新生成。过程图不作为验收标准。',
-    'summary': '情况：{cases}；通过：{passed}；未交付：{other}；本报告范围内候选图：{images}。',
-    'emotion': '情绪', 'face_design': '面部设计', 'nonface_protection': '非面部保护',
-    'target_color': '目标颜色', 'garment_invariants': '衣物构造与材质', 'interfaces': '接口与排除区域',
-    'target_garment': '替换款式与材质', 'fit_interfaces': '合身与交界', 'coverage_anatomy': '覆盖范围与人体结构',
-    'edit_definition': '编辑方案', 'replace': '单件替换', 'recolor': '单件改色',
-    'face_expression': '面部与表情', 'non_target_protection': '非目标保护',
-    'full_image': '全图', 'target_detail': '目标细节', 'protected_details': '保护细节',
-    'normal_display': '正常展示', 'background_edges': '背景与边缘', 'inspection': '检查完成情况',
-    'dimensions': '尺寸', 'technical': '文件检查', 'fidelity': '保真', 'checked': '已检查', 'unchecked': '未检查',
-    'round_unit': '轮', 'canvas_warning': '尺寸与原图不同（预览允许）', 'not_applicable': '不适用',
-    'quality_stale': '提示词或对照证据已变更，原评分不能作为当前通过依据。',
-    'quality_pending': '本轮质量评审尚未完成。', 'quality_unrecorded': '尚未记录质量评审。',
-    'fidelity_pending': '本轮保真检查尚未完成。', 'user_rejected': '用户已拒绝此版本。',
-    'blockers': '阻塞原因', 'threshold': '总分门槛', 'dimension_floor': '分项下限',
-    'gate_note': '总分达标不等于通过：还需各分项达标、专项检查全部通过，以及评审证据和适用的保真／文件检查有效。轻微笔触变化可接受；身份或结构误改仍须修复。',
-    'strategy': '生成策略', 'initial': '首版', 'continue_previous': '修订上一版', 'source_rebase': '从原图重做目标衣物',
-}
-EN = {
-    'pose_edit': 'Static pose editing', 'pose': 'Pose', 'side': 'Character anatomical side', 'anchors': 'Game anchors',
-    'left': 'Left', 'right': 'Right', 'target_pose': 'Action adherence', 'limbs_joints': 'Limbs and joints',
-    'both': 'Both', 'pose_interaction': 'Arms and contact definition', 'left_arm': 'Left arm', 'right_arm': 'Right arm', 'occlusion': 'Front/back overlaps',
-    'balance_support': 'Balance and support', 'contacts': 'Contacts', 'occlusion_clothing': 'Occlusion and clothing response',
-    'framing_anchors': 'Framing and game anchors',
-    'detail_preview': 'Final selected version: detail comparisons', 'face_region': 'Whole face', 'target_region': 'Target region',
-    'edit_references': 'Edit references and permitted scopes',
-    'prop_edit': 'Accessory/prop editing', 'prop_action': 'Object operation', 'prop_add': 'Add', 'prop_remove': 'Remove', 'prop_replace': 'Replace',
-    'target_object': 'Target object adherence', 'placement_contacts': 'Placement and contacts',
-    'occlusion_reconstruction': 'Occlusion and reconstruction', 'anatomy_pose': 'Anatomy and pose',
-    'outfit_replace': 'Full outfit replacement', 'outfit_design': 'Outfit design adherence', 'component_completion': 'Component completion',
-    'ensemble_coherence': 'Ensemble coherence', 'outfit_components': 'Clothing component inventory', 'component_checks': 'Component findings',
-    'user_revision': 'Revise from human feedback', 'revision_parent': 'Revision parent', 'revision_note': 'Original correction request',
-    'revision_attempt': 'Human revision execution', 'revision_failed': 'Human revision generation failed',
-    'next_revision_failed': 'Retain the failure; the attempt is spent. Another image requires a specific new revision request.',
-    'reserved': 'One revision recorded; awaiting execution', 'imported': 'Revision saved; fresh review required', 'cancelled': 'Cancelled by a newer human decision',
-    'draft_title': 'Internal inspection draft', 'final_title': 'Final review report',
-    'draft_note': 'Some cases await actual human feedback. This internal inspection draft is not a final report and contains no final assets or package.',
-    'final_note': 'Actual human decisions have been recorded for the candidate pools. This report combines their feedback, internal findings and Codex disposition.',
-    'awaiting_report': 'Reviewed; awaiting remaining cases', 'next_awaiting_report': 'Complete human review of remaining cases before the final report.',
-    'user_declined': 'User declined', 'next_user_declined': 'Retain feedback and stop this batch without packaging.',
-    'human_action': 'Codex disposition', 'accept': 'Accept', 'reject': 'Reject all', 'revision_request': 'Revision requested',
-    'export': 'Eligible for packaging', 'stopped': 'Batch stopped', 'feedback_blocked': 'Feedback retained; checks block delivery',
-    'human_facets': 'Human ratings', 'fit': 'Request fit', 'preservation': 'Character/detail preservation', 'usability': 'Usability',
-    'title': 'Character image delivery report', 'overview': 'Results', 'case': 'Case', 'module': 'Module',
-    'rounds': 'Rounds', 'scores': 'Scores by round', 'status': 'Result', 'final': 'Final PNG',
-    'passed': 'Passed', 'exhausted': 'Limit reached; failed', 'blocked': 'Invalid records or files',
-    'review': 'Review pending', 'revise': 'Revision pending', 'failed': 'Failed', 'uncertain': 'Uncertain',
-    'unrecorded': 'Unrecorded', 'pending': 'Pending', 'stale': 'Stale evidence',
-    'expression': 'Expressions', 'mouth_state': 'Mouth', 'garment_recolor': 'Outfits',
-    'details': 'Review and revision history', 'round': 'Round', 'asset': 'Version', 'quality': 'Quality',
-    'target': 'Target', 'identity': 'Identity', 'protection': 'Protection', 'integration': 'Integration', 'rendering': 'Rendering',
-    'source_sample': 'Independent source sample', 'repair_best': 'Repair preferred candidate', 'review_redraw': 'Redraw from internal findings', 'source_restart': 'Restart from source (failed candidate is review evidence only)', 'redraw': 'Internal redraw pending', 'human_review': 'Human review pending',
-    'next_redraw': 'Correct recorded failures within the remaining rounds and reassess all five dimensions and domain checks before human review.',
-    'compare': 'Internal comparison pending', 'generate_reserved': 'Attempt reserved; generation pending',
-    'tool_failure': 'Image-tool failure', 'attempt_budget': 'Attempts used / limit',
-    'next_exhausted_human': 'Stop generation, explain unresolved checks and failed calls, then present anonymous human review. Failed candidates cannot be packaged as final artwork.',
-    'human': 'Human review', 'next_human_review': 'Present anonymous review and record the actual user decision before delivery.',
-    'issues': 'Unmet criteria', 'component': 'Component', 'request': 'Request', 'source': 'Source',
-    'domain': 'Final domain checks', 'check': 'Check', 'evidence': 'Observation',
-    'limits': 'Inspection scope and limitations', 'preview': 'Final preview', 'history': 'Process evidence (inspection only)',
-    'prompt': 'Submitted prompt', 'comparison': 'Comparison', 'none': 'None', 'report_only': 'No qualified final; report only',
-    'next': 'Next step', 'next_exhausted': 'Stop generation. Change the editing strategy using these findings; further attempts require explicit authorization.',
-    'next_blocked': 'Resolve missing or changed files/evidence before relying on the recorded scores.',
-    'next_review': 'Complete this round’s quality and applicable fidelity review; no qualified final yet.',
-    'next_revise': 'Follow refine-status strategy and reference roles within the remaining authorized rounds, then review again.',
-    'next_failed': 'Retain the candidate and findings; obtain an explicit attempt budget for a further revision.',
-    'note': 'Scores and observations are from saved assistant/user reviews. This command validates records and gates, not visual quality. Passed images are ready for user review, not automatically accepted. Only listed projects and cases are covered.',
-    'scope_note': 'Recorded full-image, target, protected-detail, normal-display and edge inspection flags appear below. Display size follows the original assessment; this command does not add game integration testing.',
-    'canvas_note': 'Canvas mismatch is a preview-delivery warning; formal acceptance, selection and ZIP export retain the source-canvas requirement. Final PNG bytes are copied unchanged; preview scaling is for display only.',
-    'snapshot': 'This report is a snapshot. Regenerate after subsequent file/project changes. Process images are not acceptance criteria.',
-    'summary': 'Cases: {cases}; passed: {passed}; not delivered: {other}; candidates within scope: {images}.',
-    'emotion': 'Emotion', 'face_design': 'Facial design', 'nonface_protection': 'Non-face protection',
-    'target_color': 'Target color', 'garment_invariants': 'Garment construction/material', 'interfaces': 'Interfaces/exclusions',
-    'garment_replace': 'Outfits · replacement', 'target_garment': 'Replacement design/material',
-    'fit_interfaces': 'Fit/interfaces', 'coverage_anatomy': 'Coverage/anatomy',
-    'edit_definition': 'Edit definition', 'replace': 'Single-garment replacement', 'recolor': 'Single-garment recolor',
-    'face_expression': 'Face/expression', 'non_target_protection': 'Non-target protection',
-    'full_image': 'Full image', 'target_detail': 'Target detail', 'protected_details': 'Protected details',
-    'normal_display': 'Normal display', 'background_edges': 'Background/edges', 'inspection': 'Inspection coverage',
-    'dimensions': 'Dimensions', 'technical': 'File validation', 'fidelity': 'Fidelity', 'checked': 'Checked', 'unchecked': 'Not checked',
-    'round_unit': ' rounds', 'canvas_warning': 'Canvas differs (preview allowed)', 'not_applicable': 'N/A',
-    'quality_stale': 'Prompt/comparison evidence changed; recorded scores cannot establish current passage.',
-    'quality_pending': 'Quality review is incomplete.', 'quality_unrecorded': 'No quality review recorded.',
-    'fidelity_pending': 'Fidelity review is incomplete.', 'user_rejected': 'The user rejected this version.',
-    'blockers': 'Blocking reasons', 'threshold': 'Total threshold', 'dimension_floor': 'Dimension floor',
-    'gate_note': 'Meeting the total threshold alone does not pass: each dimension, all domain checks, current review evidence and applicable fidelity/file gates must also pass. Minor brushwork variation is acceptable; identity or structural changes still require correction.',
-    'strategy': 'Generation strategy', 'initial': 'Initial image', 'continue_previous': 'Revise previous image', 'source_rebase': 'Reapply garment edit to source',
-}
-EXPRESSION_ZH = dict(zip(
-    ('neutral', 'happy', 'sad', 'angry', 'surprised', 'eyes_closed', 'shy', 'confused', 'wry_smile', 'worried', 'confident', 'crying'),
-    ('平静', '开心', '悲伤', '生气', '惊讶', '闭眼', '害羞', '困惑', '苦笑', '担忧', '自信', '哭泣')))
+# Load beside this file so installed entrypoints need no sys.path changes.
+import importlib.util
+
+_locale_spec = importlib.util.spec_from_file_location("charakit_localization", Path(__file__).with_name("localization.py"))
+localization = importlib.util.module_from_spec(_locale_spec)
+_locale_spec.loader.exec_module(localization)
+
+ZH = localization.texts("report", "zh-CN")
+EN = localization.texts("report", "en")
+EXPRESSION_ZH = localization.texts("names", "zh-CN")
 
 
 def md(value) -> str:
@@ -169,21 +37,22 @@ def link(label: str, path: str | Path) -> str:
 
 
 def label_for(core, asset: dict, labels: dict, language: str) -> str:
+    names = localization.texts('names', language)
     if 'pose_id' in asset:
         return labels.get(asset['pose_id'], asset['target'])
     if 'outfit_id' in asset:
         if asset['edit_type'] == 'prop_edit':
-            t = ZH if language == 'zh-CN' else EN
+            t = localization.texts('report', language)
             name = t['prop_'+asset['prop_action']]+' · '+asset['target']
             if 'replacement' in asset:
                 name += ' → '+asset['replacement']
             return labels.get(asset['outfit_id'], name)
         change = asset['color'] if asset['edit_type'] == 'recolor' else asset['replacement']
         return labels.get(asset['outfit_id'], f"{asset['target']} → {change}")
-    label = labels.get(asset['expression'], EXPRESSION_ZH[asset['expression']] if language == 'zh-CN' else core.EXPRESSION_PRESETS[asset['expression']]['name'])
+    label = labels.get(asset['expression'], names[asset['expression']])
     mouth = asset.get('mouth_state', 'default')
     if mouth != 'default':
-        suffix = labels.get('mouth_' + mouth, ('张嘴' if mouth == 'open' else '闭嘴') if language == 'zh-CN' else core.MOUTH_PRESETS[mouth]['name'])
+        suffix = labels.get('mouth_' + mouth, names['mouth_' + mouth])
         label += ' / ' + suffix
     return labels.get(core.asset_slot(asset), label)
 
@@ -258,9 +127,9 @@ def display_issues(record: dict, t: dict) -> list[str]:
         issues += record['critical_defects']
         issues += [d['evidence'] for d in record['dimensions'].values() if d['score'] < 4]
     issues += [t.get(code, code) for code in record['issues'] if code in ('quality_stale','quality_pending','quality_unrecorded','fidelity_pending','user_rejected')]
-    issues += record['validation']['errors'] if not record['score_valid'] else []
+    issues += [t.get(code, code) for code in record['validation']['errors']] if not record['score_valid'] else []
     if not issues and record['fidelity_status'] in ('failed','uncertain'):
-        issues.append((record['fidelity_review'] or {}).get('note', record['fidelity_status']))
+        issues.append((record['fidelity_review'] or {}).get('note', t[record['fidelity_status']]))
     return list(dict.fromkeys(issues))
 
 
@@ -283,7 +152,7 @@ def blocking_summary(record: dict, t: dict) -> str:
     reasons.extend(t.get(key, key) + ': ' + t['unchecked'] for key in gate['incomplete_inspections'])
     if record['quality_status'] in ('stale', 'pending', 'unrecorded'):
         reasons.append(t['quality_' + record['quality_status']])
-    reasons.extend(code for code in record['validation']['errors'] if code != 'CANVAS_MISMATCH')
+    reasons.extend(t.get(code, code) for code in record['validation']['errors'] if code != 'CANVAS_MISMATCH')
     if record['fidelity_status'] in ('failed', 'uncertain', 'pending'):
         reasons.append(t['fidelity'] + ': ' + t[record['fidelity_status']])
     if record['art_review_status'] == 'rejected':
@@ -385,7 +254,7 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             lines += ['- '+md(issue) for issue in issues]
             if not issues and c.get('delivery_error'):
                 lines.append('- '+md(c['delivery_error']['code']))
-            next_step = ('按实际人工意见处理修订请求；本报告不自动新增生成次数。' if data['language']=='zh-CN' else 'Handle the actual revision request; this report does not authorize additional generation.') if (c.get('human_result') or {}).get('next_action')=='revision_request' and c['status']!='revision_failed' else t.get('next_'+c['status'],t['next_failed'])
+            next_step = t['next_revision_request'] if (c.get('human_result') or {}).get('next_action')=='revision_request' and c['status']!='revision_failed' else t.get('next_'+c['status'],t['next_failed'])
             if c['status']=='exhausted' and (c.get('candidate_pool') or {}).get('version') in ('1.1', '1.2') and not c.get('human_result'):
                 next_step=t['next_exhausted_human']
             lines += ['',t['next']+'：'+next_step]
@@ -481,16 +350,20 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
 
 
 def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] | None = None,
-                    language: str = 'zh-CN', title: str | None = None, labels: dict | None = None,
+                    language: str = localization.DEFAULT_LANGUAGE, title: str | None = None, labels: dict | None = None,
                     face_box: list[int] | None = None, background: str = 'light', stage: str = 'auto') -> dict:
-    if language not in ('zh-CN','en') or background not in ('light','dark','checker') or stage not in ('auto','final'):
+    try:
+        language = localization.normalize_language(language)
+    except ValueError as exc:
+        raise core.StudioError('INVALID_REPORT_OPTIONS', str(exc)) from exc
+    if background not in ('light','dark','checker') or stage not in ('auto','final'):
         raise core.StudioError('INVALID_REPORT_OPTIONS','Unsupported report language or preview background.')
     roots = [p.resolve() for p in projects]; output = output.resolve()
     if not roots or len(set(roots)) != len(roots) or (ids is not None and (len(roots)!=1 or not ids or len(ids)!=len(set(ids)))):
         raise core.StudioError('INVALID_REPORT_SCOPE','Use unique projects; explicit asset IDs require one project.')
     if output.exists():
         raise FileExistsError(output)
-    t = ZH if language=='zh-CN' else EN
+    t = localization.texts('report', language)
     labels = labels or {}
     if any(not isinstance(k,str) or not core.valid_edit_text(v,200) for k,v in labels.items()):
         raise core.StudioError('INVALID_REPORT_OPTIONS','Report labels must be short single-line text.')

@@ -2,9 +2,11 @@
 
 **Edit visual novel character illustrations in Codex.** This plugin provides expression variants, clothing edits, accessory / prop edits and static dialogue poses with versioned candidates, human review, and selected PNG exports.
 
-Development version **0.1.31** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
+Development version **0.1.32** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
 
 Codex generates artwork through its available image editing tool. The bundled Python helper preserves raw files and manages comparisons, review records, revisions, and packaging.
+
+Reports, HTML reviews and PNG previews share fixed Chinese/English text through `--language` (default `zh-CN`), retaining partial custom name overrides. See [presentation language](references/localization.md).
 
 ## Skills
 

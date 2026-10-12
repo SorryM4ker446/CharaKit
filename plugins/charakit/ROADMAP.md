@@ -1,5 +1,7 @@
 # CharaKit roadmap
 
+0.1.32: Reports, HTML reviews and PNG previews share fixed-text catalogs and language resolution, defaulting to zh-CN with explicit English support. PNG previews add --language; regional tags resolve consistently. Partial custom names, legacy PNG status overrides and complete custom HTML UI files remain supported. Chinese/English key and format-placeholder coverage is tested; recorded observations and machine identifiers retain their authored text.
+
 0.1.31: Poses adds hand on chest, clasped hands in front, hands behind the back and crossed arms. New actions bind left/right arm placement, contacts and front/back overlaps to preparation, contracts, redraws, human revisions, reports and exports. Two-arm actions use anatomical side `both`; hand on chest uses `left`/`right`. Original briefs and historical records stay unchanged. This stage expands the functional workflow; generated-art quality remains a separate follow-up.
 
 0.1.30: Initial pools can restart their third attempt from the source after two target-achieving candidates repeat non-improving identity/protection failures. Failed candidate images are excluded from that call while failure evidence, action/design definitions and all scoped references remain bound. Existing pools and human revisions keep their baseline strategies. Real-image improvement still needs validation.

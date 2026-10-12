@@ -9,6 +9,8 @@ Create a complete static illustration from an existing single-character source. 
 
 ## Define and prepare
 
+Use the user's current or preferred language. Pass the same explicit `--language zh-CN|en` to reports, HTML review pages and PNG previews; all default to `zh-CN` and share fixed-text catalogs. Retain partial `--labels-file` overrides for custom pose/source names. Saved observations and machine identifiers keep their original text. See [localization.md](../../references/localization.md).
+
 Inspect the actual full source and any references before defining permissions. Resolve the requested side, hand orientation, amplitude, other arm, existing asymmetry and visible contacts from the request and source. `left` and `right` always mean the character's anatomical side, not the viewer's side; use `none` for natural standing and `both` for clasped hands, hands behind the back or crossed arms. Hand on chest uses `left` or `right`. Clarify only meaningful unresolved choices or conflicts, such as a requested free-hand gesture while that hand holds an object. These poses preserve objects and do not silently remove, replace or add them.
 
 Keep the current emotion, mouth state, gaze and facial design. A greeting does not authorize a smile; a hand on hip does not authorize anger. Preserve hair and clothing designs, equipment, body proportions, rendering, canvas and background. Permit the explicitly requested limb movement and only necessary joint, contact, fabric, hair placement, overlap and newly visible-area changes. Reconstruct revealed areas in the source's design and style without claiming recovery of unknown original pixels. Do not impose an unchanged body silhouette or restore the old pose during protection review.

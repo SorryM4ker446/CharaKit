@@ -2,7 +2,7 @@
 
 **A Codex plugin for editing visual novel character illustrations.** Create expression variants, change clothing, edit accessories or props, and adjust static dialogue poses through a workflow that keeps the source, candidates, review findings, and your chosen version together.
 
-**English** | [简体中文](README.zh-CN.md) · Development version **0.1.31**
+**English** | [简体中文](README.zh-CN.md) · Development version **0.1.32**
 
 Attach an illustration, describe the change, review the results, and choose what to keep. CharaKit uses the image editing tool available in Codex; its local Python helper manages files, comparisons, review records, and exports.
 
@@ -97,7 +97,7 @@ Clasped hands, hands behind the back and crossed arms use both arms. These actio
 
 You may attach additional reference images to any module. Describe what each should guide—for example, only the jacket cut, glasses design or palm orientation. References guide those attributes while the source illustration governs the protected character details.
 
-Responses and preview labels follow your language. Outputs default to `art-output/<character-key>/` in your workspace.
+Responses and preview labels follow your language. Reports, HTML reviews and PNG previews share Chinese/English fixed text through `--language` (default `zh-CN`); partial name overrides remain available. See [presentation language](plugins/charakit/references/localization.md). Outputs default to `art-output/<character-key>/` in your workspace.
 
 ## Review and delivery
 
