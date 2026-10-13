@@ -1,6 +1,8 @@
 """Presentation locale coverage and compatibility; no generated-art quality claims."""
 import importlib.util
 import json
+import copy
+import shutil
 from pathlib import Path
 from string import Formatter
 import subprocess
@@ -153,6 +155,8 @@ class LocalizationTests(unittest.TestCase):
         import zipfile
         with zipfile.ZipFile(archive) as package:
             self.assertIn('lib/localization.py', package.namelist())
+            for language in ('en', 'zh-CN'):
+                self.assertIn('locales/' + language + '.json', package.namelist())
             package.extractall(self.folder / 'installed plugin')
         for module in ('expressions', 'outfits', 'poses'):
             entrypoint = self.folder / f'installed plugin/skills/charakit-{module}/scripts/studio.py'
@@ -164,6 +168,35 @@ class LocalizationTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['language'], 'en')
             self.assertTrue(output.exists())
+
+    def test_missing_or_invalid_packaged_locale_cannot_silently_fall_back(self):
+        folder = self.folder / 'locales'
+        shutil.copytree(locale.BUILTIN_LOCALE_DIR, folder)
+        for corrupt in ('missing', 'incomplete', 'placeholders', 'groups'):
+            with self.subTest(corrupt=corrupt):
+                en = json.loads((locale.BUILTIN_LOCALE_DIR / 'en.json').read_text(encoding='utf-8'))
+                zh = json.loads((locale.BUILTIN_LOCALE_DIR / 'zh-CN.json').read_text(encoding='utf-8'))
+                if corrupt == 'incomplete':
+                    zh['catalogs']['png'].pop('reference')
+                elif corrupt == 'placeholders':
+                    zh['catalogs']['report']['summary'] = '{unknown}'
+                elif corrupt == 'groups':
+                    en['ui_groups']['summary'].append('missing catalog key')
+                (folder / 'en.json').write_text(json.dumps(en), encoding='utf-8')
+                (folder / 'zh-CN.json').write_text(json.dumps(zh), encoding='utf-8')
+                if corrupt == 'missing':
+                    (folder / 'zh-CN.json').unlink()
+                with self.assertRaises(ValueError) as caught:
+                    locale.load_builtin_catalogs(folder)
+                self.assertEqual(caught.exception.code, 'INVALID_BUILTIN_LOCALE')
+
+    def test_builtin_files_are_portable_language_packs_without_mutating_source_catalogs(self):
+        before = copy.deepcopy(locale.CATALOGS)
+        for language in ('en', 'zh-CN'):
+            path = locale.BUILTIN_LOCALE_DIR / (language + '.json')
+            context = locale.resolve(language=language, locale_file=path)
+            self.assertEqual(context.texts('report'), before[language]['report'])
+        self.assertEqual(locale.CATALOGS, before)
 
 
 if __name__ == '__main__':

@@ -17,7 +17,9 @@ Use `--basis explicit` for an actual user preference; it takes precedence over l
 
 ## Prepare and reuse a complete language pack
 
-Built-in catalogs cover Simplified Chinese and English. Any valid language tag can use the same external pack schema; there is no two-language allowlist. Traditional Chinese tags require their own pack instead of silently using Simplified Chinese. Regional English tags currently resolve to the English catalog.
+Built-in catalogs cover Simplified Chinese and English through packaged UTF-8 files `locales/zh-CN.json` and `locales/en.json`. The loader retains the existing `texts()`/`CATALOGS` APIs; display values are not embedded in Python. These files use the same complete, reviewed pack schema and validation as external task languages. The English pack is the source catalog and additionally stores legacy HTML feature-key groups, without duplicated display values. Keep both files with the complete installed plugin. Missing or invalid built-in resources fail explicitly instead of silently using another language.
+
+Any valid language tag can use the same external pack schema; there is no two-language allowlist. Traditional Chinese tags require their own pack instead of silently using Simplified Chinese. Regional English tags currently resolve to the English catalog.
 
 ```bash
 python <skill>/scripts/studio.py language-template --language ja --output <new-template.json>
@@ -26,6 +28,19 @@ python <skill>/scripts/studio.py language-template --language ja --output <new-t
 The template supplies `source_catalogs` and empty `catalogs` for report headings, HTML controls, PNG statuses, preset names and revision criteria. Translate every value into the task language, retain keys and format placeholders exactly, choose `ltr` or `rtl`, review meanings, and set `reviewed: true`. Do not mark an untranslated template reviewed. The helper requires all sections/keys and checks the current `catalog_sha256`, nonempty values and placeholder multiplicity. Cached packs remain reusable only while that source-catalog hash matches. Keep generated packs in task output or a workspace cache such as `art-output/.locales/`, outside plugin source. No user download/upload or extra approval is needed to prepare these local files.
 
 Supply the completed pack to `language-set --locale-file`; a validated copy is stored in the project. `preview`, `review-sheet` and `report` also accept `--locale-file`, `--translations-file` and `--font-file` for output-specific overrides. Missing or obsolete translations fail instead of silently displaying a different language.
+
+## A normal request in a language without a built-in pack
+
+The user can simply submit artwork with a request such as `片手を腰に当ててください。元の顔と衣服を保ってください。`; they do not need to create JSON files or run commands. The assistant carries out the language workflow:
+
+1. Infer Japanese (`ja`) from the actual request, honoring any explicit preference and existing context. Initialize the task project if needed and inspect `language-status`.
+2. Reuse a complete, current Japanese pack already saved in the project or workspace cache. If none is available, run `language-template`, translate all fixed values, verify placeholders and meanings, and mark the pack reviewed. Creating the template alone does not translate it.
+3. Persist `ja` with `language-set --basis user_request --locale-file <ja.json>`. A cache reuse does not make Japanese a globally built-in language; this task stores its validated pack.
+4. Author prompts, edit definitions, criteria and observations directly in Japanese. Register their structured natural-language fields with `content-register` before rendering outputs that use them. Perform the editing module's existing review/generation workflow and retain its budgets and acceptance gates.
+5. If the task includes older foreign-language records or user comments in another language, run `content-plan`, prepare reviewed Japanese display translations and import them with `language-set --translations-file`. Keep originals, scores and machine identifiers intact. A new task whose prose is already registered in Japanese does not need a historical translation pass.
+6. Generate `review-sheet`, `preview` and `report` with their normal required arguments. They inherit the saved Japanese language and pack without repeated `--language` flags. Inspect the actual outputs; provide a suitable font when the installed fonts do not cover the text.
+
+A later ambiguous continuation retains Japanese. A clear request in another language may switch the task language unless an explicit preference applies. Existing review pages refresh from their own saved presentation snapshots.
 
 ## Author new content in the task language
 
