@@ -2,7 +2,7 @@
 
 **用于编辑视觉小说角色立绘的 Codex 插件。** 支持表情差分、服装修改、配饰／道具编辑及静态对话姿势，将原图、候选版本、评审记录和最终选择保存在同一工作流程中。
 
-[English](README.md) | **简体中文** · 开发版本 **0.1.32**
+[English](README.md) | **简体中文** · 开发版本 **0.1.33**
 
 上传立绘，说明想改什么，查看结果，再选择采用的版本。CharaKit 使用 Codex 中可用的图像编辑工具生成图片，本地 Python 助手负责文件管理、对照预览、评审记录和导出。
 
@@ -27,7 +27,7 @@ Outfits 包含四种编辑类型：
 
 ## 安装
 
-需要支持插件且具备可用图像编辑工具的 Codex 环境，以及供本地助手使用的 **Python 3.11+** 和 **Pillow**。
+需要支持插件且具备可用图像编辑工具的 Codex 环境，以及供本地助手使用的 **Python 3.11+**、**Pillow** 和 **fonttools**。通过 `requirements.txt` 一并安装依赖。
 
 克隆仓库并执行：
 
@@ -39,7 +39,7 @@ codex plugin marketplace add .
 codex plugin add charakit@charakit
 ```
 
-已有本地仓库时，在仓库目录执行后面三条命令即可。确保 Codex 使用的 Python 环境已安装 Pillow，再开启新聊天加载 Skill。
+已有本地仓库时，在仓库目录执行后面三条命令即可。确保 Codex 使用的 Python 环境已安装助手依赖，再开启新聊天加载 Skill。
 
 也可以直接注册 Git 插件市场：
 
@@ -96,7 +96,7 @@ codex plugin add charakit@charakit
 
 三个模块都可以附加参考图。请说明每张图用于参考什么，例如只参考夹克版型、眼镜款式或手掌朝向；参考图指导这些属性，受保护的人物细节仍以原图为准。
 
-回复与预览界面匹配你的语言。报告、HTML 评图页和 PNG 预览通过 `--language` 使用共享中英文固定文案（默认 `zh-CN`），并保留部分自定义名称覆盖，详见[显示语言](plugins/charakit/references/localization.md)。产物默认保存在工作区的 `art-output/<character-key>/`。
+助手识别并保存任务语言，优先尊重明确的语言偏好，简短或含糊的续问沿用上下文。报告、HTML 评图页和 PNG 预览共享完整且经过审阅的语言包，并自动继承任务语言，支持内置中英文以外的语言。新说明直接使用任务语言撰写；历史观察单独生成显示译文，保留原文、事实和分数。自定义名称覆盖继续保留，PNG 检查字体覆盖并自动换行，详见[显示语言](plugins/charakit/references/localization.md)。产物默认保存在工作区的 `art-output/<character-key>/`。
 
 ## 评审与交付
 

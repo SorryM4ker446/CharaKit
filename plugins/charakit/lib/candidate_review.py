@@ -29,12 +29,12 @@ SOURCE_RECHECK = {'id': 'source_protection_recheck', 'dimension': 'protection',
                  'view': 'protected_details'}
 
 
-def revision_checks(language):
+def revision_checks(language, presentation=None):
     check, source = copy.deepcopy(CONTINUITY_CHECK), copy.deepcopy(SOURCE_RECHECK)
     # Other languages retain the historical English checklist; --ui-file translates controls.
     localization.validate_language(language)
     built_in = language if language.lower().split('-')[0] in ('zh', 'en') else 'en'
-    t = localization.texts('revision', built_in)
+    t = presentation.texts('revision') if presentation else localization.texts('revision', built_in)
     for prefix, item in (('continuity', check), ('source', source)):
         item.update({field: t[prefix + '_' + field] for field in ('component', 'property', 'expected')})
     return [check, source]
@@ -307,12 +307,16 @@ def revision_prepare(c, root, key, contract, budget=None, restore_checks=None, i
     if not existing or existing.get('policy'):
         if not {'revision_continuity', 'source_protection_recheck'} <= {x['id'] for x in contract}:
             language = 'en'
+            context = None
             packet = state.get('review_packets', {}).get(key)
             if packet and packet.get('items'):
                 packet_valid(c, root, state, packet)
                 folder = c.contained(root, next(iter(packet['items'].values()))['copy']).parent
-                language = json.loads((folder/'packet.json').read_text(encoding='utf-8')).get('language', 'en')
-            for check in revision_checks(language):
+                public = json.loads((folder/'packet.json').read_text(encoding='utf-8'))
+                language = public.get('language', 'en')
+                if public.get('presentation_context'):
+                    context = localization.task.from_snapshot(localization.locale_proxy(), public['presentation_context'])
+            for check in revision_checks(language, context):
                 if not any(x['id'] == check['id'] for x in contract):
                     contract.append(check)
     if existing:
@@ -747,10 +751,18 @@ def detail_view_paths(folder, inspection):
                      for name in inspection['sizes']} for r in inspection['regions']}
 
 
-def review_sheet(c, root, ids, purpose="user", language=localization.DEFAULT_LANGUAGE, translations=None, selection_note=None, face_box=None, detail_box=None, inspection=None):
+def review_sheet(c, root, ids, purpose="user", language=None, translations=None, selection_note=None, face_box=None, detail_box=None, inspection=None,
+                 locale_file=None, translations_file=None, font_file=None):
     root = root.resolve()
     try:
-        ui = preview_text(language, translations)
+        context = None
+        if translations is None or locale_file or (root / 'presentation.json').exists():
+            context = c.presentation_context([root], language, locale_file, translations_file, font_file)
+            language = context.language
+            ui = preview_text(language, translations) if translations is not None else context.texts('html')
+        else:
+            language = language or localization.DEFAULT_LANGUAGE
+            ui = preview_text(language, translations)
     except ValueError as exc:
         raise c.StudioError('INVALID_REVIEW_LANGUAGE', str(exc)) from exc
     state = c.read_state(root)
@@ -781,6 +793,9 @@ def review_sheet(c, root, ids, purpose="user", language=localization.DEFAULT_LAN
             if detail_box is None:
                 detail_box = next((r['box'] for r in previous if r['id']=='target'), None)
     regions = inspection_regions(c, state, assets, face_box, detail_box, inspection)
+    if context:
+        for value in (assets, pool, origin, regions):
+            context.display_tree(value)
     secrets.SystemRandom().shuffle(assets)
     key = secrets.token_hex(12)
     folder = root / "reviews" / key
@@ -796,9 +811,11 @@ def review_sheet(c, root, ids, purpose="user", language=localization.DEFAULT_LAN
     state.setdefault("review_packets", {})[key] = packet
     contract = state.get("candidate_pools", {}).get(assets[0].get("candidate_pool"), {}).get("contract", [])
     request = assets[0].get("quality_review", {}).get("request") or assets[0].get("replacement") or assets[0].get("color") or assets[0].get("expression", "")
-    if assets[0].get("edit_type") == "prop_edit" and not assets[0].get("quality_review"):
+    if context and not assets[0].get('quality_review', {}).get('request'):
+        request = c.asset_label(assets[0], {}, context)
+    elif assets[0].get("edit_type") == "prop_edit" and not assets[0].get("quality_review"):
         built_in = language if language.lower().split('-')[0] in ('zh', 'en') else 'en'
-        action = localization.texts('report', built_in)['prop_' + assets[0]['prop_action']]
+        action = (context.texts('report') if context else localization.texts('report', built_in))['prop_' + assets[0]['prop_action']]
         request = action + " · " + assets[0]["target"] + (" → " + assets[0]["replacement"] if "replacement" in assets[0] else "")
     revision = None
     if origin:
@@ -818,11 +835,16 @@ def review_sheet(c, root, ids, purpose="user", language=localization.DEFAULT_LAN
         packet["presentation"] = {"summary": summary, "omissions": omissions, "pool": assets[0].get("candidate_pool")}
     inspection, detail_files = inspection_images(c, folder, state['canvas'], regions, list(items), revision)
     inspection['comparison_base'] = 'parent' if revision else 'source'
-    page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision, edit_references, summary, inspection)
+    page = render_sheet(key, list(items), request, contract, purpose, language, ui, revision, edit_references, summary, inspection, presentation=context)
     (folder / "index.html").write_text(page, encoding="utf-8")
     # Assistant packets stay blind; user packets expose checks/recommendation separately.
     public = {"packet": key, "purpose": purpose, "request": request, "contract": contract, "language": language, "ui_labels": ui,
               "source": "source.png", "candidates": {label: f"{label}.png" for label in items}}
+    if context:
+        public['presentation_context'] = context.snapshot()
+        public['display_content'] = {'request': context.display(request, required=False), 'contract': context.display_tree(contract),
+                                    'review_summary': context.display_tree(summary)}
+        public['translation_provenance'] = context.provenance()
     if revision:
         public["revision"] = revision
     if edit_references:
@@ -854,7 +876,7 @@ BASELINE_LABELS = localization.BASELINE_LABELS
 
 
 REVIEW_SHEET_TEMPLATE = r"""<!doctype html>
-<html lang="__LANGUAGE__">
+<html lang="__LANGUAGE__" dir="__DIRECTION__">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>__UI_0__</title><link rel="icon" href="data:,">
@@ -928,7 +950,7 @@ byId('download').onclick=()=>{const value=id=>byId(id).value;const decision=valu
 
 LEGACY_REVIEW_SHEET_TEMPLATE = REVIEW_SHEET_TEMPLATE
 REVIEW_SHEET_TEMPLATE = r"""<!doctype html>
-<html lang="__LANGUAGE__">
+<html lang="__LANGUAGE__" dir="__DIRECTION__">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>__UI_0__</title><link rel="icon" href="data:,">
 <style>
@@ -1080,8 +1102,15 @@ def render_review_summary(summary, ui):
     return ''.join(lines)
 
 
-def render_sheet(key, labels, request, contract, purpose, language=localization.DEFAULT_LANGUAGE, translations=None, revision=None, edit_references=None, review_summary=None, inspection=None):
+def render_sheet(key, labels, request, contract, purpose, language=localization.DEFAULT_LANGUAGE, translations=None, revision=None, edit_references=None, review_summary=None, inspection=None, presentation=None):
     ui = preview_text(language, translations, allow_legacy=True)
+    if presentation:
+        request = presentation.display(request, required=False)
+        contract = presentation.display_tree(contract)
+        revision = presentation.display_tree(revision)
+        edit_references = presentation.display_tree(edit_references)
+        review_summary = presentation.display_tree(review_summary)
+        inspection = presentation.display_tree(inspection)
     if revision and not {'修订前', '本次修改'} <= set(ui):
         raise ValueError('Supply revision comparison labels for this page.')
     if edit_references and not {'参考图', '仅参考指定修改内容'} <= set(ui):
@@ -1125,8 +1154,11 @@ def render_sheet(key, labels, request, contract, purpose, language=localization.
         '__OPTIONS__': ''.join(f'<option value="{label}">{label}</option>' for label in labels),
         '__PACKET__': script_json(key), '__VIEWER_ITEMS__': script_json(items),
         '__LANGUAGE__': html.escape(language), '__UI_STRINGS__': script_json(ui),
+        '__DIRECTION__': presentation.direction if presentation else localization.task.direction(language),
         '__REVIEW_CONTEXT__': render_review_summary(review_summary, ui) if review_summary is not None else '',
     }
+    if presentation:
+        values['__REQUEST__'] += ' <a href="packet.json" target="_blank" rel="noopener">' + html.escape(presentation.texts('report')['original_text']) + '</a>'
     if modern:
         values.update({
             '__DETAIL_CARDS__': detail_cards,
@@ -1162,14 +1194,17 @@ def refresh_review_sheet(c, root, key):
     public = json.loads(public_path.read_text(encoding='utf-8'))
     language = public.get('language', localization.DEFAULT_LANGUAGE)
     page_ui = public.get('ui_labels')
-    if page_ui and language.lower().split('-')[0] in ('zh', 'en'):
+    context = localization.task.from_snapshot(localization.locale_proxy(), public['presentation_context']) if public.get('presentation_context') else None
+    if page_ui and context:
+        page_ui = {**context.texts('html'), **page_ui}
+    elif page_ui and localization.normalize_language(language) in localization.CATALOGS:
         page_ui = {**preview_text(language), **page_ui}
     number = 2
     while (folder / f'index-{number:03d}.html').exists():
         number += 1
     page = folder / f'index-{number:03d}.html'
     with page.open('x', encoding='utf-8') as stream:
-        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', language, page_ui, public.get('revision'), public.get('edit_references'), public.get('review_summary'), public.get('inspection')))
+        stream.write(render_sheet(key, list(packet['items']), public['request'], public['contract'], 'user', language, page_ui, public.get('revision'), public.get('edit_references'), public.get('review_summary'), public.get('inspection'), presentation=context))
     packet.setdefault('artifacts', []).append({'path': page.relative_to(root).as_posix(), 'sha256': c.digest(page)})
     packet['latest_page'] = page.relative_to(root).as_posix()
     c.write_state(root, state)
@@ -1311,7 +1346,10 @@ def add_commands(c, commands):
         if name == "review-sheet":
             p.add_argument("--asset", action="append", required=True)
             p.add_argument("--purpose", choices=("assistant", "user"), default="user")
-            p.add_argument("--language", default=localization.DEFAULT_LANGUAGE, help="Match the user's language; built-in zh-CN/en, or supply --ui-file for another language.")
+            p.add_argument('--language', help='Override saved task language.')
+            p.add_argument('--locale-file', type=Path)
+            p.add_argument('--translations-file', type=Path)
+            p.add_argument('--font-file', type=Path)
             p.add_argument("--ui-file", type=Path, help="Complete UTF-8 mapping of preview UI text to the user's language.")
             p.add_argument("--selection-note", help="Only for the user's explicit request to show a subset; otherwise show the entire batch.")
             p.add_argument('--face-box', type=int, nargs=4, help='Whole-face inspection in source-canvas coordinates.')
@@ -1355,7 +1393,8 @@ def dispatch(c, args):
     if args.command == "pool-compare":
         return compare(c, root, args.case_id, read(args.feedback_file))
     if args.command == "review-sheet":
-        return review_sheet(c, root, args.asset, args.purpose, args.language, read(args.ui_file) if args.ui_file else None, args.selection_note, args.face_box, args.detail_box, read(args.inspection_file) if args.inspection_file else None)
+        return review_sheet(c, root, args.asset, args.purpose, args.language, read(args.ui_file) if args.ui_file else None, args.selection_note, args.face_box, args.detail_box, read(args.inspection_file) if args.inspection_file else None,
+                            locale_file=args.locale_file, translations_file=args.translations_file, font_file=args.font_file)
     if args.command == "refresh-review-sheet":
         return refresh_review_sheet(c, root, args.packet)
     if args.command == "revision-prepare":

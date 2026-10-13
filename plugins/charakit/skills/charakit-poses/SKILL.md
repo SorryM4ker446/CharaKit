@@ -9,7 +9,7 @@ Create a complete static illustration from an existing single-character source. 
 
 ## Define and prepare
 
-Use the user's current or preferred language. Pass the same explicit `--language zh-CN|en` to reports, HTML review pages and PNG previews; all default to `zh-CN` and share fixed-text catalogs. Retain partial `--labels-file` overrides for custom pose/source names. Saved observations and machine identifiers keep their original text. See [localization.md](../../references/localization.md).
+Before authoring prompts or review content, read and follow [task language](../../references/localization.md): identify the user's language, honor explicit preferences, persist it with `language-set`, and prepare/reuse a complete pack for any language without a built-in catalog. Write new pose definitions, prompts and observations in that language and register their structured prose with `content-register`; use `content-plan` for historical display translations. Reports, HTML and PNG inherit the saved language. Retain exact custom pose/source names through partial `--labels-file` overrides and keep machine identifiers stable. Apply the shared font and direction rules.
 
 Inspect the actual full source and any references before defining permissions. Resolve the requested side, hand orientation, amplitude, other arm, existing asymmetry and visible contacts from the request and source. `left` and `right` always mean the character's anatomical side, not the viewer's side; use `none` for natural standing and `both` for clasped hands, hands behind the back or crossed arms. Hand on chest uses `left` or `right`. Clarify only meaningful unresolved choices or conflicts, such as a requested free-hand gesture while that hand holds an object. These poses preserve objects and do not silently remove, replace or add them.
 
@@ -43,7 +43,7 @@ Only actually accepted candidates satisfying all gates become final artwork. Gen
 
 ## Helper
 
-Resolve the absolute installed script path and keep the complete plugin with `lib/` and shared references together. Requires Python 3.11+ and Pillow. Run sequentially within each project.
+Resolve the absolute installed script path and keep the complete plugin with `lib/` and shared references together. Requires Python 3.11+, Pillow and fonttools; install the plugin's `requirements.txt` before first use. Run sequentially within each project.
 
 ```text
 python <skill>/scripts/studio.py presets

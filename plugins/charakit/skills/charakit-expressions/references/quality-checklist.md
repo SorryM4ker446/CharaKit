@@ -40,7 +40,7 @@ Use `domain_review.kind = expression` for default-state expression candidates an
 
 ## Localized preview labels
 
-PNG previews use the same built-in fixed-text catalogs as reports and HTML pages. Pass `--language zh-CN|en` consistently to each command; all default to `zh-CN`. Raw machine identifiers remain stable English codes. For custom names, write a flat UTF-8 JSON object and pass `--labels-file <path>`; fixed status translations no longer require a labels file. See [localization.md](../../../references/localization.md).
+PNG previews inherit the persisted task language and use the same complete, reviewed pack as reports and HTML pages, including languages beyond built-in Chinese/English. Follow [localization.md](../../../references/localization.md) before authoring new prose or translating historical observations for display. Explicit `--language` affects one output; legacy unconfigured tasks retain `zh-CN`. Raw machine identifiers remain stable English codes. For exact custom names, write a flat UTF-8 JSON object and pass `--labels-file <path>`; fixed status translations do not require a labels file. Captions check glyph coverage and wrap measured text; supply a suitable `--font-file` if needed.
 
 Optional label keys:
 

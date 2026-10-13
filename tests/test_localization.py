@@ -127,7 +127,7 @@ class LocalizationTests(unittest.TestCase):
 
     def test_unsupported_or_invalid_language_creates_no_output(self):
         before = (self.root / 'run.json').read_bytes()
-        for language in ('ja', 'en"', '', None):
+        for language in ('ja', 'en"', ''):
             output = self.folder / 'invalid'
             with self.assertRaises(studio.StudioError) as caught:
                 studio.make_preview(self.root, output, language=language)

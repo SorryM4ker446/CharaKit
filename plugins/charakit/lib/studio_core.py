@@ -12,6 +12,7 @@ import re
 import shutil
 import sys
 import tempfile
+from functools import wraps
 from datetime import datetime, timezone
 import zipfile
 
@@ -23,6 +24,10 @@ import importlib.util
 _locale_spec = importlib.util.spec_from_file_location("charakit_localization", Path(__file__).with_name("localization.py"))
 localization = importlib.util.module_from_spec(_locale_spec)
 _locale_spec.loader.exec_module(localization)
+
+_layout_spec = importlib.util.spec_from_file_location('charakit_text_layout', Path(__file__).with_name('text_layout.py'))
+text_layout = importlib.util.module_from_spec(_layout_spec)
+_layout_spec.loader.exec_module(text_layout)
 
 EXPRESSION_PRESETS = {
     "neutral": {"name": "Neutral", "direction": "Calm; reuse the source when it already matches."},
@@ -85,6 +90,41 @@ class StudioError(Exception):
     def __init__(self, code: str, message: str):
         self.code, self.message = code, message
         super().__init__(message)
+
+
+def presentation_errors(call):
+    @wraps(call)
+    def wrapped(*args, **kwargs):
+        try:
+            return call(*args, **kwargs)
+        except ValueError as exc:
+            if hasattr(exc, 'code'):
+                raise StudioError(exc.code, str(exc)) from exc
+            raise
+    return wrapped
+
+
+def presentation_context(roots=None, language=None, locale_file=None, translations_file=None, font_file=None):
+    return localization.resolve(roots, language, locale_file, translations_file, font_file)
+
+
+def asset_label(asset, labels, context):
+    names = context.texts('names')
+    if 'pose_id' in asset:
+        return labels[asset['pose_id']] if asset['pose_id'] in labels else context.display(asset['target'])
+    if 'outfit_id' in asset:
+        if asset['outfit_id'] in labels:
+            return labels[asset['outfit_id']]
+        if asset.get('edit_type') == 'prop_edit':
+            name = context.texts('report')['prop_' + asset['prop_action']] + ' · ' + context.display(asset['target'])
+            return name + (' → ' + context.display(asset['replacement']) if 'replacement' in asset else '')
+        change = asset['color'] if asset['edit_type'] == 'recolor' else asset['replacement']
+        return context.display(asset['target']) + ' → ' + context.display(change)
+    if asset_slot(asset) in labels:
+        return labels[asset_slot(asset)]
+    name = labels.get(asset['expression'], names[asset['expression']])
+    mouth = asset.get('mouth_state', 'default')
+    return name + (' / ' + labels.get('mouth_' + mouth, names['mouth_' + mouth]) if mouth != 'default' else '')
 
 
 def timestamp() -> str:
@@ -1436,15 +1476,19 @@ def load_preview_labels(path: Path | None) -> dict[str, str]:
         raise StudioError("INVALID_PREVIEW_LABELS", "Labels must be a UTF-8 JSON object with short string values.") from exc
 
 
+@presentation_errors
 def make_preview(root: Path, output: Path, ids: list[str] | None = None,
                  face_box: list[int] | None = None, background: str = "checker",
                  labels: dict[str, str] | None = None, expression: str | None = None,
                  mouth_state: str | None = None, outfit_id: str | None = None,
-                 detail_box: list[int] | None = None, language: str = localization.DEFAULT_LANGUAGE) -> dict:
+                 detail_box: list[int] | None = None, language: str | None = None,
+                 locale_file: Path | None = None, translations_file: Path | None = None,
+                 font_file: Path | None = None) -> dict:
     try:
-        language = localization.normalize_language(language)
-        t = localization.texts("png", language)
-        names = localization.texts("names", language)
+        context = presentation_context([root], language, locale_file, translations_file, font_file)
+        language = context.language
+        t = context.texts('png')
+        names = context.texts('names')
     except ValueError as exc:
         raise StudioError("INVALID_PREVIEW_LANGUAGE", str(exc)) from exc
     state = read_state(root)
@@ -1477,85 +1521,72 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
         if not (0 <= left < right <= state["canvas"]["width"] and 0 <= top < bottom <= state["canvas"]["height"]):
             raise StudioError("INVALID_DETAIL_BOX", "Detail box must be inside the source canvas.")
     entries = [{"id": "SOURCE", "path": state["source"], "art_review_status": "reference"}] + assets
-    card_width, picture_height, label_height = 360, 420, 100
-    if any("quality_required" in a or "quality_review" in a for a in assets):
-        label_height = 124
+    painter = text_layout.TextPainter(context, font)
+    card_width, picture_height = 360, 420
+    cards = []
+    label_height = 124 if any("quality_required" in a or "quality_review" in a for a in assets) else 100
+    for entry in entries:
+        report = check_asset(root, state, entry) if entry["id"] != "SOURCE" else None
+        title = labels.get('source', names['source']) if entry['id'] == 'SOURCE' else asset_label(entry, labels, context) + f" v{entry['version']:03d}"
+        with Image.open(contained(root, entry['path'])) as opened:
+            rgba = opened.convert('RGBA')
+        lines = [(title + f' | {rgba.width} x {rgba.height}', 17, '#222222')]
+        label = labels.get(entry['art_review_status'], t[entry['art_review_status']])
+        if report:
+            key = 'technical_passed' if report['passed'] else 'technical_failed'
+            label += ' | ' + labels.get(key, t[key])
+        lines.append((label, 15, '#222222'))
+        if report and report['errors']:
+            lines.append((', '.join(labels.get(code, t[code]) for code in report['errors']), 14, '#b42318'))
+        if entry['id'] != 'SOURCE' and ('edit_brief' in entry or 'fidelity_review' in entry):
+            status = fidelity_status(entry)
+            lines.append((labels.get('fidelity_' + status, t['fidelity_' + status]), 14,
+                          '#267048' if status == 'passed' else '#b45309'))
+        if entry['id'] != 'SOURCE' and ('quality_required' in entry or 'quality_review' in entry):
+            status = quality_status(root, state, entry)
+            text = labels.get('quality_' + status, t['quality_' + status])
+            score = entry.get('quality_review', {}).get('result', {}).get('total')
+            if score is not None:
+                text += f' | {score:g}/100'
+            lines.append((text, 14, '#267048' if status == 'passed' else '#b45309'))
+        required = 14 + sum(len(painter.wrap(text, card_width - 20, size)) * (size + 5) + 3 for text, size, _ in lines)
+        label_height = max(label_height, required)
+        cards.append((rgba, lines))
     face_height = 250 if face_box else 0
     detail_height = 250 if detail_box else 0
     card_height = picture_height + label_height + face_height + detail_height
     columns = min(3, len(entries))
-    sheet = Image.new("RGB", (columns * card_width, math.ceil(len(entries) / columns) * card_height), "#ffffff")
-    for index, entry in enumerate(entries):
-        x, y = (index % columns) * card_width, (index // columns) * card_height
-        path = contained(root, entry["path"])
-        report = check_asset(root, state, entry) if entry["id"] != "SOURCE" else None
-        with Image.open(path) as source:
-            source.load()
-            rgba = source.convert("RGBA")
-        # Preview-only scaling; candidate files and export pixels remain untouched.
+    sheet = Image.new('RGB', (columns * card_width, math.ceil(len(entries) / columns) * card_height), '#ffffff')
+    for index, (rgba, lines) in enumerate(cards):
+        x, y = index % columns * card_width, index // columns * card_height
         thumbnail = rgba.copy()
         thumbnail.thumbnail((card_width - 20, picture_height - 20), Image.Resampling.LANCZOS)
         panel = backdrop((card_width, picture_height), background)
         panel.alpha_composite(thumbnail, ((card_width - thumbnail.width) // 2, (picture_height - thumbnail.height) // 2))
-        sheet.paste(panel.convert("RGB"), (x, y))
+        sheet.paste(panel.convert('RGB'), (x, y))
         draw = ImageDraw.Draw(sheet)
-        title = entry["id"]
-        if entry["id"] == "SOURCE":
-            title = labels.get("source", names["source"])
-        elif "pose_id" in entry:
-            title = f'{labels.get(entry["pose_id"], entry["target"])} v{entry["version"]:03d}'
-        elif "outfit_id" in entry:
-            title = f'{labels.get(entry["outfit_id"], entry["outfit_id"])} v{entry["version"]:03d}'
-        else:
-            title = labels.get(entry["expression"], names[entry["expression"]])
-            if entry.get("mouth_state", "default") != "default":
-                mouth_key = f'mouth_{entry["mouth_state"]}'
-                title += ' / ' + labels.get(mouth_key, names[mouth_key])
-            title = f'{labels.get(asset_slot(entry), title)} v{entry["version"]:03d}'
-        title_line = f'{title} | {rgba.width} x {rgba.height}'
-        title_font = font(17)
-        for size in range(16, 9, -1):
-            if draw.textlength(title_line, font=title_font) <= card_width - 20:
-                break
-            title_font = font(size)
-        draw.text((x + 10, y + picture_height + 7), title_line, fill="#222222", font=title_font)
-        label = labels.get(entry["art_review_status"], t[entry["art_review_status"]])
-        if report:
-            status_key = "technical_passed" if report["passed"] else "technical_failed"
-            label += " | " + labels.get(status_key, t[status_key])
-        draw.text((x + 10, y + picture_height + 31), label, fill="#222222", font=font(15))
-        if report and report["errors"]:
-            draw.text((x + 10, y + picture_height + 56), ", ".join(labels.get(code, t[code]) for code in report["errors"]), fill="#b42318", font=font(14))
-        if entry["id"] != "SOURCE" and ("edit_brief" in entry or "fidelity_review" in entry):
-            status = fidelity_status(entry)
-            draw.text((x + 10, y + picture_height + 78), labels.get(f"fidelity_{status}", t[f"fidelity_{status}"]),
-                      fill="#267048" if status == "passed" else "#b45309", font=font(14))
-        if entry["id"] != "SOURCE" and ("quality_required" in entry or "quality_review" in entry):
-            status = quality_status(root, state, entry)
-            score = entry.get("quality_review", {}).get("result", {}).get("total")
-            text = labels.get(f"quality_{status}", t[f"quality_{status}"])
-            if score is not None:
-                text += f" | {score:g}/100"
-            draw.text((x + 10, y + picture_height + 99), text,
-                      fill="#267048" if status == "passed" else "#b45309", font=font(14))
+        position = y + picture_height + 7
+        for text, size, color in lines:
+            position = painter.draw(draw, (x + 10, position, card_width - 20), text, size, color) + 3
         for box_coords, offset in ((face_box, 0), (detail_box, face_height)):
             if not box_coords:
                 continue
-            sx, sy = rgba.width / state["canvas"]["width"], rgba.height / state["canvas"]["height"]
+            sx, sy = rgba.width / state['canvas']['width'], rgba.height / state['canvas']['height']
             box = [round(box_coords[0] * sx), round(box_coords[1] * sy), round(box_coords[2] * sx), round(box_coords[3] * sy)]
-            face = rgba.crop(tuple(box))
-            scale = min((card_width - 20) / face.width, 230 / face.height)
-            face = face.resize((max(1, round(face.width * scale)), max(1, round(face.height * scale))), Image.Resampling.LANCZOS)
+            detail = rgba.crop(tuple(box))
+            scale = min((card_width - 20) / detail.width, 230 / detail.height)
+            detail = detail.resize((max(1, round(detail.width * scale)), max(1, round(detail.height * scale))), Image.Resampling.LANCZOS)
             panel = backdrop((card_width, 250), background)
-            panel.alpha_composite(face, ((card_width - face.width) // 2, (250 - face.height) // 2))
-            sheet.paste(panel.convert("RGB"), (x, y + picture_height + label_height + offset))
+            panel.alpha_composite(detail, ((card_width - detail.width) // 2, (250 - detail.height) // 2))
+            sheet.paste(panel.convert('RGB'), (x, y + picture_height + label_height + offset))
+
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("xb") as stream:
         sheet.save(stream, format="PNG")
     return {"preview": str(output.resolve()), "size": list(sheet.size), "face_box": face_box,
             "detail_box": detail_box, "language": language,
             "asset_ids": [a["id"] for a in assets],
-            "note": t["note"]}
+            "note": t["note"], "presentation": context.provenance()}
 
 
 def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = None,
@@ -1643,6 +1674,7 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
     return {"export": str(output.resolve()), "asset_ids": chosen, "manifest": manifest}
 
 
+@presentation_errors
 def generate_report(projects: list[Path], output: Path, **options) -> dict:
     """Snapshot final delivery gates and saved reviews without changing project state."""
     import importlib.util
@@ -1654,6 +1686,7 @@ def generate_report(projects: list[Path], output: Path, **options) -> dict:
     return report.generate_report(SimpleNamespace(**globals()), projects, output, **options)
 
 
+@presentation_errors
 def workflow_call(operation, *args, **kwargs):
     import importlib.util
     spec = importlib.util.spec_from_file_location("charakit_candidate_review", Path(__file__).with_name("candidate_review.py"))
@@ -1690,6 +1723,23 @@ def _core_proxy():
 def parser(module: str = "expressions") -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
+    for name in ('language-set', 'language-status', 'content-plan', 'language-template', 'content-register'):
+        command = commands.add_parser(name, help='Prepare or inspect task language and reviewed presentation translations.')
+        if name != 'language-template':
+            command.add_argument('--project', required=True, type=Path, action='append' if name == 'content-plan' else 'store')
+        if name not in ('language-status', 'content-register'):
+            command.add_argument('--language', required=name in ('language-set', 'language-template'))
+        if name in ('language-template', 'content-plan'):
+            command.add_argument('--output', required=True, type=Path)
+        if name == 'language-set':
+            command.add_argument('--locale-file', type=Path)
+            command.add_argument('--translations-file', type=Path)
+            command.add_argument('--font-file', type=Path)
+            command.add_argument('--request-file', type=Path)
+            command.add_argument('--basis', choices=('explicit', 'user_request', 'task_context'), default='user_request')
+            command.add_argument('--clear-preference', action='store_true', help='Only when the user withdraws an explicit language preference.')
+        if name == 'content-register':
+            command.add_argument('--input-file', required=True, type=Path, help='New prose authored and verified in the current task language.')
     workflow_call("add_commands", commands)
     reference_prepare = commands.add_parser("reference-prepare", help="Snapshot scoped edit references for the current module; never generates images.")
     reference_prepare.add_argument("--project", required=True, type=Path)
@@ -1698,7 +1748,10 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
     report.add_argument("--project", required=True, action="append", type=Path, dest="projects")
     report.add_argument("--output", required=True, type=Path, help="New delivery directory; existing files are never overwritten.")
     report.add_argument("--asset", action="append", dest="ids", help="Restrict one project's cases; tracked assets resolve to the current refinement version.")
-    report.add_argument("--language", default=localization.DEFAULT_LANGUAGE, help="Fixed text language: zh-CN or en (regional tags accepted).")
+    report.add_argument('--language', help='Override the saved task language.')
+    report.add_argument('--locale-file', type=Path)
+    report.add_argument('--translations-file', type=Path)
+    report.add_argument('--font-file', type=Path)
     report.add_argument("--title")
     report.add_argument("--stage", choices=("auto", "final"), default="auto", help="Auto produces an internal draft until pool cases have actual human feedback; final requires that feedback.")
     report.add_argument("--labels-file", type=Path)
@@ -1817,7 +1870,10 @@ def parser(module: str = "expressions") -> argparse.ArgumentParser:
                 command.add_argument("--face-box", type=int, nargs=4)
                 command.add_argument("--background", choices=("checker", "light", "dark"), default="checker")
                 command.add_argument("--labels-file", type=Path, help="UTF-8 JSON label overrides in the user's language.")
-                command.add_argument("--language", default=localization.DEFAULT_LANGUAGE, help="Fixed text language: zh-CN or en (regional tags accepted).")
+                command.add_argument('--language', help='Override the saved task language.')
+                command.add_argument('--locale-file', type=Path)
+                command.add_argument('--translations-file', type=Path)
+                command.add_argument('--font-file', type=Path)
             else:
                 command.add_argument("--preview", type=Path)
     return result
@@ -1829,6 +1885,26 @@ def main(module: str = "expressions") -> int:
             stream.reconfigure(encoding="utf-8")
     args = parser(module).parse_args()
     try:
+        if args.command in ('language-set', 'language-status', 'content-plan', 'language-template', 'content-register'):
+            if args.command != 'language-template':
+                for root in args.project if args.command == 'content-plan' else [args.project]:
+                    require_module(read_state(root), module)
+            proxy = localization.locale_proxy()
+            if args.command == 'language-set':
+                result = localization.task.configure(proxy, args.project, args.language, args.locale_file, args.translations_file,
+                                                     args.font_file, args.basis, args.request_file.read_text(encoding='utf-8') if args.request_file else None,
+                                                     args.clear_preference)
+            elif args.command == 'language-status':
+                result = presentation_context([args.project]).snapshot()
+            elif args.command == 'content-register':
+                result = localization.task.register_content(proxy, args.project, localization.task.read_json(args.input_file))
+            else:
+                result = localization.task.template(proxy, args.language) if args.command == 'language-template' else localization.task.content_plan(proxy, args.project, args.language)
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                with args.output.open('x', encoding='utf-8') as stream:
+                    json.dump(result, stream, ensure_ascii=False, indent=2)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
         if args.command.startswith(("pool-", "revision-")) or args.command in ("review-sheet", "refresh-review-sheet", "human-feedback"):
             require_module(read_state(args.project), module)
             result = workflow_call("dispatch", args)
@@ -1841,7 +1917,8 @@ def main(module: str = "expressions") -> int:
         elif args.command == "report":
             result = generate_report(args.projects, args.output, ids=args.ids, language=args.language,
                                      title=args.title, labels=load_preview_labels(args.labels_file),
-                                     face_box=args.face_box, background=args.background, stage=args.stage)
+                                     face_box=args.face_box, background=args.background, stage=args.stage,
+                                     locale_file=args.locale_file, translations_file=args.translations_file, font_file=args.font_file)
         elif args.command == "presets":
             if module == "poses":
                 result = {"presets": [{"id": key, **preset, "sides": list(pose_sides(key)),
@@ -1907,13 +1984,18 @@ def main(module: str = "expressions") -> int:
             result = make_preview(args.project, args.output, args.ids, args.face_box, args.background,
                                   load_preview_labels(args.labels_file), getattr(args, "expression", None),
                                   getattr(args, "mouth_state", None), getattr(args, "outfit_id", None), getattr(args, "detail_box", None),
-                                  language=args.language)
+                                  language=args.language, locale_file=args.locale_file,
+                                  translations_file=args.translations_file, font_file=args.font_file)
         else:
             result = export_pack(args.project, args.output, args.ids, args.preview)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result.get("passed", True) else 2
     except StudioError as exc:
         error = {"code": exc.code, "message": exc.message}
+    except ValueError as exc:
+        if not hasattr(exc, 'code'):
+            raise
+        error = {'code': exc.code, 'message': str(exc)}
     except FileExistsError:
         error = {"code": "OUTPUT_EXISTS", "message": "Output already exists; choose a new filename."}
     except OSError as exc:

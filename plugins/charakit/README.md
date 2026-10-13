@@ -2,11 +2,11 @@
 
 **Edit visual novel character illustrations in Codex.** This plugin provides expression variants, clothing edits, accessory / prop edits and static dialogue poses with versioned candidates, human review, and selected PNG exports.
 
-Development version **0.1.32** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
+Development version **0.1.33** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
 
 Codex generates artwork through its available image editing tool. The bundled Python helper preserves raw files and manages comparisons, review records, revisions, and packaging.
 
-Reports, HTML reviews and PNG previews share fixed Chinese/English text through `--language` (default `zh-CN`), retaining partial custom name overrides. See [presentation language](references/localization.md).
+Reports, HTML reviews and PNG previews inherit the assistant's persisted task language through complete, reviewed language packs. New prose follows that language; separate historical display translations preserve original facts and scores. Arbitrary language tags, exact custom names, font coverage checks, measured wrapping and direction/shaping guards are supported. See [presentation language](references/localization.md).
 
 ## Skills
 
@@ -26,7 +26,7 @@ You need Codex plugin support, an available image editing tool, and Python **3.1
 python -m pip install -r requirements.txt
 ```
 
-Keep the complete plugin directory, including `lib/`, `references/`, and all three Skills. Use the Python environment with Pillow installed. For marketplace installation, follow the [repository instructions](https://github.com/SorryM4ker446/CharaKit#install) or the [official packaging guide](https://developers.openai.com/plugins/build/plugins).
+Keep the complete plugin directory, including `lib/`, `references/`, and all three Skills. Use the Python environment with Pillow and fonttools installed from `requirements.txt`. For marketplace installation, follow the [repository instructions](https://github.com/SorryM4ker446/CharaKit#install) or the [official packaging guide](https://developers.openai.com/plugins/build/plugins).
 
 ## Quick start
 

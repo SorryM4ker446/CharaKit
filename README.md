@@ -2,7 +2,7 @@
 
 **A Codex plugin for editing visual novel character illustrations.** Create expression variants, change clothing, edit accessories or props, and adjust static dialogue poses through a workflow that keeps the source, candidates, review findings, and your chosen version together.
 
-**English** | [简体中文](README.zh-CN.md) · Development version **0.1.32**
+**English** | [简体中文](README.zh-CN.md) · Development version **0.1.33**
 
 Attach an illustration, describe the change, review the results, and choose what to keep. CharaKit uses the image editing tool available in Codex; its local Python helper manages files, comparisons, review records, and exports.
 
@@ -27,7 +27,7 @@ All three modules support scoped reference images, bounded redraws, human feedba
 
 ## Install
 
-Requirements: a Codex host with plugin support and an available image editing tool, plus **Python 3.11+** and **Pillow** for the local helper.
+Requirements: a Codex host with plugin support and an available image editing tool, plus **Python 3.11+**, **Pillow** and **fonttools** for the local helper. Install the dependencies together from `requirements.txt`.
 
 Clone the repository and run:
 
@@ -39,7 +39,7 @@ codex plugin marketplace add .
 codex plugin add charakit@charakit
 ```
 
-If you already have a local checkout, start from that directory and skip the clone. Make sure Codex uses the Python environment where Pillow is installed, then open a new chat to load the Skills.
+If you already have a local checkout, start from that directory and skip the clone. Make sure Codex uses the Python environment where the helper dependencies are installed, then open a new chat to load the Skills.
 
 You can also register the Git marketplace directly:
 
@@ -97,7 +97,7 @@ Clasped hands, hands behind the back and crossed arms use both arms. These actio
 
 You may attach additional reference images to any module. Describe what each should guide—for example, only the jacket cut, glasses design or palm orientation. References guide those attributes while the source illustration governs the protected character details.
 
-Responses and preview labels follow your language. Reports, HTML reviews and PNG previews share Chinese/English fixed text through `--language` (default `zh-CN`); partial name overrides remain available. See [presentation language](plugins/charakit/references/localization.md). Outputs default to `art-output/<character-key>/` in your workspace.
+The assistant identifies and persists your task language, honoring explicit preferences and retaining context for ambiguous continuations. Reports, HTML reviews and PNG previews inherit it through shared, reviewed language packs, including languages beyond built-in Chinese/English. New prose is authored in that language; historical observations receive separate display translations without changing their original facts or scores. Custom names remain available, and PNG captions check font coverage and wrap text. See [presentation language](plugins/charakit/references/localization.md). Outputs default to `art-output/<character-key>/` in your workspace.
 
 ## Review and delivery
 

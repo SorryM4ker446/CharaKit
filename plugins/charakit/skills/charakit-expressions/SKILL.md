@@ -32,7 +32,7 @@ For a specific correction after human review, follow the [linked human-revision 
 - Write the generation prompt in the user's language unless they request another prompt language.
 - English repository documentation does not set the conversation language. Do not answer in English merely because this Skill is written in English.
 - Keep CLI arguments, JSON keys, expression IDs, filenames, and error/status codes stable. Explain their meaning in the user's language rather than changing machine-readable values.
-- Pass the same explicit `--language zh-CN|en` to reports, HTML review pages and PNG previews. All default to `zh-CN` and share fixed-text catalogs. Use a partial UTF-8 JSON `--labels-file` for custom names; see [localization.md](../../references/localization.md) and [quality-checklist.md](references/quality-checklist.md). If the installed font cannot display a language, keep usable labels and provide the translated explanation in chat.
+- Before authoring prompts or review content, read and follow [task language](../../references/localization.md): identify the user's language, honor explicit preferences, persist it with `language-set`, and prepare/reuse a complete pack for any language without a built-in catalog. Author new content in that language and register it with `content-register`; translate historical prose only for display using `content-plan`. Reports, HTML and PNG inherit the saved language. Retain exact custom names through partial `--labels-file` overrides; handle fonts and text direction as described in the shared reference.
 
 ## Generation rules
 
@@ -65,7 +65,7 @@ Include the active `domain_review` checklist: `expression` checks emotion, facia
 
 ## Local helper
 
-`scripts/studio.py` uses Python 3.11+ and Pillow, runs once, and exits. Resolve its absolute path from the actual installed Skill location. Keep the complete plugin including its shared `lib/studio_core.py` together. Use proper shell quoting for paths with spaces or Unicode.
+`scripts/studio.py` uses Python 3.11+, Pillow and fonttools, runs once, and exits. Resolve its absolute path from the actual installed Skill location. Keep the complete plugin including its shared `lib/studio_core.py` together. Use proper shell quoting for paths with spaces or Unicode.
 
 File-management command reference (not the full generation workflow). Follow candidate-review.md for pool/review-sheet/human-feedback ordering; replace bracketed paths with actual paths:
 
@@ -91,7 +91,7 @@ python <skill>/scripts/studio.py export --project <output-dir>
 - `preview` shows full images on light, dark, or checker backgrounds. `--face-box` uses source-canvas pixel coordinates; magnification is for inspection only. Use repeated `--asset` arguments to compare chosen candidates side by side, including two candidates for one state. `--expression` and `--mouth-state` optionally filter candidates; an expression filter retains all its states and versions. Size mismatches are explicitly labeled, not corrected.
 - `review` accepts a technically valid candidate and selects it for its expression and mouth state. `select` switches between accepted versions in that same state, preserving the other selections.
 - `export` rechecks selected files and fingerprints and packages only accepted, technically valid PNGs with a manifest.
-- Check for Pillow before first use and install `requirements.txt` in the current environment if needed. No API key is involved.
+- Check for Pillow and fonttools before first use and install `requirements.txt` in the current environment if needed. No API key is involved.
 - Operate sequentially within one character directory; multiple chats must not modify the same `run.json` concurrently.
 
 ## Revisions and delivery

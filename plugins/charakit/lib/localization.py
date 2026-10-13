@@ -3,28 +3,32 @@
 Saved requests, evidence, IDs and custom names are never translated here.
 """
 import re
+import importlib.util
+from pathlib import Path
 
 DEFAULT_LANGUAGE = "zh-CN"
 
 
 def validate_language(language):
     if not isinstance(language, str) or not re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", language):
-        raise ValueError("Use a language tag such as zh-CN, en or ja.")
+        raise PresentationError('INVALID_LANGUAGE_TAG', "Use a language tag such as zh-CN, en or ja.")
     return language
 
 
 def normalize_language(language=DEFAULT_LANGUAGE):
-    base = validate_language(language).lower().split("-")[0]
-    if base == "zh":
+    tag = validate_language(language)
+    parts = tag.split('-')
+    base = parts[0].lower()
+    if base == "zh" and not any(p.lower() in ('tw', 'hk', 'mo', 'hant') for p in parts[1:]):
         return "zh-CN"
     if base == "en":
         return "en"
-    raise ValueError("Built-in presentation languages are zh-CN and en.")
+    return '-'.join([base] + [p.title() if len(p) == 4 else p.upper() if len(p) == 2 else p.lower() for p in parts[1:]])
 
 
-def texts(section, language=DEFAULT_LANGUAGE):
+def texts(section, language=DEFAULT_LANGUAGE, locale_file=None):
     """Return a copy; fixed keys are strict lookups, never English fallbacks."""
-    return dict(CATALOGS[normalize_language(language)][section])
+    return resolve(language=language, locale_file=locale_file).texts(section)
 
 
 CATALOGS = {'zh-CN': {'report': {'pose_edit': '静态姿势编辑',
@@ -762,3 +766,22 @@ INTERACTION_LABELS = {'局部对照': 'Detail comparisons',
  '候选尺寸': 'Candidate dimensions'}
 
 BASELINE_LABELS = {'对照基准': 'Comparison baseline', '与修订前同步对照': 'Compare with before revision'}
+
+CATALOGS['zh-CN']['report']['original_text'] = '原文与翻译依据'
+CATALOGS['en']['report']['original_text'] = 'Original text and translation provenance'
+
+_task_spec = importlib.util.spec_from_file_location('charakit_task_localization', Path(__file__).with_name('task_localization.py'))
+task = importlib.util.module_from_spec(_task_spec)
+_task_spec.loader.exec_module(task)
+PresentationError = task.PresentationError
+
+
+def resolve(roots=None, language=None, locale_file=None, translations_file=None, font_file=None):
+    import sys
+    from types import SimpleNamespace
+    return task.resolve(sys.modules.get(__name__) or SimpleNamespace(**globals()), roots, language, locale_file, translations_file, font_file)
+
+
+def locale_proxy():
+    from types import SimpleNamespace
+    return SimpleNamespace(**globals())

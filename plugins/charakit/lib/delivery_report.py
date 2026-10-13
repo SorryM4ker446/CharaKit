@@ -36,25 +36,9 @@ def link(label: str, path: str | Path) -> str:
     return f'[{md(label)}](<{target}>)'
 
 
-def label_for(core, asset: dict, labels: dict, language: str) -> str:
-    names = localization.texts('names', language)
-    if 'pose_id' in asset:
-        return labels.get(asset['pose_id'], asset['target'])
-    if 'outfit_id' in asset:
-        if asset['edit_type'] == 'prop_edit':
-            t = localization.texts('report', language)
-            name = t['prop_'+asset['prop_action']]+' · '+asset['target']
-            if 'replacement' in asset:
-                name += ' → '+asset['replacement']
-            return labels.get(asset['outfit_id'], name)
-        change = asset['color'] if asset['edit_type'] == 'recolor' else asset['replacement']
-        return labels.get(asset['outfit_id'], f"{asset['target']} → {change}")
-    label = labels.get(asset['expression'], names[asset['expression']])
-    mouth = asset.get('mouth_state', 'default')
-    if mouth != 'default':
-        suffix = labels.get('mouth_' + mouth, names['mouth_' + mouth])
-        label += ' / ' + suffix
-    return labels.get(core.asset_slot(asset), label)
+def label_for(core, asset: dict, labels: dict, language: str, context=None) -> str:
+    return core.asset_label(asset, labels, context or core.presentation_context(language=language))
+
 
 
 def round_record(core, root: Path, state: dict, asset: dict, number: int) -> dict:
@@ -163,15 +147,30 @@ def blocking_summary(record: dict, t: dict) -> str:
 
 
 def write_preview(core, cases: list[dict], sources: list[dict], output: Path, t: dict,
-                  face_box: list[int] | None, background: str) -> None:
+                  face_box: list[int] | None, background: str, painter=None) -> None:
     # This display sheet never appears in assessment bindings or replaces raw PNGs.
     cards = [(s['label'], s['image'], None, s['canvas']) for s in sources]
     cards += [(c['label'], c['final']['original_image'], c, c['source_canvas']) for c in cases if c['final']]
-    width, height = 360, 510 + (210 if face_box else 0)
+    painter = painter or core.text_layout.TextPainter(core.presentation_context(), core.font)
+    width, base_height = 360, 510
+    captions = []
+    for label, path, case, canvas in cards:
+        with Image.open(path) as opened:
+            size = opened.size
+        suffix = f'{size[0]} × {size[1]}'
+        if case:
+            record = next(r for r in case['history'] if r['asset_id'] == case['final']['asset_id'])
+            suffix = f"{t['passed']} · {len(case['history'])}{t['round_unit']} · {score_text(record,t)}/100 · " + suffix
+        lines = [(label, 16, '#222222'), (suffix, 13, '#267048' if case else '#444444')]
+        if case and 'CANVAS_MISMATCH' in case['history'][-1]['warnings']:
+            lines.append((t['canvas_warning'], 12, '#b45309'))
+        base_height = max(base_height, 430 + sum(len(painter.wrap(text, 338, size)) * (size + 5) + 4 for text, size, _ in lines))
+        captions.append(lines)
+    height = base_height + (210 if face_box else 0)
     columns = min(3, len(cards))
     sheet = Image.new('RGB', (columns * width, math.ceil(len(cards) / columns) * height), '#ffffff')
     draw = ImageDraw.Draw(sheet)
-    for index, (label, path, case, canvas) in enumerate(cards):
+    for index, ((label, path, case, canvas), lines) in enumerate(zip(cards, captions)):
         x, y = index % columns * width, index // columns * height
         with Image.open(path) as opened:
             image = opened.convert('RGBA')
@@ -179,39 +178,30 @@ def write_preview(core, cases: list[dict], sources: list[dict], output: Path, t:
         panel = core.backdrop((width, 420), background)
         panel.alpha_composite(tile, ((width-tile.width)//2, (420-tile.height)//2))
         sheet.paste(panel.convert('RGB'), (x,y))
-        # Long user labels wrap rather than overwrite neighboring cards.
-        remaining = label
-        for line_no in range(2):
-            line = ''
-            while remaining and draw.textlength(line + remaining[0], font=core.font(16)) < 338:
-                line += remaining[0]; remaining = remaining[1:]
-            if line_no == 1 and remaining:
-                line = line[:-1] + '…'
-            draw.text((x+10,y+424+line_no*20),line,font=core.font(16),fill='#222222')
-        suffix = f'{image.width} × {image.height}'
-        if case:
-            final_record = next(r for r in case['history'] if r['asset_id'] == case['final']['asset_id'])
-            suffix = f"{t['passed']} · {len(case['history'])}{t['round_unit']} · {score_text(final_record,t)}/100 · " + suffix
-        draw.text((x+10,y+469),suffix,font=core.font(13),fill='#267048' if case else '#444444')
-        if case and 'CANVAS_MISMATCH' in case['history'][-1]['warnings']:
-            draw.text((x+10,y+489),t['canvas_warning'],font=core.font(12),fill='#b45309')
+        position = y + 424
+        for text, size, color in lines:
+            position = painter.draw(draw, (x + 10, position, 338), text, size, color) + 4
         if face_box:
             box = tuple(round(v*image.size[i%2]/canvas['width' if i%2==0 else 'height']) for i,v in enumerate(face_box))
             face = image.crop(box)
             face.thumbnail((340,190),Image.Resampling.LANCZOS)
             panel = core.backdrop((width,210),background)
             panel.alpha_composite(face,((width-face.width)//2,(210-face.height)//2))
-            sheet.paste(panel.convert('RGB'),(x,y+510))
+            sheet.paste(panel.convert('RGB'),(x,y+base_height))
     sheet.save(output,format='PNG')
+
 
 
 def case_record(case):
     return next((record for record in case['history'] if record['asset_id'] == case.get('assessed_asset_id')), case['history'][-1])
 
 
-def write_detail_preview(core, case, region, output, t, background):
+def write_detail_preview(core, case, region, output, t, background, painter=None):
     """Display the accepted version and source at the recorded source coordinates."""
-    sheet = Image.new('RGB', (720, 340), '#ffffff')
+    painter = painter or core.text_layout.TextPainter(core.presentation_context(), core.font)
+    labels = [t['revision_parent'] if case.get('inspection_base') == 'parent' else t['source'], case['label']]
+    height = max(340, 326 + max(len(painter.wrap(label, 340, 15)) * 20 for label in labels))
+    sheet = Image.new('RGB', (720, height), '#ffffff')
     draw = ImageDraw.Draw(sheet)
     baseline = (t['revision_parent'], case['revision_parent_image']) if case.get('inspection_base') == 'parent' else (t['source'], case['source'])
     for index, (label, path) in enumerate((baseline, (case['label'], case['final']['original_image']))):
@@ -223,7 +213,7 @@ def write_detail_preview(core, case, region, output, t, background):
         panel = core.backdrop((360, 310), background)
         panel.alpha_composite(detail, ((360-detail.width)//2, (310-detail.height)//2))
         sheet.paste(panel.convert('RGB'), (index*360, 0))
-        draw.text((index*360+10, 316), label[:36], font=core.font(15), fill='#222222')
+        painter.draw(draw, (index*360+10, 316, 340), label, 15)
     output.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output, format='PNG')
 
@@ -344,16 +334,20 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             lines.append(f"- {t['round']} {r['round']}: "+(' · '.join(refs) or '—'))
             lines += ['  - '+md(issue) for issue in display_issues(r,t)]
         lines.append('')
+    if data.get('translation_provenance'):
+        lines += ['', link(t['original_text'], output/data['translation_provenance'])]
     lines += ['', '## '+t['limits'], '',t['note'], '',t['scope_note'], '',t['canvas_note'], '',t['snapshot'], '',
               link('JSON',output/'report.json'), '']
     return '\n'.join(lines)
 
 
 def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] | None = None,
-                    language: str = localization.DEFAULT_LANGUAGE, title: str | None = None, labels: dict | None = None,
-                    face_box: list[int] | None = None, background: str = 'light', stage: str = 'auto') -> dict:
+                    language: str | None = None, title: str | None = None, labels: dict | None = None,
+                    face_box: list[int] | None = None, background: str = 'light', stage: str = 'auto',
+                    locale_file=None, translations_file=None, font_file=None) -> dict:
     try:
-        language = localization.normalize_language(language)
+        context = core.presentation_context(projects, language, locale_file, translations_file, font_file)
+        language = context.language
     except ValueError as exc:
         raise core.StudioError('INVALID_REPORT_OPTIONS', str(exc)) from exc
     if background not in ('light','dark','checker') or stage not in ('auto','final'):
@@ -363,7 +357,7 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
         raise core.StudioError('INVALID_REPORT_SCOPE','Use unique projects; explicit asset IDs require one project.')
     if output.exists():
         raise FileExistsError(output)
-    t = localization.texts('report', language)
+    t = context.texts('report')
     labels = labels or {}
     if any(not isinstance(k,str) or not core.valid_edit_text(v,200) for k,v in labels.items()):
         raise core.StudioError('INVALID_REPORT_OPTIONS','Report labels must be short single-line text.')
@@ -454,7 +448,7 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                           'revision_parent_image':str(core.contained(root,core.get_asset(state,state['human_revisions'][asset['human_revision']]['parent_asset'])['path'])) if asset.get('human_revision') else None,
                           'human_feedback':feedback or asset.get('human_feedback'), 'human_result':human_result,
                           'assessed_asset_id':asset['id'], 'candidate_pool':state.get('candidate_pools',{}).get(pool_id),
-                          'label':label_for(core,asset,labels,language),'status':action,'max_rounds':pool['budget'] if pool_id else plan['max_rounds'] if plan else None,
+                          'label':label_for(core,asset,labels,language,context),'status':action,'max_rounds':pool['budget'] if pool_id else plan['max_rounds'] if plan else None,
                           'attempt_count':len(pool['attempts']) if pool_id else len(records),
                           'edit':{key:asset[key] for key in ('edit_type','target','color','replacement','outfit_components','prop_action','edit_brief','pose_id','pose','side','anchors','pose_interaction') if key in asset} if 'outfit_id' in asset or 'pose_id' in asset else None,
                           'edit_references':[{**ref,'image':str(core.contained(root,ref['path']))} for ref in asset.get('edit_references',[])],
@@ -481,10 +475,16 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
           'stage':resolved_stage,'pending_human_cases':pending,
           'summary':{'cases':len(cases),'passed':passed,'other':len(cases)-passed,'images':sum(len(c['history']) for c in cases)},
           'cases':cases,'preview':'preview.png' if passed else None,'project_bindings':[{'project':str(r),'run_sha256':sha} for r,sha in bindings]}
+    display_data = context.display_tree(data, skip_labels=True)
+    for case in display_data['cases']:
+        for region in case['inspection_regions']:
+            if region.get('label'):
+                region['label'] = context.display(region['label'])
+    painter = core.text_layout.TextPainter(context, core.font) if passed else None
     output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(dir=output.parent,prefix='.report-') as temp:
         staging=Path(temp)/'delivery';staging.mkdir()
-        for c in cases:
+        for c in display_data['cases']:
             if c['final']:
                 core.copy_exclusive(Path(c['final']['original_image']),staging/c['final']['path'])
                 if core.digest(staging/c['final']['path'])!=c['final']['sha256']:
@@ -494,13 +494,21 @@ def generate_report(core, projects: list[Path], output: Path, *, ids: list[str] 
                     if not core.valid_source_box(region['box'], c['source_canvas']):
                         raise core.StudioError('INVALID_REVIEW_BOX', 'Saved detail region must fit the source canvas.')
                     detail = {**region, 'asset_id': c['final']['asset_id'], 'path': 'details/'+Path(c['final']['path']).stem+'-'+region['id']+'.png'}
-                    write_detail_preview(core, c, region, staging/detail['path'], t, background)
+                    write_detail_preview(core, c, region, staging/detail['path'], t, background, painter)
                     c['detail_previews'].append(detail)
         if passed:
-            write_preview(core,cases,sources,staging/'preview.png',t,face_box,background)
+            write_preview(core,display_data['cases'],sources,staging/'preview.png',t,face_box,background,painter)
+        # Keep machine records/original prose intact; translated display copies are separate.
+        for original, shown in zip(data['cases'], display_data['cases']):
+            original['detail_previews'] = shown.get('detail_previews', [])
+        data['display_content'] = {'cases': display_data['cases'], 'title': display_data['title']}
+        data['presentation'] = context.provenance()
+        if context.used:
+            (staging/'translations.json').write_text(json.dumps(data['presentation'],ensure_ascii=False,indent=2),encoding='utf-8')
+            display_data['translation_provenance'] = 'translations.json'
         data['artifacts']=[{'path':p.relative_to(staging).as_posix(),'sha256':core.digest(p)} for p in sorted(staging.rglob('*')) if p.is_file()]
         (staging/'report.json').write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-        (staging/'report.md').write_text(render_markdown(data,output,t),encoding='utf-8')
+        (staging/'report.md').write_text(render_markdown(display_data,output,t),encoding='utf-8')
         for root,sha in bindings:
             core.read_state(root)
             if core.digest(root/'run.json')!=sha:

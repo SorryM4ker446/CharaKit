@@ -23,7 +23,7 @@ For a specific correction after human review, follow the [linked human-revision 
 
 ## Language and input
 
-Respond and write generation prompts, visible names, explanations, and review notes in the user's current or preferred language. Keep CLI arguments, JSON keys, outfit IDs, filenames, and status/error codes stable English identifiers. Pass the same explicit `--language zh-CN|en` to reports, HTML review pages and PNG previews; all default to `zh-CN` and share fixed-text catalogs. A partial flat UTF-8 JSON `preview --labels-file` retains custom outfit/source names and legacy status overrides; fixed status translations do not require it. See [localization.md](../../references/localization.md).
+Before authoring prompts or review content, read and follow [task language](../../references/localization.md): identify the user's language, honor explicit preferences, persist it with `language-set`, and prepare/reuse a complete pack for any language without a built-in catalog. Write new targets, briefs, prompts and observations in that language and register their structured prose with `content-register`; use `content-plan` for historical display translations. Reports, HTML and PNG inherit the saved language. Keep CLI flags, JSON keys, outfit IDs, filenames and status/error codes stable, and retain exact custom outfit/source names through partial `--labels-file` overrides. Apply the shared font and direction rules.
 
 Inspect the actual source first and identify the garment, ensemble or object/addition site, its boundaries, and the requested operation/result. Ask only when these cannot be resolved from the request and artwork. Target descriptions are free text; the helper records them but cannot verify which pixels the model changed.
 
@@ -61,7 +61,7 @@ After viewing the actual source and candidate comparisons, use `fidelity` to rec
 
 ## Local helper
 
-`scripts/studio.py` uses Python 3.11+ and the plugin's Pillow dependency. Resolve its absolute installed path; keep the complete plugin including `lib/studio_core.py` together. It runs once and exits, with no service or API key. Work sequentially within one project.
+`scripts/studio.py` uses Python 3.11+ and the plugin's Pillow and fonttools dependencies; install its `requirements.txt` before first use. Resolve its absolute installed path; keep the complete plugin including `lib/studio_core.py` together. It runs once and exits, with no service or API key. Work sequentially within one project.
 
 ```text
 python <skill>/scripts/studio.py init --project <outfits-dir> --source <source.png> --character <character-key>
