@@ -2,7 +2,7 @@
 
 **A Codex plugin for editing visual novel character illustrations.** Create expression variants, change clothing, edit accessories or props, and adjust static dialogue poses through a workflow that keeps the source, candidates, review findings, and your chosen version together.
 
-**English** | [简体中文](README.zh-CN.md) · Development version **0.1.34**
+**English** | [简体中文](README.zh-CN.md) · Public beta **0.2.0-beta.1** · [MIT License](LICENSE)
 
 Attach an illustration, describe the change, review the results, and choose what to keep. CharaKit uses the image editing tool available in Codex; its local Python helper manages files, comparisons, review records, and exports.
 
@@ -23,11 +23,21 @@ Outfits has four edit types:
 | `outfit_replace` | Replace an explicitly defined clothing ensemble | Change into a Japanese school uniform, including socks and shoes |
 | `prop_edit` | Add, remove, or replace a scoped accessory or prop | Add glasses or remove a weapon |
 
-All three modules support scoped reference images, bounded redraws, human feedback, and revisions of a chosen candidate. Each uses an independent project; you can manually use an exported PNG as another module's source. Poses supports eight static dialogue actions; complex poses and object manipulation remain [planned](plugins/charakit/ROADMAP.md). Real pose generation quality still needs validation.
+All three modules support scoped reference images, bounded redraws, human feedback, and revisions of a chosen candidate. Each uses an independent project; you can manually use an exported PNG as another module's source. Poses supports eight static dialogue actions; complex poses and object manipulation remain [planned](plugins/charakit/ROADMAP.md). Real calls across the modules produced 11 user-accepted outputs on one source character; this does not establish success rates across characters, styles or all pose presets. See the [beta release notes](plugins/charakit/RELEASE_NOTES.md) for the tested scope and limitations.
 
 ## Install
 
 Requirements: a Codex host with plugin support and an available image editing tool, plus **Python 3.11+**, **Pillow** and **fonttools** for the local helper. Install the dependencies together from `requirements.txt`.
+
+For a release ZIP, extract the complete **marketplace package** and run the following from its root, where `.agents/` and `plugins/` are present:
+
+```shell
+python -m pip install -r plugins/charakit/requirements.txt
+codex plugin marketplace add .
+codex plugin add charakit@charakit
+```
+
+Open a new chat after installation. Preserve the complete extracted directory as the local marketplace source. The smaller plugin-only ZIP is intended for an existing marketplace, rather than `marketplace add` at its root. The [official packaging guide](https://developers.openai.com/plugins/build/plugins) also describes installation through the desktop Plugins Directory.
 
 Clone the repository and run:
 
@@ -127,6 +137,15 @@ Scores are Codex's evidence-based visual judgments; the helper validates records
 
 Release history is available in [GitHub Releases](https://github.com/SorryM4ker446/CharaKit/releases). Compatibility and legacy workflow details live in the linked guides.
 
+The [release history](RELEASES.md) and [beta release notes](plugins/charakit/RELEASE_NOTES.md) summarize the first public beta. Build the installable marketplace ZIP and verify it in a clean Python environment from a repository checkout:
+
+```shell
+python tools/build_plugin.py --marketplace --output dist/charakit-0.2.0-beta.1.zip
+python tools/verify_release.py --archive dist/charakit-0.2.0-beta.1.zip --output .dev-checks/release-install --codex
+```
+
+`--codex` additionally installs through the available Codex CLI using a separate test configuration and plugin cache. Without it, the verifier checks the extracted package and helper entrypoints; it does not claim host installation. Development tools and tests require the repository checkout and are not plugin runtime dependencies.
+
 ## Development
 
 The repository keeps plugin code under `plugins/charakit/`, synthetic workflow tests under `tests/`, and the ZIP builder under `tools/`. The marketplace entry is `.agents/plugins/marketplace.json`.
@@ -146,3 +165,7 @@ The QA runner saves workflow-test, build and extracted-package results with logs
 - Edits can drift in identity, pose, framing, or unrelated details. Review helps detect these defects but does not guarantee pixel preservation or fewer revisions.
 - Final PNGs must pass applicable transparency and integrity checks. Different dimensions are allowed for acceptance, selection and PNG/ZIP export with a visible warning showing source and actual sizes. Files remain unchanged; the helper does not resize or repair candidates.
 - Outputs are complete static illustrations. Animation, lip synchronization, automatic cross-module generation, larger viewpoint changes, sitting, leaning and object interaction poses are outside the implemented feature set.
+
+## License
+
+CharaKit's code and documentation are available under the [MIT License](LICENSE). The license does not grant rights to user-supplied artwork, reference images or third-party assets. Image-tool services and their outputs follow their own applicable terms.

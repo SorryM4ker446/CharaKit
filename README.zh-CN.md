@@ -2,7 +2,7 @@
 
 **用于编辑视觉小说角色立绘的 Codex 插件。** 支持表情差分、服装修改、配饰／道具编辑及静态对话姿势，将原图、候选版本、评审记录和最终选择保存在同一工作流程中。
 
-[English](README.md) | **简体中文** · 开发版本 **0.1.34**
+[English](README.md) | **简体中文** · 公开测试版 **0.2.0-beta.1** · [MIT License](LICENSE)
 
 上传立绘，说明想改什么，查看结果，再选择采用的版本。CharaKit 使用 Codex 中可用的图像编辑工具生成图片，本地 Python 助手负责文件管理、对照预览、评审记录和导出。
 
@@ -23,11 +23,21 @@ Outfits 包含四种编辑类型：
 | `outfit_replace` | 替换明确指定的整套服装 | 换成日系制服，同时更换鞋袜 |
 | `prop_edit` | 添加、移除或替换指定配饰／道具 | 添加眼镜、移除武器 |
 
-三个模块均支持限定用途的参考图、限轮重绘、人工评图和指定版本修订，使用独立项目；可以手动将导出 PNG 作为另一模块的新原图。Poses 支持八种静态对话动作；复杂姿势与持物互动仍在[规划中](plugins/charakit/ROADMAP.md)。真实姿势生成质量仍待验证。
+三个模块均支持限定用途的参考图、限轮重绘、人工评图和指定版本修订，使用独立项目；可以手动将导出 PNG 作为另一模块的新原图。Poses 支持八种静态对话动作；复杂姿势与持物互动仍在[规划中](plugins/charakit/ROADMAP.md)。此前已在同一角色原图上完成跨模块真实调用并交付 11 项用户采用结果；这不代表跨角色、跨画风或全部姿势的稳定成功率。已验证范围和限制见[首发说明](plugins/charakit/RELEASE_NOTES.md)。
 
 ## 安装
 
 需要支持插件且具备可用图像编辑工具的 Codex 环境，以及供本地助手使用的 **Python 3.11+**、**Pillow** 和 **fonttools**。通过 `requirements.txt` 一并安装依赖。
+
+使用发行 ZIP 时，请完整解压**市场安装包**，在包含 `.agents/` 和 `plugins/` 的根目录执行：
+
+```shell
+python -m pip install -r plugins/charakit/requirements.txt
+codex plugin marketplace add .
+codex plugin add charakit@charakit
+```
+
+安装后开启新聊天，并保留完整解压目录作为本地市场来源。较小的插件单体 ZIP 用于已有市场，不能直接在其根目录执行 `marketplace add`。也可按 [OpenAI 官方打包指南](https://developers.openai.com/plugins/build/plugins)通过桌面插件目录安装。
 
 克隆仓库并执行：
 
@@ -126,6 +136,15 @@ codex plugin add charakit@charakit
 
 技术指南目前以英文维护。版本历史见 [GitHub Releases](https://github.com/SorryM4ker446/CharaKit/releases)，兼容说明与旧工作流细节保留在对应指南中。
 
+[发行记录](RELEASES.md)和[首发说明](plugins/charakit/RELEASE_NOTES.md)记录公开测试版的范围。在完整仓库中构建可安装市场 ZIP，并用干净的 Python 环境验证：
+
+```shell
+python tools/build_plugin.py --marketplace --output dist/charakit-0.2.0-beta.1.zip
+python tools/verify_release.py --archive dist/charakit-0.2.0-beta.1.zip --output .dev-checks/release-install --codex
+```
+
+`--codex` 还会使用本机可用的 Codex CLI，在独立测试配置和插件缓存中真实安装。省略时仅验证解压包和助手入口，不声称宿主安装通过。开发工具与测试需要完整仓库，不是插件运行依赖。
+
 ## 开发
 
 插件代码位于 `plugins/charakit/`，使用合成图片的工作流测试位于 `tests/`，ZIP 构建工具位于 `tools/`。插件市场入口为 `.agents/plugins/marketplace.json`。
@@ -145,3 +164,7 @@ python tools/qa.py run --output .dev-checks/qa-001
 - 编辑可能导致人物设计、姿势、位置或无关细节偏移。评审有助于发现问题，但不能保证像素级保留或减少返修。
 - 最终 PNG 必须通过适用的透明度与完整性检查。分辨率不同允许接受、选择及 PNG/ZIP 导出，但会提醒原图与输出的实际尺寸；文件保持原始字节，不会自动缩放、对齐或修补。
 - 产物是完整静态立绘。动画、口型同步、跨模块自动生成、大幅朝向变化、坐姿、倚靠和持物互动姿势均未实现。
+
+## 许可证
+
+CharaKit 的代码与文档采用 [MIT License](LICENSE)。该许可证不授予用户原图、参考图或第三方素材的权利；图像工具服务及其输出遵循各自适用的条款。
