@@ -1,0 +1,2 @@
+# Optional developer browser checks; not a plugin/runtime dependency.
+playwright==1.64.1

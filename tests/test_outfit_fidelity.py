@@ -110,15 +110,16 @@ class OutfitFidelityTests(unittest.TestCase):
         self.assertEqual(result["fidelity_status"], "uncertain")
         self.assert_code("FIDELITY_CHECK_FAILED", outfits.review_asset, self.root, second["id"], "accepted")
 
-    def test_canvas_failure_can_keep_observations_without_becoming_accepted(self):
+    def test_canvas_warning_preserves_observations_and_allows_acceptance(self):
         asset = self.scoped_candidate(size=(48, 72))
         candidate_before = (self.root / asset["path"]).read_bytes()
         result = self.observed(asset)
-        self.assertFalse(result["technical_passed"])
+        self.assertTrue(result["technical_passed"])
         self.assertEqual(result["fidelity_status"], "passed")
-        self.assert_code("TECHNICAL_CHECK_FAILED", outfits.review_asset, self.root, asset["id"], "accepted")
+        result = outfits.review_asset(self.root, asset["id"], "accepted")
+        self.assertIn('CANVAS_MISMATCH', result['warnings'])
         self.assertEqual((self.root / asset["path"]).read_bytes(), candidate_before)
-        self.assertEqual(outfits.read_state(self.root)["selected"], {})
+        self.assertEqual(list(outfits.read_state(self.root)["selected"].values()), [asset['id']])
 
     def test_changed_candidate_and_invalid_observation_cannot_reuse_evidence(self):
         asset = self.scoped_candidate()

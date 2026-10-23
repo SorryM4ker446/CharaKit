@@ -88,11 +88,12 @@ Outside this directory, use the entrypoint's absolute installed path. All module
 | Reference roles and protection | [Scoped references](references/edit-references.md) · [Editing boundaries](references/edit-boundaries.md) |
 | Candidate review and revisions | [Human review and redraws](references/candidate-review.md) · [Quality policy](references/quality-review.md) |
 | Final reports and exports | [Delivery reports](references/delivery-report.md) |
+| Repeatable visual QA | [Raw evidence, framing, switching and export verification](references/qa-methods.md) |
 
 The guides include command details and legacy compatibility rules. See [GitHub Releases](https://github.com/SorryM4ker446/CharaKit/releases) for release history.
 
 ## Limits
 
-Inputs are static PNG/JPEG images up to 50 MiB and 40 million pixels. Final assets must be PNGs matching the source canvas and passing applicable transparency and integrity checks. Canvas mismatch may be shown for review, but blocks formal acceptance and export.
+Inputs are static PNG/JPEG images up to 50 MiB and 40 million pixels. Final assets must be PNGs passing applicable transparency and integrity checks. Canvas mismatch is a warning, not a blocker for acceptance, selection or PNG/ZIP export. Show the source and actual sizes; export preserves the original PNG bytes.
 
 The helper preserves generated image bytes; it does not generate, resize, repaint, composite, or change alpha. Image editing can still alter protected details, so visual inspection remains necessary. CharaKit supplies no image model, external image API, MCP service, animation, or lip synchronization.

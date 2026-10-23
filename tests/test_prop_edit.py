@@ -267,13 +267,15 @@ class PropEditTests(unittest.TestCase):
                 export=outfits.export_pack(self.root,ids=[child['id']])
                 self.assertEqual(export['manifest']['sprites'][0]['prop_action'],action)
 
-    def test_canvas_mismatch_keeps_raw_image_and_blocks_formal_adoption(self):
+    def test_canvas_mismatch_keeps_raw_image_and_allows_adoption_with_warning(self):
         fixture(self.raw,'#556677',size=(100,150))
         asset=self.candidate();self.review(asset)
         _,feedback=self.feedback(asset)
-        self.assertEqual(feedback['blockers']['technical'],['CANVAS_MISMATCH'])
+        self.assertEqual(feedback['next_action'],'export')
+        self.assertIn('CANVAS_MISMATCH',feedback['warnings'])
         self.assertEqual((self.root/asset['path']).read_bytes(),self.raw.read_bytes())
-        self.assertEqual(outfits.read_state(self.root)['selected'],{})
+        self.assertEqual(list(outfits.read_state(self.root)['selected'].values()),[asset['id']])
+        self.assertIn('CANVAS_MISMATCH',outfits.export_pack(self.root)['warnings'])
 
     def test_props_cannot_enter_expression_projects(self):
         state=outfits.read_state(self.root);state['module']='expressions';state['schema_version']='1.0'

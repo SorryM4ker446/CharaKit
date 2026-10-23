@@ -1157,6 +1157,17 @@ def render_sheet(key, labels, request, contract, purpose, language=localization.
         '__DIRECTION__': presentation.direction if presentation else localization.task.direction(language),
         '__REVIEW_CONTEXT__': render_review_summary(review_summary, ui) if review_summary is not None else '',
     }
+    # Reuse the report catalog so saved/custom language packs remain compatible.
+    sizes = inspection.get('sizes', {})
+    original_size = sizes.get('source')
+    mismatches = [(label, sizes.get(label)) for label in labels
+                  if sizes.get(label) and original_size and sizes[label] != original_size]
+    if mismatches:
+        t = presentation.texts('report') if presentation else localization.texts('report', language)
+        dimensions = f'{t["source"]}: {original_size[0]} × {original_size[1]}; ' + '; '.join(
+            f'{label}: {size[0]} × {size[1]}' for label, size in mismatches)
+        notice = html.escape(t['canvas_warning'] + ' · ' + dimensions)
+        values['__REQUEST__'] += f'<span class="canvas-warning" role="note"> · {notice}</span>'
     if presentation:
         values['__REQUEST__'] += ' <a href="packet.json" target="_blank" rel="noopener">' + html.escape(presentation.texts('report')['original_text']) + '</a>'
     if modern:
@@ -1287,10 +1298,13 @@ def human_feedback(c, root, data):
                               "note": data["note"], "budget": 3, "prepare_command": "revision-prepare"}
     if chosen and data["decision"] == "accept":
         asset = c.get_asset(state, chosen["asset_id"])
+        result.update(c.canvas_metadata(root, state, c.check_asset(root, state, asset)))
         # A new explicit decision may supersede rejection, without rewriting its history.
         asset["art_review_status"] = "unreviewed"
         if eligible(c, root, state, asset) and c.check_asset(root, state, asset)["passed"]:
-            asset.update(art_review_status="accepted", review_note=data["note"], reviewed_at=c.timestamp())
+            validation = c.check_asset(root, state, asset)
+            asset.update(art_review_status="accepted", review_note=data["note"], reviewed_at=c.timestamp(),
+                         validation=validation, technical_status="passed")
             state["selected"][c.asset_slot(asset)] = asset["id"]
             result["next_action"] = "export"
         else:

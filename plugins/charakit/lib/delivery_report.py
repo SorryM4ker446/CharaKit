@@ -162,7 +162,7 @@ def write_preview(core, cases: list[dict], sources: list[dict], output: Path, t:
             record = next(r for r in case['history'] if r['asset_id'] == case['final']['asset_id'])
             suffix = f"{t['passed']} · {len(case['history'])}{t['round_unit']} · {score_text(record,t)}/100 · " + suffix
         lines = [(label, 16, '#222222'), (suffix, 13, '#267048' if case else '#444444')]
-        if case and 'CANVAS_MISMATCH' in case['history'][-1]['warnings']:
+        if case and 'CANVAS_MISMATCH' in record['warnings']:
             lines.append((t['canvas_warning'], 12, '#b45309'))
         base_height = max(base_height, 430 + sum(len(painter.wrap(text, 338, size)) * (size + 5) + 4 for text, size, _ in lines))
         captions.append(lines)
@@ -298,7 +298,8 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
             lines += [t['human']+'：'+(md(t.get(feedback['decision'],feedback['decision'])+' · '+feedback['note']) if feedback else t['human_review']), '']
             result = c.get('human_result')
             if result:
-                action = result['next_action']
+                # Feedback is historical; this line describes the current report's outcome.
+                action = 'export' if c['final'] else ('blocked' if feedback['decision'] == 'accept' else result['next_action'])
                 lines += [t['human_action']+'：'+t.get('feedback_blocked' if action == 'blocked' else action,action), '']
             facets = (feedback or {}).get('facets', {})
             ratings = [t.get(k,k)+': '+str(v) for k,v in facets.items() if v != 'unspecified']
@@ -324,9 +325,12 @@ def render_markdown(data: dict, output: Path, t: dict) -> str:
         coverage = '；'.join(t[key]+': '+t['checked' if value else 'unchecked'] for key,value in last['inspection'].items())
         actual = last['validation'].get('image')
         size = f"{actual['width']} × {actual['height']}" if actual else '—'
-        technical = t['canvas_warning'] if last['validation']['errors']==['CANVAS_MISMATCH'] else t['passed' if last['validation']['passed'] else 'failed']
+        technical = t['passed' if last['validation']['passed'] else 'failed']
+        if 'CANVAS_MISMATCH' in last['warnings']:
+            technical += ' · ' + t['canvas_warning']
+        original = c['source_canvas']
         lines += ['',t['inspection']+'：'+(coverage or '—'),
-                  '',t['dimensions']+f"：{size}; "+t['technical']+': '+technical,
+                  '',t['source']+f"：{original['width']} × {original['height']}; "+t['dimensions']+f"：{size}; "+t['technical']+': '+technical,
                   '',t['history']+'：', '']
         for r in c['history']:
             refs = [link(t['prompt'],r['prompt'])] if r['prompt'] else []

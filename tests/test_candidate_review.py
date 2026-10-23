@@ -592,7 +592,7 @@ class CandidateReviewTests(unittest.TestCase):
         self.assertEqual(state['candidate_pools'][self.key]['comparisons'][-1]['preferred'], self.key)
         self.assertEqual(len(state['assets']), 3)
 
-    def test_canvas_mismatch_retains_positive_feedback_but_blocks_export(self):
+    def test_canvas_mismatch_accepts_positive_feedback_and_exports_with_warning(self):
         folder = Path(self.temp.name)
         root = folder / 'mismatch'
         studio.init_project(root, self.source, 'test_character')
@@ -604,10 +604,11 @@ class CandidateReviewTests(unittest.TestCase):
         self.call('pool_start', root, asset['id'], contract(), 1)
         self.review(asset, True)
         result, _ = self.feedback(asset['id'])
-        self.assertEqual(result['next_action'], 'blocked')
-        self.assertIn('CANVAS_MISMATCH', result['blockers']['technical'])
+        self.assertEqual(result['next_action'], 'export')
+        self.assertIn('CANVAS_MISMATCH', result['warnings'])
+        self.assertIn('32 × 48', result['warning_messages'][0])
         self.assertEqual(studio.read_state(root)['assets'][0]['quality_review']['result']['total'], 100)
-        self.code('NO_SELECTED_ASSETS', studio.export_pack, root)
+        self.assertEqual(studio.export_pack(root)['asset_ids'], [asset['id']])
         self.root = previous
 
     def test_outfits_require_fidelity_before_sampling(self):
@@ -678,7 +679,7 @@ class CandidateReviewTests(unittest.TestCase):
         self.assertEqual(public['inspection']['sizes']['A'], [128,192])
         with Image.open(folder/'A.png') as original, Image.open(folder/'face-A.png') as crop:
             self.assertEqual(crop.tobytes(), original.convert('RGBA').crop((32,40,96,88)).tobytes())
-        self.assertIn('CANVAS_MISMATCH', studio.check_asset(self.root, studio.read_state(self.root), other)['errors'])
+        self.assertIn('CANVAS_MISMATCH', studio.check_asset(self.root, studio.read_state(self.root), other)['warnings'])
 
     def test_changed_detail_evidence_blocks_feedback_and_refresh(self):
         self.review(self.first, True)

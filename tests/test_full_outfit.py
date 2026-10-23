@@ -280,14 +280,15 @@ class FullOutfitTests(unittest.TestCase):
         asset=self.candidate(); self.review(asset); self.feedback(asset)
         self.assertEqual(outfits.export_pack(self.root)['manifest']['sprites'][0]['outfit_components'],self.components)
 
-    def test_canvas_mismatch_allows_review_but_keeps_formal_export_gate(self):
+    def test_canvas_mismatch_allows_adoption_and_export_with_warning(self):
         fixture(self.raw,'#556677',size=(100,150))
         asset=self.candidate(); self.review(asset)
         _,feedback=self.feedback(asset)
-        self.assertEqual(feedback['next_action'],'blocked')
+        self.assertEqual(feedback['next_action'],'export')
         state=outfits.read_state(self.root)
-        self.assertEqual(state['selected'],{})
-        self.assertIn('CANVAS_MISMATCH',outfits.check_asset(self.root,state,state['assets'][0])['errors'])
+        self.assertEqual(list(state['selected'].values()),[asset['id']])
+        self.assertIn('CANVAS_MISMATCH',outfits.check_asset(self.root,state,state['assets'][0])['warnings'])
+        self.assertIn('CANVAS_MISMATCH',outfits.export_pack(self.root)['warnings'])
         self.assertEqual((self.root/asset['path']).read_bytes(),self.raw.read_bytes())
 
     def test_human_revision_uses_chosen_earlier_full_outfit(self):

@@ -104,15 +104,16 @@ class QualityTests(unittest.TestCase):
         saved=studio.read_state(self.root)['assets'][0]['quality_review']
         self.assertEqual(saved['asset_sha256'],asset['sha256'])
 
-    def test_canvas_mismatch_does_not_block_visual_review_or_preview_delivery(self):
+    def test_canvas_mismatch_does_not_block_visual_review_delivery_or_acceptance(self):
         asset=self.candidate((32,48)); result=self.review(asset)
-        self.assertFalse(result['technical_passed'])
+        self.assertTrue(result['technical_passed'])
         self.assertEqual(result['quality_status'],'passed')
         delivered=studio.delivery_assets(self.root,[asset['id']])['delivery'][0]
         self.assertIn('CANVAS_MISMATCH',delivered['warnings'])
         self.assertEqual(delivered['canvas'],{'width':32,'height':48})
-        self.assertEqual(studio.read_state(self.root)['assets'][0]['validation']['errors'],['CANVAS_MISMATCH'])
-        self.code('TECHNICAL_CHECK_FAILED',studio.review_asset,self.root,asset['id'],'accepted')
+        self.assertIn('CANVAS_MISMATCH',studio.read_state(self.root)['assets'][0]['validation']['warnings'])
+        studio.review_asset(self.root,asset['id'],'accepted')
+        self.assertIn('CANVAS_MISMATCH',studio.export_pack(self.root)['warnings'])
         self.assertTrue((self.root/asset['path']).is_file())
 
     def test_canvas_exception_does_not_hide_other_technical_failures(self):

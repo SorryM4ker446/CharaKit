@@ -4,6 +4,8 @@ __pycache__/
 .dev-checks/
 dist/
 art-output/
+output/playwright/
+.playwright-cli/
 
 # Local credentials and operating-system files
 .env

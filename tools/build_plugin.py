@@ -13,7 +13,7 @@ def build(root: Path, output: Path) -> dict:
     required = {"plugin.json", "modules.json", "ROADMAP.md", "lib/studio_core.py",
                 "lib/delivery_report.py", "lib/localization.py", "lib/task_localization.py", "lib/text_layout.py",
                 "locales/en.json", "locales/zh-CN.json",
-                "references/delivery-report.md", "references/localization.md",
+                "references/delivery-report.md", "references/localization.md", "references/qa-methods.md",
                 "lib/edit_references.py", "references/edit-references.md",
                 "skills/charakit-outfits/references/replacement-guide.md",
                 "skills/charakit-outfits/references/full-outfit-guide.md",

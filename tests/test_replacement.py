@@ -176,7 +176,7 @@ class ReplacementTests(unittest.TestCase):
         with zipfile.ZipFile(result['export']) as archive:
             self.assertEqual(archive.read(sprite['path']), self.raw.read_bytes())
 
-    def test_mixed_recolor_and_replacement_report_and_canvas_export_gate(self):
+    def test_mixed_recolor_and_replacement_report_and_canvas_export_warning(self):
         recolor = outfits.add_asset(self.root, self.raw, 'coat_blue', 'coat', 'blue')['asset']
         preview = self.root / 'preview' / 'recolor.png'; outfits.make_preview(self.root, preview, [recolor['id']])
         outfits.record_quality(self.root, recolor['id'], assessment(domain='garment_recolor'), [preview])
@@ -186,7 +186,9 @@ class ReplacementTests(unittest.TestCase):
         self.assertEqual(len(report['images']), 2)
         data = json.loads(Path(report['manifest']).read_text(encoding='utf-8'))
         self.assertEqual({c['kind'] for c in data['cases']}, {'garment_recolor','garment_replace'})
-        self.code('TECHNICAL_CHECK_FAILED', outfits.review_asset, self.root, replacement['id'], 'accepted')
+        result = outfits.review_asset(self.root, replacement['id'], 'accepted')
+        self.assertIn('CANVAS_MISMATCH', result['warnings'])
+        self.assertIn('CANVAS_MISMATCH', outfits.export_pack(self.root)['warnings'])
 
     def test_tampered_project_or_brief_operation_is_rejected(self):
         asset = self.candidate()

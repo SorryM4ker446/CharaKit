@@ -5,6 +5,8 @@ description: Edit a single visual novel character into static dialogue poses, in
 
 # CharaKit Poses
 
+Apply the shared [repeatable QA methods](../../references/qa-methods.md) during internal review. Inspect new hand/finger/prop extremities for clipping separately from head/shoe placement, and inspect contacts and occlusion at detail scale. Numerical alignment alone cannot establish completeness and does not authorize automatic registration or head replacement.
+
 Create a complete static illustration from an existing single-character source. Supports `natural_standing`, `hand_on_hip`, `wave`, `palm_up`, `hand_on_chest`, `hands_clasped`, `hands_behind_back` and `arms_crossed`. Read the [pose guide](references/pose-guide.md) to define the action and distinguish permitted movement from protected design. Larger turns, sitting, leaning, object manipulation, combat, animation and rigging remain deferred. Pure clothing/object edits use [Outfits](../charakit-outfits/SKILL.md); expression changes use [Expressions](../charakit-expressions/SKILL.md). Keep projects and state independent; users can manually use an exported PNG as another module's source.
 
 ## Define and prepare
@@ -29,7 +31,7 @@ Each requested result has at most three image-tool attempts including the first,
 
 Follow the reserved strategy. New initial pools can use `source_restart` for the third attempt when the action passes but the same identity/protection checks stall across two candidates. Submit only the source and every already-bound pose reference; the failed candidate remains review evidence, not a tool input. Reapply the exact prepared action, anatomical side, hand orientation and anchors through the brief; do not restore the old pose or add new reference images mid-pool. Human revisions keep their user-chosen baseline. See the shared [restart policy](../../references/candidate-review.md#restart-after-stalled-protection).
 
-Inspect full images, facial design, shoulder/elbow/wrist/finger anatomy, balance/support, contacts, clothing response, overlaps, framing, requested anchors and edges on light and dark backgrounds. Canvas mismatch can be viewed and recorded independently of visual scoring, but formal acceptance/export still requires the source canvas. Never resize, align, recolor, repair alpha or composite candidate artwork locally.
+Inspect full images, facial design, shoulder/elbow/wrist/finger anatomy, balance/support, contacts, clothing response, overlaps, framing, requested anchors and edges on light and dark backgrounds. Canvas mismatch is a warning for review, acceptance, selection and PNG/ZIP export. Show the source and actual sizes and explain that files are not automatically resized. Never resize, align, recolor, repair alpha or composite candidate artwork locally.
 
 Review pages default to full images only for Poses. Add at most four localized regions through `--inspection-file` when actual positions justify them: each has `id`, `box`, `label`, `reason`. Boxes use common source-canvas coordinates; choose a region containing the relevant part in every compared image, including source and revision parent. Reinspect positions for every batch. If a useful common region is impossible, use the full image and direct inspection of each raw image. Independent per-candidate boxes and automatic landmark detection are not implemented. A detail preview cannot establish whole-image pose/framing preservation.
 
