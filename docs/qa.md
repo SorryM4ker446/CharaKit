@@ -2,6 +2,21 @@
 
 本流程把第28—32轮实验中有效的检查方式保留为项目工具、测试和开发规范。文件行为与图像观感分开验收；自动化通过不生成画质评分，也不代表用户采用。
 
+## 发行包与全新安装
+
+插件单体 ZIP 继续服务已有市场；公开发行时使用包含 `.agents/plugins/marketplace.json`、完整插件、MIT License 和发行说明的市场 ZIP：
+
+```shell
+python tools/build_plugin.py --marketplace --output dist/charakit-0.2.0-beta.1.zip
+python tools/verify_release.py --archive dist/charakit-0.2.0-beta.1.zip --output .dev-checks/release-install --codex
+```
+
+输出目录必须是新目录。验证器检查 ZIP 路径和完整性、市场入口、版本与许可证，将最终包解压到独立目录，创建不继承系统依赖的 Python 虚拟环境并安装包内运行依赖。三个模块均执行已安装入口的 help/init/status；另用合成图片验证异尺寸提醒、原字节保留、预览和未评审结果不可导出，不生成或采用真实素材。
+
+`--codex` 要求本机存在 Codex CLI，并通过其真实市场注册、插件安装命令写入专用测试配置与全新缓存；随后逐文件比较缓存与 ZIP 指纹，再从该缓存运行助手。省略时只验证解压后的插件，汇总中的 `host_installation` 明确记为 `not_run`，不能称为宿主安装通过。验证记录保留包 SHA-256、版本、依赖版本、实际命令、日志和检查结果。
+
+两平台 CI 在统一 QA 后构建市场发行包并执行干净运行环境验证；Linux 额外执行 Chromium。CI 不自动安装 Codex 宿主，真实宿主安装须以带 `--codex` 的独立记录为准。每个平台保留发行包和指定 QA 日志，不上传虚拟环境、测试配置、用户素材或安装缓存。
+
 ## 日常代码回归
 
 ```shell

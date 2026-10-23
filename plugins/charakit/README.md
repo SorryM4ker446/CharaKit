@@ -2,7 +2,7 @@
 
 **Edit visual novel character illustrations in Codex.** This plugin provides expression variants, clothing edits, accessory / prop edits and static dialogue poses with versioned candidates, human review, and selected PNG exports.
 
-Development version **0.1.34** · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
+Public beta **0.2.0-beta.1** · [MIT License](LICENSE) · [Release notes](RELEASE_NOTES.md) · [Repository](https://github.com/SorryM4ker446/CharaKit) · [中文介绍](https://github.com/SorryM4ker446/CharaKit/blob/main/README.zh-CN.md)
 
 Codex generates artwork through its available image editing tool. The bundled Python helper preserves raw files and manages comparisons, review records, revisions, and packaging.
 
@@ -16,7 +16,7 @@ Reports, HTML reviews and PNG previews inherit the assistant's persisted task la
 | `$charakit-outfits` | `recolor`, `replace`, `outfit_replace`, and `prop_edit` with `add`, `remove`, or `replace` actions |
 | `$charakit-poses` | `natural_standing`, `hand_on_hip`, `wave`, `palm_up`, `hand_on_chest`, `hands_clasped`, `hands_behind_back`, `arms_crossed`; explicit anatomical sides and arm/contact/overlap requirements |
 
-The modules use independent projects. Manually use an exported PNG as another module's source. Eight static dialogue poses are available; actual pose generation quality needs validation. Complex poses and object interaction remain [planned](ROADMAP.md). See the [Poses Skill](skills/charakit-poses/SKILL.md) and [pose guide](skills/charakit-poses/references/pose-guide.md).
+The modules use independent projects. Manually use an exported PNG as another module's source. Eight static dialogue poses are available. Real cross-module calls yielded 11 user-accepted outputs on one source character, including two dialogue poses; broader pose, character and style coverage remains unverified. Complex poses and object interaction remain [planned](ROADMAP.md). See the [Poses Skill](skills/charakit-poses/SKILL.md) and [pose guide](skills/charakit-poses/references/pose-guide.md).
 
 ## Setup
 
@@ -97,3 +97,7 @@ The guides include command details and legacy compatibility rules. See [GitHub R
 Inputs are static PNG/JPEG images up to 50 MiB and 40 million pixels. Final assets must be PNGs passing applicable transparency and integrity checks. Canvas mismatch is a warning, not a blocker for acceptance, selection or PNG/ZIP export. Show the source and actual sizes; export preserves the original PNG bytes.
 
 The helper preserves generated image bytes; it does not generate, resize, repaint, composite, or change alpha. Image editing can still alter protected details, so visual inspection remains necessary. CharaKit supplies no image model, external image API, MCP service, animation, or lip synchronization.
+
+## License
+
+Code and documentation are licensed under the [MIT License](LICENSE). User artwork, references, third-party assets and image-tool services are not relicensed by CharaKit.
