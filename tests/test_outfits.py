@@ -118,9 +118,10 @@ class OutfitTests(unittest.TestCase):
 
     def test_failed_candidate_is_kept_without_replacing_valid_selection(self):
         first = self.accepted()
-        failed = self.candidate(size=(48, 72))
+        failed = self.candidate(size=(48, 72), transparent=False)
         self.assertTrue((self.root / failed["path"]).is_file())
-        self.assertIn("CANVAS_MISMATCH", failed["validation"]["errors"])
+        self.assertIn("CANVAS_MISMATCH", failed["validation"]["warnings"])
+        self.assertIn("NO_TRANSPARENCY", failed["validation"]["errors"])
         self.assert_code("TECHNICAL_CHECK_FAILED", outfits.review_asset, self.root, failed["id"], "accepted")
         self.assert_code("ART_REVIEW_REQUIRED", outfits.select_asset, self.root, failed["id"])
         self.assertEqual(outfits.export_pack(self.root)["asset_ids"], [first["id"]])
@@ -222,7 +223,7 @@ class OutfitTests(unittest.TestCase):
         self.assertEqual(asset["target"], "外套面料")
         self.assertEqual((self.root / asset["prompt_path"]).read_text(encoding="utf-8"), prompt.read_text(encoding="utf-8"))
         wrong = self.folder / "wrong.png"
-        fixture(wrong, size=(48, 72))
+        fixture(wrong, size=(48, 72), transparent=False)
         result = self.cli(SCRIPT, "add", "--project", self.root, "--outfit", "coat_red", "--target", "外套面料", "--color", "红色", "--image", wrong)
         self.assertEqual(result.returncode, 2)
         saved = json.loads(result.stdout)

@@ -83,12 +83,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual((self.root / angry["path"]).read_bytes(), original)
         self.assertTrue((self.root / happy["path"]).is_file())
 
-    def test_failed_canvas_is_retained_but_cannot_be_accepted(self):
+    def test_different_canvas_is_accepted_with_warning_and_unchanged_bytes(self):
         asset = self.candidate(size=(32, 48))
         self.assertTrue((self.root / asset["path"]).is_file())
-        self.assertEqual(asset["technical_status"], "failed")
-        self.assertIn("CANVAS_MISMATCH", asset["validation"]["errors"])
-        self.assert_code("TECHNICAL_CHECK_FAILED", studio.review_asset, self.root, asset["id"], "accepted")
+        self.assertEqual(asset["technical_status"], "passed")
+        self.assertIn("CANVAS_MISMATCH", asset["validation"]["warnings"])
+        accepted = studio.review_asset(self.root, asset["id"], "accepted")
+        self.assertIn("CANVAS_MISMATCH", accepted["warnings"])
+        self.assertIn('32 × 48', accepted['warning_messages'][0])
+        exported = studio.export_pack(self.root)
+        sprite = exported['manifest']['sprites'][0]
+        self.assertEqual(sprite['canvas'], {'width': 32, 'height': 48})
+        with zipfile.ZipFile(exported['export']) as archive:
+            self.assertEqual(archive.read(sprite['path']), (self.root / asset['path']).read_bytes())
 
     def test_technical_pass_does_not_imply_art_acceptance(self):
         asset = self.candidate()
@@ -162,8 +169,8 @@ class WorkflowTests(unittest.TestCase):
 
     def test_new_preset_failures_and_unknown_ids_preserve_existing_project(self):
         legacy = self.accepted("happy")
-        failed = self.candidate("crying", size=(32, 48))
-        self.assertIn("CANVAS_MISMATCH", failed["validation"]["errors"])
+        failed = self.candidate("crying", size=(32, 48), transparent=False)
+        self.assertIn("NO_TRANSPARENCY", failed["validation"]["errors"])
         self.assert_code("TECHNICAL_CHECK_FAILED", studio.review_asset, self.root, failed["id"], "accepted")
         self.assertEqual(studio.export_pack(self.root)["asset_ids"], [legacy["id"]])
         state_before = (self.root / "run.json").read_bytes()
@@ -275,15 +282,16 @@ class WorkflowTests(unittest.TestCase):
         self.assert_code("INVALID_FACE_BOX", studio.make_preview, self.root, output, face_box=[0, 0, 100, 100])
         self.assertFalse(output.exists())
 
-    def test_failed_add_cli_has_structured_report_and_keeps_candidate(self):
+    def test_different_canvas_add_cli_succeeds_with_structured_warning(self):
         path = self.folder / "wrong-size.png"
         fixture(path, size=(32, 48))
         result = subprocess.run([sys.executable, str(SCRIPT), "add", "--project", str(self.root),
                                  "--image", str(path), "--expression", "angry"],
                                 capture_output=True, encoding="utf-8", env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"})
-        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.returncode, 0)
         response = json.loads(result.stdout)
-        self.assertFalse(response["passed"])
+        self.assertTrue(response["passed"])
+        self.assertIn('CANVAS_MISMATCH', response['asset']['validation']['warnings'])
         self.assertTrue((self.root / response["asset"]["path"]).is_file())
 
     def test_localized_preview_cli_changes_labels_without_changing_assets_or_records(self):
@@ -412,7 +420,7 @@ class WorkflowTests(unittest.TestCase):
     def test_failed_mouth_candidate_is_retained_and_cannot_replace_valid_selection(self):
         closed = self.candidate("worried", mouth_state="closed")
         studio.review_asset(self.root, closed["id"], "accepted")
-        failed = self.candidate("worried", size=(32, 48), mouth_state="open")
+        failed = self.candidate("worried", size=(32, 48), mouth_state="open", transparent=False)
         self.assertTrue((self.root / failed["path"]).exists())
         self.assert_code("TECHNICAL_CHECK_FAILED", studio.review_asset, self.root, failed["id"], "accepted")
         self.assert_code("ART_REVIEW_REQUIRED", studio.select_asset, self.root, failed["id"])

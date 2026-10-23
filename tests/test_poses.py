@@ -336,14 +336,15 @@ class PoseTests(unittest.TestCase):
         for check in checks: check.update(score=5, status='passed', observed='Synthetic finding.')
         self.code('POOL_IMPORT_REQUIRED', poses.record_quality, self.root, asset['id'], data, [])
 
-    def test_raw_canvas_mismatch_is_reviewable_but_never_exported(self):
+    def test_raw_canvas_mismatch_exports_unchanged_with_warning(self):
         wrong = self.folder / 'wrong.png'
         fixture(wrong, size=(110,160))
         asset = self.candidate(image=wrong)
-        self.assertIn('CANVAS_MISMATCH', asset['validation']['errors'])
+        self.assertIn('CANVAS_MISMATCH', asset['validation']['warnings'])
         self.review(asset)
         _, result = self.feedback(asset)
-        self.assertEqual(result['next_action'], 'blocked')
+        self.assertEqual(result['next_action'], 'export')
+        self.assertIn('CANVAS_MISMATCH', poses.export_pack(self.root)['warnings'])
         self.assertEqual((self.root / asset['path']).read_bytes(), wrong.read_bytes())
 
     def test_source_reuse_stays_reviewed_and_attributable(self):

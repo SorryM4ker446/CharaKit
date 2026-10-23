@@ -180,7 +180,7 @@ def validate_image(path: Path, canvas: dict, mode: str) -> dict:
     if info["format"] != "PNG":
         errors.append("OUTPUT_NOT_PNG")
     if (info["width"], info["height"]) != (canvas["width"], canvas["height"]):
-        errors.append("CANVAS_MISMATCH")
+        warnings.append("CANVAS_MISMATCH")
     if info["alpha_range"][1] == 0:
         errors.append("EMPTY_IMAGE")
     if mode == "transparent_sprite":
@@ -831,12 +831,28 @@ def validate_quality_record(state: dict, asset: dict, review: dict) -> None:
 
 
 def delivery_validation(report: dict) -> dict:
-    """Temporarily ignore only canvas mismatch for visual review and preview delivery."""
+    """Normalize legacy validation records to the shared nonblocking canvas policy."""
     errors = [code for code in report["errors"] if code != "CANVAS_MISMATCH"]
     warnings = list(report["warnings"])
-    if "CANVAS_MISMATCH" in report["errors"]:
+    if "CANVAS_MISMATCH" in report["errors"] and "CANVAS_MISMATCH" not in warnings:
         warnings.append("CANVAS_MISMATCH")
     return {**report, "passed": not errors, "errors": errors, "warnings": warnings}
+
+
+def canvas_metadata(root: Path, state: dict, report: dict) -> dict:
+    """Expose actual dimensions and a localized notice without changing image bytes."""
+    report = delivery_validation(report)
+    actual = report.get("image")
+    canvas = {key: actual[key] for key in ("width", "height")} if actual else None
+    messages = []
+    if "CANVAS_MISMATCH" in report["warnings"] and canvas:
+        t = presentation_context([root]).texts("report")
+        original = state["canvas"]
+        messages.append(f'{t["canvas_warning"]} · {t["source"]}: '
+                        f'{original["width"]} × {original["height"]}; '
+                        f'{t["dimensions"]}: {canvas["width"]} × {canvas["height"]}')
+    return {"source_canvas": dict(state["canvas"]), "canvas": canvas,
+            "warnings": report["warnings"], "warning_messages": messages}
 
 
 def quality_status(root: Path, state: dict, asset: dict) -> str:
@@ -1183,8 +1199,7 @@ def delivery_assets(root: Path, ids: list[str] | None = None) -> dict:
             raise StudioError("QUALITY_CHECK_FAILED", f"{asset_id}: a passed internal review is required for delivery, including legacy candidates.")
         ready.append({"asset_id": asset_id, "image": str(contained(root, asset["path"])),
                       "quality_score": asset["quality_review"]["result"]["total"], "art_review_status": asset["art_review_status"],
-                      "canvas": {"width": report["image"]["width"], "height": report["image"]["height"]},
-                      "warnings": report["warnings"]})
+                      **canvas_metadata(root, state, report)})
     return {"delivery": ready, "note": "Internally reviewed, ready for user feedback; not automatically accepted, selected or exported."}
 
 
@@ -1413,6 +1428,7 @@ def review_asset(root: Path, asset_id: str, status: str, note: str = "") -> dict
         workflow_call("require_user_feedback", root, state, asset)
         require_fidelity(asset)
         require_quality(root, state, asset)
+    metadata = canvas_metadata(root, state, report)
     asset.update({"art_review_status": status, "review_note": note, "reviewed_at": timestamp(),
                   "validation": report, "technical_status": "passed" if report["passed"] else "failed"})
     if status == "accepted":
@@ -1420,7 +1436,8 @@ def review_asset(root: Path, asset_id: str, status: str, note: str = "") -> dict
     elif state["selected"].get(asset_slot(asset)) == asset_id:
         del state["selected"][asset_slot(asset)]
     write_state(root, state)
-    return {"asset_id": asset_id, "art_review_status": status, "selected": state["selected"]}
+    return {"asset_id": asset_id, "art_review_status": status, "selected": state["selected"],
+            **metadata}
 
 
 def select_asset(root: Path, asset_id: str) -> dict:
@@ -1434,9 +1451,10 @@ def select_asset(root: Path, asset_id: str) -> dict:
     require_fidelity(asset)
     require_quality(root, state, asset)
     workflow_call("require_user_feedback", root, state, asset)
+    metadata = canvas_metadata(root, state, report)
     state["selected"][asset_slot(asset)] = asset_id
     write_state(root, state)
-    return {"selected": state["selected"]}
+    return {"selected": state["selected"], **metadata}
 
 
 def font(size: int) -> ImageFont.ImageFont:
@@ -1538,6 +1556,8 @@ def make_preview(root: Path, output: Path, ids: list[str] | None = None,
         lines.append((label, 15, '#222222'))
         if report and report['errors']:
             lines.append((', '.join(labels.get(code, t[code]) for code in report['errors']), 14, '#b42318'))
+        if report and 'CANVAS_MISMATCH' in report['warnings']:
+            lines.append((labels.get('CANVAS_MISMATCH', t['CANVAS_MISMATCH']), 14, '#b45309'))
         if entry['id'] != 'SOURCE' and ('edit_brief' in entry or 'fidelity_review' in entry):
             status = fidelity_status(entry)
             lines.append((labels.get('fidelity_' + status, t['fidelity_' + status]), 14,
@@ -1620,7 +1640,8 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         payloads[archive_path] = data
         sprites.append({"path": archive_path, "asset_id": asset_id,
                         "source_version": asset["version"], "sha256": asset["sha256"],
-                        "technical_status": "passed", "art_review_status": "accepted"})
+                        "technical_status": "passed", "art_review_status": "accepted",
+                        **canvas_metadata(root, state, report)})
         if "quality_review" in asset:
             sprites[-1]["quality_review"] = asset["quality_review"]
         if "human_feedback" in asset:
@@ -1653,7 +1674,8 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         seen.add(slot)
     manifest = {"schema_version": state["schema_version"] if is_pose or is_outfit or state["schema_version"] == "2.0" else ("1.1" if has_mouth_states else "1.0"), "character_key": state["character_key"],
                 "asset_kind": "full_character_pose" if is_pose else "full_character_outfit" if is_outfit else "full_character_expression", "background_mode": state["background_mode"],
-                "canvas": state["canvas"], "sprites": sprites}
+                "canvas": state["canvas"], "source_canvas": state["canvas"],
+                "canvas_scope": "source", "sprites": sprites}
     payloads["manifest.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     if preview:
         if image_info(preview)["format"] != "PNG":
@@ -1671,7 +1693,10 @@ def export_pack(root: Path, output: Path | None = None, ids: list[str] | None = 
         with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for name, data in payloads.items():
                 archive.writestr(name, data)
-    return {"export": str(output.resolve()), "asset_ids": chosen, "manifest": manifest}
+    return {"export": str(output.resolve()), "asset_ids": chosen, "manifest": manifest,
+            "warnings": sorted({code for sprite in sprites for code in sprite["warnings"]}),
+            "warning_messages": [f'{sprite["asset_id"]}: {message}' for sprite in sprites
+                                 for message in sprite["warning_messages"]]}
 
 
 @presentation_errors
