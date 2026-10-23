@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<link rel="icon" href="data:,"><title>CharaKit QA · 原始立绘检查</title>
+<style>
+*{box-sizing:border-box}body{margin:24px;background:#edf0f4;color:#202736;font:16px system-ui}main{max-width:1400px;margin:auto}h1{font-size:24px}p{line-height:1.6}select,button{font:inherit;padding:8px;margin:4px;max-width:100%}label{display:inline-block;margin:4px}.panels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.panel{min-width:0;padding:12px;border-radius:12px;background:white}.stage{position:relative;height:440px;overflow:auto;background:#faf8f3;border:1px solid #abb5bf}.stage img{display:block;max-width:none;margin:0 auto;object-fit:contain}.dark .stage{background:#25272c}.checker .stage{background:repeating-conic-gradient(#ccc 0% 25%,#fff 0% 50%) 0/20px 20px}.stage .anchor{position:relative;min-width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center}.stage img{flex-shrink:0}h2{font-size:17px;overflow-wrap:anywhere}output{display:block;font-size:14px;overflow-wrap:anywhere}.notice{padding:12px;background:#fff3d9;border-left:4px solid #b66c00}.error{color:#a52118}.meta{font-size:14px}a{color:#1355a5}@media(max-width:700px){body{margin:10px}.panels{grid-template-columns:1fr}}
+</style>
+<main><h1>原始立绘 QA 检查</h1>
+<p>检查快照，不是采用或交付。没有自动画质评分；候选可能尚未评审或已失败。请按修改范围检查目标与保护区域，保留实际观察。</p>
+<div><label>第一帧 <select id="first"></select></label><label>第二帧 <select id="second"></select></label><button id="source">第一帧设为第二帧的原图</button></div>
+<div><label>显示高度 <select id="height"><option selected>420</option><option>720</option></select></label><label>显示方式 <select id="mode"><option value="height">统一显示高度</option><option value="scale">相同像素缩放倍率</option><option value="native">原始像素细看（可滚动）</option></select></label><label>底色 <select id="background"><option value="light">浅色</option><option value="dark">深色</option><option value="checker">棋盘格</option></select></label><button id="switch">切换一帧</button><button id="play" aria-pressed="false">自动切换 · 600ms</button></div>
+<p id="warning" class="notice" role="note"></p><p id="errors" class="error" role="alert"></p>
+<p class="notice">用于连续口型切换时，请填写 <a href="mouth-continuity.template.json" download>口型成对验收记录</a> 并运行 audit-mouth。嘴形、眼眉、头部、腰线裙摆、鞋位及边缘须分别记录；未检查或存在疑问不能记为连续性通过。静态导出与引擎集成另行判断。</p>
+<div class="panels">
+<section class="panel"><h2 id="label-a"></h2><div class="stage"><div class="anchor"><img id="image-a" alt="第一帧"></div></div><output id="meta-a"></output></section>
+<section class="panel"><h2 id="label-b"></h2><div class="stage"><div class="anchor"><img id="image-b" alt="第二帧"></div></div><output id="meta-b"></output></section>
+<section class="panel"><h2>切换播放</h2><div class="stage"><div class="anchor"><img id="image-live" alt="当前帧"></div></div><output id="live-meta"></output></section>
+</div>
+<p>统一高度仅改变显示布局，不代表人物部位已对齐。底部中心对齐的是画布；头、鞋和新手势轮廓需单独观察。原始像素模式可滚动检查细节。不同姿势或服装的有意轮廓变化应按其修改范围判断。</p>
+<p>重点：完整脸部与身份设计；未要求修改的衣物、配饰与姿势；接触、遮挡、手指；浅深底透明边缘；新伸出的手脚是否裁切；口型对之间的眼眉、腰线、裙摆、鞋位是否漂移。口型是静态帧，循环播放不代表已通过说话动画验收。</p>
+<p><a href="manifest.json">文件与状态快照</a> · <a href="observations.template.json" download>下载未评分观察模板</a>。请另存实际检查记录，注明显示高度、用途及未检查项；页面不会更改项目选择、评分或反馈。</p></main>
+<script id="qa-data" type="application/json">__QA_DATA__</script>
+<script>
+const data=JSON.parse(document.getElementById('qa-data').textContent), assets=data.assets;
+const el=id=>document.getElementById(id), errors=[];
+let current=0,timer=null,changes=0;
+for(const id of ['first','second'])for(const item of assets){const option=document.createElement('option');option.value=item.id;option.textContent=item.label;el(id).append(option);}
+el('second').selectedIndex=Math.min(1,assets.length-1);
+const selected=()=>['first','second'].map(id=>assets.find(x=>x.id===el(id).value));
+function error(item){if(!errors.includes(item.id))errors.push(item.id);el('errors').textContent='图片加载失败：'+errors.join(', ');}
+const preloads=assets.map(item=>{const image=new Image();image.onerror=()=>error(item);image.src=item.src;return image;});
+function draw(id,item){const img=el(id),h=+el('height').value,mode=el('mode').value;img.src=item.src;img.alt=item.label;img.style.height=(mode==='native'?item.height:mode==='scale'?item.height*h/selected()[0].source_canvas.height:h)+'px';img.style.width='auto';img.onerror=()=>error(item);const anchor=img.parentElement;anchor.style.minHeight=(mode==='native'?Math.max(h,item.height):h)+'px';anchor.style.minWidth=(mode==='native'?item.width:0)+'px';}
+function live(){const item=selected()[current];draw('image-live',item);el('live-meta').textContent=item.label;changes++;}
+function update(){const pair=selected();for(let i=0;i<2;i++){const item=pair[i],suffix=i?'b':'a';draw('image-'+suffix,item);el('label-'+suffix).textContent=item.label;el('meta-'+suffix).textContent=`${item.width} × ${item.height} · ${item.review_status} · ${item.selected?'已选中':'未选中'} · ${[...item.errors,...item.warnings].join(', ')}`;}for(const stage of document.querySelectorAll('.stage'))stage.style.height=(+el('height').value+20)+'px';el('warning').textContent='尺寸不同允许导出，并保留原始文件尺寸；仍需通过其他交付门槛。当前两帧：'+pair.map(x=>`${x.width} × ${x.height}（原图 ${x.source_canvas.width} × ${x.source_canvas.height}）`).join(' / ')+'。本页不缩放文件、不自动配准，不表示可交付。';live();}
+function stop(){clearInterval(timer);timer=null;el('play').textContent='自动切换 · 600ms';el('play').setAttribute('aria-pressed','false');}
+for(const id of ['first','second','height','mode'])el(id).onchange=()=>{current=0;update();};
+el('source').onclick=()=>{el('first').value=selected()[1].source_id;current=0;update();};
+el('background').onchange=()=>document.body.className=el('background').value;
+el('switch').onclick=()=>{current=1-current;live();};
+el('play').onclick=()=>{if(timer)stop();else{timer=setInterval(()=>{current=1-current;live();},600);el('play').textContent='暂停';el('play').setAttribute('aria-pressed','true');}};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')stop();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});
+window.qa={data,assets,preloads,errors,get changes(){return changes;}};update();
+</script></html>
