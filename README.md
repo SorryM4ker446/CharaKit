@@ -23,7 +23,7 @@ Outfits has four edit types:
 | `outfit_replace` | Replace an explicitly defined clothing ensemble | Change into a Japanese school uniform, including socks and shoes |
 | `prop_edit` | Add, remove, or replace a scoped accessory or prop | Add glasses or remove a weapon |
 
-All three modules support scoped reference images, bounded redraws, human feedback, and revisions of a chosen candidate. Each uses an independent project; you can manually use an exported PNG as another module's source. Poses supports eight static dialogue actions; complex poses and object manipulation remain [planned](plugins/charakit/ROADMAP.md). Real calls across the modules produced 11 user-accepted outputs on one source character; this does not establish success rates across characters, styles or all pose presets. See the [beta release notes](plugins/charakit/RELEASE_NOTES.md) for the tested scope and limitations.
+All three modules support scoped reference images, bounded redraws, human feedback, and revisions of a chosen candidate. Each uses an independent project; you can manually use an exported PNG as another module's source. Poses supports eight static dialogue actions; complex poses and object manipulation remain [planned](plugins/charakit/ROADMAP.md). Real-art validation covers a limited artwork sample; quality across characters, styles and all pose presets requires broader validation. See the [beta release notes](plugins/charakit/RELEASE_NOTES.md) for the tested scope and limitations.
 
 ## Install
 

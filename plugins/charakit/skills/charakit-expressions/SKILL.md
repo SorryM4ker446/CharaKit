@@ -5,7 +5,7 @@ description: Generate full visual novel character expressions and static mouth-o
 
 # CharaKit Expressions
 
-Apply the shared [repeatable QA methods](../../references/qa-methods.md) during internal review. For intended mouth/expression switching, inspect the actual frame pair at normal display sizes as well as full-face and protected-region details. Keep static usability, switching continuity, file checks and actual user acceptance distinct.
+Apply the shared [repeatable QA methods](../../references/qa-methods.md) during internal review. Inspect each requested static expression or mouth state at normal display sizes as well as full-face and protected-region details. Preview switching helps compare variants; file checks and actual user acceptance remain distinct.
 
 The available expression module of the CharaKit plugin. Deliver complete, independent character images that a game can switch between. Edit the user's source artwork and change only the requested facial expression.
 

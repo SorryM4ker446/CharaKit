@@ -158,8 +158,6 @@ Use helper **0.1.13 or later** for mandatory domain checks, and **0.1.14 or late
 
 Single-garment replacement uses `garment_replace`: `target_garment`, `fit_interfaces`, `coverage_anatomy`, `face_expression`, `non_target_protection`, and `rendering`. Apply the [replacement permissions and checklist](../skills/charakit-outfits/references/replacement-guide.md); changed cut/material requested for the target is permitted, while body/pose and separate components stay protected. Recolor observations cannot stand in for replacement review.
 
-For static mouth assets used as a continuous pair, also apply the pair-level acceptance in [QA methods](qa-methods.md). Inspect and record non-mouth continuity (eyes/brows, head, waist/skirt, feet and framing) separately from mouth correctness. A static asset's score or acceptance does not establish continuous speaking-frame readiness; report failed/uncertain/uninspected continuity explicitly without rewriting historical ratings.
-
 ## Full outfit specialization
 
 For `outfit_replace`, follow the [full outfit guide](../skills/charakit-outfits/references/full-outfit-guide.md). Keep the five rubric 1.2 weights and gates. Cover each inventory item with a target criterion and record `domain_review.component_checks` keyed by the exact inventory IDs, each with status/evidence. Overall design, completion, ensemble coherence, fit, anatomy, face/expression, protected remainder and rendering are independent domain checks. A missing item invalidates the record; failed/uncertain items veto delivery regardless of total. Outfit-specific checks do not lower identity or protection requirements. New full outfits require candidate pools and actual human acceptance before delivery.

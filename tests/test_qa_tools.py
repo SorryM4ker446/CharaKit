@@ -120,6 +120,10 @@ class QAToolTests(unittest.TestCase):
         observations = json.loads((output / 'observations.template.json').read_text(encoding='utf-8'))
         self.assertTrue(all(x['status'] == 'not_reviewed' for a in observations['assets'] for x in a['checks'].values()))
         self.assertFalse(observations['engine_tested'])
+        self.assertFalse((output / 'mouth-continuity.template.json').exists())
+        page = (output / 'index.html').read_text(encoding='utf-8')
+        self.assertNotIn('audit-mouth', page)
+        self.assertNotIn('mouth-continuity.template.json', page)
         self.assertEqual(before, {str(p): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
         with self.assertRaises(FileExistsError):
             qa.inspect_projects([self.root], output, True, core=studio)
@@ -141,6 +145,16 @@ class QAToolTests(unittest.TestCase):
                                  '--project', str(self.root), '--archive', str(broken)], capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(json.loads(result.stdout)['passed'])
+
+    def test_retired_mouth_audit_command_cannot_create_results(self):
+        output = self.folder / 'retired-results'
+        result = subprocess.run([sys.executable, str(REPO / 'tools/qa.py'), 'audit-mouth',
+                                 '--inspection', str(self.folder / 'missing-inspection'),
+                                 '--record', str(self.folder / 'missing-record.json'), '--output', str(output)],
+                                capture_output=True, encoding='utf-8')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('invalid choice', result.stderr)
+        self.assertFalse(output.exists())
 
     def test_browser_fixture_never_manufactures_accepted_or_passing_art(self):
         output = self.folder / 'browser'
