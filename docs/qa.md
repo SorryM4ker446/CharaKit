@@ -21,6 +21,8 @@ python tools/qa.py run --output .dev-checks/qa-002 --browser
 
 CI 在 Linux 和 Windows 运行相同入口；Linux 额外运行 Chromium。检查真正由助手生成的HTML，不依赖手写的替代页面。浏览器测试使用合成图片、独立临时项目、本地随机端口，下载的反馈带有`QA FIXTURE`标记且不提交到项目。断言失败、页面异常或图片加载失败都会导致失败。未启用浏览器检查时，汇总明确标记`not_run`。
 
+页面模板保存在 Python 中：开发检查页由 `tools/qa_view.py` 渲染，插件评审页由 `lib/candidate_review.py` 渲染，无需独立 `.html` 模板。插件构建会拒绝打包 `.html` / `.htm` 文件；运行时生成的预览页属于输出产物，继续用于离线查看与交互。
+
 ## 使用真实素材检查
 
 ```shell

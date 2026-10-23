@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -159,6 +160,23 @@ class QAToolTests(unittest.TestCase):
         self.assertEqual(len(result['steps']), 2)
         self.assertTrue((output / 'unit-tests.log').is_file())
         self.assertEqual(json.loads((output / 'summary.json').read_text()), result)
+
+    def test_plugin_build_rejects_standalone_html_before_creating_archive(self):
+        from tools.build_plugin import build
+        root = self.folder / 'package-source'
+        plugin = root / 'plugins/charakit'
+        shutil.copytree(REPO / 'plugins/charakit', plugin, ignore=shutil.ignore_patterns('__pycache__'))
+        archive = self.folder / 'plugin.zip'
+        for name in ('view.html', 'VIEW.HTM'):
+            with self.subTest(name=name):
+                template = plugin / 'lib' / name
+                template.write_text('<!doctype html><title>Unexpected template</title>', encoding='utf-8')
+                try:
+                    with self.assertRaisesRegex(ValueError, 'standalone HTML'):
+                        build(root, archive)
+                    self.assertFalse(archive.exists())
+                finally:
+                    template.unlink()
 
 
 if __name__ == '__main__':

@@ -174,13 +174,13 @@ def inspect_projects(projects, output, all_candidates=False, core=None):
             raise ValueError('Project changed during inspection: ' + str(root))
     data = dict(schema_version='1.0', purpose='inspection_only', visual_quality='not_assessed',
                 projects=snapshots, assets=rows, auto_alignment=False, auto_resizing_files=False)
-    template = Path(__file__).with_name('qa_view.html').read_text(encoding='utf-8')
-    embedded = json.dumps(data, ensure_ascii=False).replace('<', '\\u003c').replace('&', '\\u0026')
+    from tools.qa_view import render_inspection
+    page = render_inspection(data)
     output.mkdir(parents=True)
     (output / 'assets').mkdir()
     for rel, raw in payloads:
         (output / rel).write_bytes(raw)
-    (output / 'index.html').write_text(template.replace('__QA_DATA__', embedded), encoding='utf-8')
+    (output / 'index.html').write_text(page, encoding='utf-8')
     write_json(output / 'manifest.json', data)
     from tools.qa_mouth import make_template
     write_json(output / 'mouth-continuity.template.json', make_template(data))

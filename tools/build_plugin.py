@@ -21,6 +21,10 @@ def build(root: Path, output: Path) -> dict:
                 "skills/charakit-poses/scripts/studio.py",
                 "skills/charakit-poses/references/pose-guide.md"}
     names = {path.relative_to(plugin).as_posix() for path in files}
+    html_files = sorted(name for name in names if Path(name).suffix.lower() in ('.html', '.htm'))
+    if html_files:
+        raise ValueError('Plugin pages must be rendered from Python; standalone HTML files cannot be packaged: '
+                         + ', '.join(html_files))
     if not required.issubset(names):
         raise ValueError("Plugin manifest, module definitions, roadmap, or shared file helper is missing.")
     definitions = json.loads((plugin / "modules.json").read_text(encoding="utf-8"))
