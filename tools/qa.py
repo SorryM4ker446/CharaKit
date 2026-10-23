@@ -182,14 +182,12 @@ def inspect_projects(projects, output, all_candidates=False, core=None):
         (output / rel).write_bytes(raw)
     (output / 'index.html').write_text(page, encoding='utf-8')
     write_json(output / 'manifest.json', data)
-    from tools.qa_mouth import make_template
-    write_json(output / 'mouth-continuity.template.json', make_template(data))
     write_json(output / 'observations.template.json', dict(
         basis='unrecorded', intended_use=None, inspected_display_heights=[], engine_tested=False,
         assets=[dict(id=row['id'], sha256=row['sha256'], checks={
             name: dict(status='not_reviewed', evidence='') for name in (
                 'target', 'identity', 'protected_regions', 'structure_contacts_occlusion',
-                'rendering_alpha', 'framing_new_extremities', 'switching_continuity')})
+                'rendering_alpha', 'framing_new_extremities', 'switching')})
             for row in rows if row['review_status'] != 'source']))
     return dict(page=str(output / 'index.html'), manifest=str(output / 'manifest.json'),
                 assets=len(rows), visual_quality='not_assessed')
@@ -284,19 +282,12 @@ def main():
     runner = commands.add_parser('run', help='Run workflow tests and packaged smoke checks; optionally exercise Chromium.')
     runner.add_argument('--output', type=Path, required=True)
     runner.add_argument('--browser', action='store_true')
-    mouth = commands.add_parser('audit-mouth', help='Validate recorded visual mouth-pair continuity; never infers visual passage.')
-    mouth.add_argument('--inspection', type=Path, required=True)
-    mouth.add_argument('--record', type=Path, required=True)
-    mouth.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == 'inspect':
             result = inspect_projects(args.project, args.output, args.all_candidates)
         elif args.command == 'audit-export':
             result = audit_export(args.project, args.archive, args.ids)
-        elif args.command == 'audit-mouth':
-            from tools.qa_mouth import audit_mouth
-            result = audit_mouth(args.inspection, args.record, args.output)
         else:
             result = run(args.output, args.browser)
         print(json.dumps(result, ensure_ascii=False, indent=2))

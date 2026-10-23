@@ -81,12 +81,6 @@ def verify(inputs, output):
 
             page.goto(url(fixtures['inspection']))
             page.wait_for_function('qa.preloads.every(x=>x.complete&&x.naturalWidth>0)')
-            link = page.locator('a[href="mouth-continuity.template.json"]')
-            template_response = page.request.get(url(Path(fixtures['inspection']).parent / 'mouth-continuity.template.json'))
-            template = template_response.json()
-            check('mouth_acceptance_template_is_explicit_and_unreviewed', link.is_visible()
-                  and template_response.ok and template['purpose'] == 'mouth_continuity'
-                  and template['basis'] == 'unrecorded')
             check('inspection_all_images_loaded', page.evaluate('qa.assets.length===3 && qa.errors.length===0'))
             page.set_viewport_size(dict(width=1440, height=1000))
             for height in ('420', '720'):

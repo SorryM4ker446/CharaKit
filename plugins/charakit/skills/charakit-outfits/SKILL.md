@@ -5,7 +5,7 @@ description: Recolor or replace garments, replace a complete outfit, or add, rem
 
 # CharaKit Outfits
 
-Apply the shared [repeatable QA methods](../../references/qa-methods.md) during internal review: inspect the full silhouette at normal display sizes, then garment/object interfaces and protected face/pose details on light and dark backgrounds. Verify exported bytes and selected versions; do not interpret intentional outfit changes as mouth-frame continuity failures.
+Apply the shared [repeatable QA methods](../../references/qa-methods.md) during internal review: inspect the full silhouette at normal display sizes, then garment/object interfaces and protected face/pose details on light and dark backgrounds. Verify exported bytes and selected versions, and judge intentional outfit changes within the requested edit scope.
 
 Human review defaults to all readable candidates in the current batch, including failures and earlier rounds. Recommendations stay separate and never preselect the user's decision. Failed versions can receive actual feedback and specific revision requests; final delivery still requires all gates. Do not restrict the view without an explicit user request and a recorded omission reason.
 

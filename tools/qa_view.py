@@ -13,14 +13,13 @@ QA_VIEW_TEMPLATE = r'''<!doctype html>
 <div><label>第一帧 <select id="first"></select></label><label>第二帧 <select id="second"></select></label><button id="source">第一帧设为第二帧的原图</button></div>
 <div><label>显示高度 <select id="height"><option selected>420</option><option>720</option></select></label><label>显示方式 <select id="mode"><option value="height">统一显示高度</option><option value="scale">相同像素缩放倍率</option><option value="native">原始像素细看（可滚动）</option></select></label><label>底色 <select id="background"><option value="light">浅色</option><option value="dark">深色</option><option value="checker">棋盘格</option></select></label><button id="switch">切换一帧</button><button id="play" aria-pressed="false">自动切换 · 600ms</button></div>
 <p id="warning" class="notice" role="note"></p><p id="errors" class="error" role="alert"></p>
-<p class="notice">用于连续口型切换时，请填写 <a href="mouth-continuity.template.json" download>口型成对验收记录</a> 并运行 audit-mouth。嘴形、眼眉、头部、腰线裙摆、鞋位及边缘须分别记录；未检查或存在疑问不能记为连续性通过。静态导出与引擎集成另行判断。</p>
 <div class="panels">
 <section class="panel"><h2 id="label-a"></h2><div class="stage"><div class="anchor"><img id="image-a" alt="第一帧"></div></div><output id="meta-a"></output></section>
 <section class="panel"><h2 id="label-b"></h2><div class="stage"><div class="anchor"><img id="image-b" alt="第二帧"></div></div><output id="meta-b"></output></section>
 <section class="panel"><h2>切换播放</h2><div class="stage"><div class="anchor"><img id="image-live" alt="当前帧"></div></div><output id="live-meta"></output></section>
 </div>
 <p>统一高度仅改变显示布局，不代表人物部位已对齐。底部中心对齐的是画布；头、鞋和新手势轮廓需单独观察。原始像素模式可滚动检查细节。不同姿势或服装的有意轮廓变化应按其修改范围判断。</p>
-<p>重点：完整脸部与身份设计；未要求修改的衣物、配饰与姿势；接触、遮挡、手指；浅深底透明边缘；新伸出的手脚是否裁切；口型对之间的眼眉、腰线、裙摆、鞋位是否漂移。口型是静态帧，循环播放不代表已通过说话动画验收。</p>
+<p>重点：完整脸部与身份设计；未要求修改的衣物、配饰与姿势；接触、遮挡、手指；浅深底透明边缘；新伸出的手脚是否裁切。切换用于比较静态立绘，游戏引擎中的实际显示需另行验证。</p>
 <p><a href="manifest.json">文件与状态快照</a> · <a href="observations.template.json" download>下载未评分观察模板</a>。请另存实际检查记录，注明显示高度、用途及未检查项；页面不会更改项目选择、评分或反馈。</p></main>
 <script id="qa-data" type="application/json">__QA_DATA__</script>
 <script>
