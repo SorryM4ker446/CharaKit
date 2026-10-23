@@ -1,4 +1,8 @@
-<!doctype html>
+"""Render the portable QA viewer without a standalone HTML template file."""
+import json
+
+
+QA_VIEW_TEMPLATE = r'''<!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <link rel="icon" href="data:,"><title>CharaKit QA · 原始立绘检查</title>
 <style>
@@ -41,3 +45,10 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')stop();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});
 window.qa={data,assets,preloads,errors,get changes(){return changes;}};update();
 </script></html>
+'''
+
+
+def render_inspection(data):
+    """Embed snapshot data safely in the offline inspection page."""
+    embedded = json.dumps(data, ensure_ascii=False).replace('<', '\\u003c').replace('&', '\\u0026')
+    return QA_VIEW_TEMPLATE.replace('__QA_DATA__', embedded)
