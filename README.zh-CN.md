@@ -134,15 +134,14 @@ codex plugin add charakit@charakit
 
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
-python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit.zip
+python tools/qa.py run --output .dev-checks/qa-001
 ```
 
-CI 检查 Linux 和 Windows。构建工具拒绝覆盖已有 ZIP，只打包插件文件。用户立绘、提示词、反馈与本地测试记录保存在 Git 忽略的产物目录中。
+统一入口执行工作流测试、构建和解压包检查，保存各阶段日志与汇总；CI 检查 Linux 和 Windows，并在 Linux 检查真实评审页和立绘切换交互。真实素材可使用只读检查页和独立ZIP审计，详见[QA运行指南](docs/qa.md)。构建工具拒绝覆盖已有 ZIP，只打包插件文件。用户立绘、提示词、反馈与本地测试记录保存在 Git 忽略的产物目录中。
 
 ## 限制
 
 - 生图依赖宿主提供的图像编辑工具。CharaKit 不自带图像模型、外部图像 API 或 MCP 服务。
 - 编辑可能导致人物设计、姿势、位置或无关细节偏移。评审有助于发现问题，但不能保证像素级保留或减少返修。
-- 最终 PNG 必须匹配原画布，并通过适用的透明度与完整性检查。尺寸不符的图片可用于评图，但阻止正式接受与导出；助手不会缩放或修补候选。
+- 最终 PNG 必须通过适用的透明度与完整性检查。分辨率不同允许接受、选择及 PNG/ZIP 导出，但会提醒原图与输出的实际尺寸；文件保持原始字节，不会自动缩放、对齐或修补。
 - 产物是完整静态立绘。动画、口型同步、跨模块自动生成、大幅朝向变化、坐姿、倚靠和持物互动姿势均未实现。

@@ -135,15 +135,14 @@ Run from the repository root:
 
 ```shell
 python -m pip install -r plugins/charakit/requirements.txt
-python -m unittest discover -s tests -v
-python tools/build_plugin.py --output dist/charakit.zip
+python tools/qa.py run --output .dev-checks/qa-001
 ```
 
-CI checks Linux and Windows. The builder refuses to overwrite an existing ZIP and packages only the plugin files. User artwork, prompts, feedback, and local experiment records stay in ignored output directories.
+The QA runner saves workflow-test, build and extracted-package results with logs. CI runs on Linux and Windows, with Chromium review-page and switching checks on Linux. Read-only inspection snapshots and independent ZIP audits support real-art regression; see the [QA guide](docs/qa.md). The builder refuses to overwrite existing ZIPs and packages only plugin files. Artwork, prompts, feedback and experiment records stay in ignored output directories.
 
 ## Limitations
 
 - Image generation depends on the host's editing tool. CharaKit does not bundle an image model, external image API, or MCP service.
 - Edits can drift in identity, pose, framing, or unrelated details. Review helps detect these defects but does not guarantee pixel preservation or fewer revisions.
-- Final PNGs must match the source canvas and pass applicable transparency and integrity checks. Canvas mismatch can remain visible in review, but blocks formal acceptance and export; the helper does not resize or repair candidates.
+- Final PNGs must pass applicable transparency and integrity checks. Different dimensions are allowed for acceptance, selection and PNG/ZIP export with a visible warning showing source and actual sizes. Files remain unchanged; the helper does not resize or repair candidates.
 - Outputs are complete static illustrations. Animation, lip synchronization, automatic cross-module generation, larger viewpoint changes, sitting, leaning and object interaction poses are outside the implemented feature set.
